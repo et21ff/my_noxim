@@ -1,0 +1,353 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Tile - noxim</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc.js"></script>
+    </head>
+    <body>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">noxim</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <p>这段代码定义了一个名为 Tile的 SystemC 模块，用于表示网络芯片（NoC）中的一个单元。让我们逐步解释其主要部分：
+<img src="https://raw.githubusercontent.com/et21ff/picbed/main/20241220153218-2024-12-20.png" alt="20241220153218-2024-12-20" /></p>
+<h3 id="模块声明和-io-端口"><a class="header" href="#模块声明和-io-端口">模块声明和 I/O 端口</a></h3>
+<pre><code class="language-cpp">SC_MODULE(Tile)
+{
+    SC_HAS_PROCESS(Tile);
+
+    // I/O Ports
+    sc_in_clk clock;		                // Tile 的输入时钟
+    sc_in&lt;bool&gt; reset;	                        // Tile 的复位信号
+    int local_id; // 唯一 ID
+
+    sc_in&lt;Flit&gt; flit_rx[DIRECTIONS];	        // 输入通道
+    sc_in&lt;bool&gt; req_rx[DIRECTIONS];	        // 输入通道的请求信号
+    sc_out&lt;bool&gt; ack_rx[DIRECTIONS];	        // 输入通道的确认信号
+    sc_out&lt;TBufferFullStatus&gt; buffer_full_status_rx[DIRECTIONS];
+
+    sc_out&lt;Flit&gt; flit_tx[DIRECTIONS];	        // 输出通道
+    sc_out&lt;bool&gt; req_tx[DIRECTIONS];	        // 输出通道的请求信号
+    sc_in&lt;bool&gt; ack_tx[DIRECTIONS];	        // 输出通道的确认信号
+    sc_in&lt;TBufferFullStatus&gt; buffer_full_status_tx[DIRECTIONS];
+
+    // hub specific ports
+    sc_in&lt;Flit&gt; hub_flit_rx;	                // Hub 的输入通道
+    sc_in&lt;bool&gt; hub_req_rx;	                // Hub 的请求信号
+    sc_out&lt;bool&gt; hub_ack_rx;	                // Hub 的确认信号
+    sc_out&lt;TBufferFullStatus&gt; hub_buffer_full_status_rx;
+
+    sc_out&lt;Flit&gt; hub_flit_tx;	                // Hub 的输出通道
+    sc_out&lt;bool&gt; hub_req_tx;	                // Hub 的请求信号
+    sc_in&lt;bool&gt; hub_ack_tx;	                // Hub 的确认信号
+    sc_in&lt;TBufferFullStatus&gt; hub_buffer_full_status_tx;
+
+    // NoP 相关 I/O 和信号
+    sc_out&lt;int&gt; free_slots[DIRECTIONS];
+    sc_in&lt;int&gt; free_slots_neighbor[DIRECTIONS];
+    sc_out&lt;NoP_data&gt; NoP_data_out[DIRECTIONS];
+    sc_in&lt;NoP_data&gt; NoP_data_in[DIRECTIONS];
+
+    sc_signal&lt;int&gt; free_slots_local;
+    sc_signal&lt;int&gt; free_slots_neighbor_local;
+
+    // Router-PE 连接所需的信号
+    sc_signal&lt;Flit&gt; flit_rx_local;	
+    sc_signal&lt;bool&gt; req_rx_local;     
+    sc_signal&lt;bool&gt; ack_rx_local;
+    sc_signal&lt;TBufferFullStatus&gt; buffer_full_status_rx_local;
+
+    sc_signal&lt;Flit&gt; flit_tx_local;
+    sc_signal&lt;bool&gt; req_tx_local;
+    sc_signal&lt;bool&gt; ack_tx_local;
+    sc_signal&lt;TBufferFullStatus&gt; buffer_full_status_tx_local;
+
+    // 实例
+    Router *r;		                // 路由器实例
+    ProcessingElement *pe;	                // 处理单元实例
+</code></pre>
+<h3 id="构造函数"><a class="header" href="#构造函数">构造函数</a></h3>
+<pre><code class="language-cpp">    Tile(sc_module_name nm, int id): sc_module(nm) {
+        local_id = id;
+
+        // 路由器引脚分配
+        r = new Router("Router");
+        r-&gt;clock(clock);
+        r-&gt;reset(reset);
+        for (int i = 0; i &lt; DIRECTIONS; i++) {
+            r-&gt;flit_rx[i](flit_rx[i]);
+            r-&gt;req_rx[i](req_rx[i]);
+            r-&gt;ack_rx[i](ack_rx[i]);
+            r-&gt;buffer_full_status_rx[i](buffer_full_status_rx[i]);
+
+            r-&gt;flit_tx[i](flit_tx[i]);
+            r-&gt;req_tx[i](req_tx[i]);
+            r-&gt;ack_tx[i](ack_tx[i]);
+            r-&gt;buffer_full_status_tx[i](buffer_full_status_tx[i]);
+
+            r-&gt;free_slots[i](free_slots[i]);
+            r-&gt;free_slots_neighbor[i](free_slots_neighbor[i]);
+
+            // NoP 
+            r-&gt;NoP_data_out[i](NoP_data_out[i]);
+            r-&gt;NoP_data_in[i](NoP_data_in[i]);
+        }
+
+        // 本地连接
+        r-&gt;flit_rx[DIRECTION_LOCAL](flit_tx_local);
+        r-&gt;req_rx[DIRECTION_LOCAL](req_tx_local);
+        r-&gt;ack_rx[DIRECTION_LOCAL](ack_tx_local);
+        r-&gt;buffer_full_status_rx[DIRECTION_LOCAL](buffer_full_status_tx_local);
+
+        r-&gt;flit_tx[DIRECTION_LOCAL](flit_rx_local);
+        r-&gt;req_tx[DIRECTION_LOCAL](req_rx_local);
+        r-&gt;ack_tx[DIRECTION_LOCAL](ack_rx_local);
+        r-&gt;buffer_full_status_tx[DIRECTION_LOCAL](buffer_full_status_rx_local);
+
+        // Hub 相关连接
+        r-&gt;flit_rx[DIRECTION_HUB](hub_flit_rx);
+        r-&gt;req_rx[DIRECTION_HUB](hub_req_rx);
+        r-&gt;ack_rx[DIRECTION_HUB](hub_ack_rx);
+        r-&gt;buffer_full_status_rx[DIRECTION_HUB](hub_buffer_full_status_rx);
+
+        r-&gt;flit_tx[DIRECTION_HUB](hub_flit_tx);
+        r-&gt;req_tx[DIRECTION_HUB](hub_req_tx);
+        r-&gt;ack_tx[DIRECTION_HUB](hub_ack_tx);
+        r-&gt;buffer_full_status_tx[DIRECTION_HUB](hub_buffer_full_status_tx);
+
+        // 处理单元引脚分配
+        pe = new ProcessingElement("ProcessingElement");
+        pe-&gt;clock(clock);
+        pe-&gt;reset(reset);
+
+        pe-&gt;flit_rx(flit_rx_local);
+        pe-&gt;req_rx(req_rx_local);
+        pe-&gt;ack_rx(ack_rx_local);
+        pe-&gt;buffer_full_status_rx(buffer_full_status_rx_local);
+
+        pe-&gt;flit_tx(flit_tx_local);
+        pe-&gt;req_tx(req_tx_local);
+        pe-&gt;ack_tx(ack_tx_local);
+        pe-&gt;buffer_full_status_tx(buffer_full_status_tx_local);
+
+        // NoP
+        r-&gt;free_slots[DIRECTION_LOCAL](free_slots_local);
+        r-&gt;free_slots_neighbor[DIRECTION_LOCAL](free_slots_neighbor_local);
+        pe-&gt;free_slots_neighbor(free_slots_neighbor_local);
+    }
+};
+</code></pre>
+<h3 id="解释"><a class="header" href="#解释">解释</a></h3>
+<p>Tile 模块表示 NoC 中的一个单元，包含路由器和处理单元。构造函数中，首先初始化路由器和处理单元，并将它们的引脚连接到相应的信号和端口。路由器和处理单元通过本地信号进行通信，并与 Hub 进行连接。通过这些配置，</p>
+<p>Tile模块能够处理来自不同方向的输入和输出数据，并与其他模块进行交互。</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="Main.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="Router.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="Main.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="Router.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+        <!-- Livereload script (if served using the cli tool) -->
+        <script>
+            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
+            const socket = new WebSocket(wsAddress);
+            socket.onmessage = function (event) {
+                if (event.data === "reload") {
+                    socket.close();
+                    location.reload();
+                }
+            };
+
+            window.onbeforeunload = function() {
+                socket.close();
+            }
+        </script>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>
