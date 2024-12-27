@@ -391,6 +391,56 @@ reset.write(0);                                                // 释放复位
 <p>Tile 模块表示 NoC 中的一个单元，包含路由器和处理单元。构造函数中，首先初始化路由器和处理单元，并将它们的引脚连接到相应的信号和端口。路由器和处理单元通过本地信号进行通信，并与 Hub 进行连接。通过这些配置，</p>
 <p>Tile模块能够处理来自不同方向的输入和输出数据，并与其他模块进行交互。</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="router"><a class="header" href="#router">Router</a></h1>
+<p><code>Router</code> 类是一个 SystemC 模块，实现了网络路由器的功能。主要包含以下部分：</p>
+<h2 id="模板和依赖"><a class="header" href="#模板和依赖">模板和依赖</a></h2>
+<pre><code class="language-cpp">#ifndef __NOXIMROUTER_H__
+#define __NOXIMROUTER_H__
+
+#include &lt;systemc.h&gt;
+// ... 其他头文件包含
+</code></pre>
+<p>定义了所需的系统头文件和依赖项。</p>
+<h2 id="基本组件"><a class="header" href="#基本组件">基本组件</a></h2>
+<p>路由器类包含了以下主要组件和功能：</p>
+<ul>
+<li>I/O 端口</li>
+<li>内部寄存器和状态变量</li>
+<li>路由和选择策略</li>
+<li>数据缓冲区</li>
+<li>统计和功率管理</li>
+</ul>
+<h2 id="主要方法"><a class="header" href="#主要方法">主要方法</a></h2>
+<p>主要的处理流程包括：</p>
+<ul>
+<li><code>process()</code> - 主处理循环</li>
+<li><code>rxProcess()</code> - 接收处理</li>
+<li><code>txProcess()</code> - 发送处理</li>
+<li><code>route()</code> - 路由功能</li>
+<li><code>configure()</code> - 配置路由器参数</li>
+<li><code>perCycleUpdate()</code> - 每周期更新</li>
+</ul>
+<h2 id="友元类"><a class="header" href="#友元类">友元类</a></h2>
+<pre><code class="language-cpp">friend class Selection_NOP;
+friend class Selection_BUFFER_LEVEL;
+</code></pre>
+<p>声明了两个选择策略的友元类。</p>
+<h2 id="工具函数"><a class="header" href="#工具函数">工具函数</a></h2>
+<p>提供了一些辅助功能：</p>
+<ul>
+<li>NoP (Neighbor-on-Path) 数据处理</li>
+<li>反向查找</li>
+<li>性能统计</li>
+<li>状态报告</li>
+</ul>
+<h2 id="构造函数-1"><a class="header" href="#构造函数-1">构造函数</a></h2>
+<p>在构造函数中进行：</p>
+<ul>
+<li>方法注册</li>
+<li>敏感信号设置</li>
+<li>路由算法初始化</li>
+<li>选择策略配置</li>
+</ul>
+<p>路由器实现了复杂的网络功能，包括数据包转发、流量控制和拥塞管理。</p>
 <h3 id="友元类声明"><a class="header" href="#友元类声明">友元类声明</a></h3>
 <pre><code class="language-cpp">friend class Selection_NOP;
 friend class Selection_BUFFER_LEVEL;
@@ -642,6 +692,1529 @@ start_from_port = (start_from_port + 1) % (DIRECTIONS + 2);
 </code></pre>
 <ul>
 <li>更新起始虚拟通道和起始端口，以便在下一个周期从不同的端口和虚拟通道开始预留。</li>
+</ul>
+<h3 id="转发阶段"><a class="header" href="#转发阶段">转发阶段</a></h3>
+<pre><code class="language-cpp">// 2nd phase: Forwarding
+for (int i = 0; i &lt; DIRECTIONS + 2; i++) 
+{ 
+    vector&lt;pair&lt;int,int&gt; &gt; reservations = reservation_table.getReservations(i);
+    
+    if (reservations.size()!=0)
+    {
+        int rnd_idx = rand()%reservations.size();
+        int o = reservations[rnd_idx].first;
+        int vc = reservations[rnd_idx].second;
+        if (!buffer[i][vc].IsEmpty())  
+        {
+            Flit flit = buffer[i][vc].Front();
+            if ( (current_level_tx[o] == ack_tx[o].read()) &amp;&amp;
+                 (buffer_full_status_tx[o].read().mask[vc] == false) ) 
+            {
+                LOG &lt;&lt; "Input[" &lt;&lt; i &lt;&lt; "][" &lt;&lt; vc &lt;&lt; "] forwarded to Output[" &lt;&lt; o &lt;&lt; "], flit: " &lt;&lt; flit &lt;&lt; endl;
+                flit_tx[o].write(flit);
+                current_level_tx[o] = 1 - current_level_tx[o];
+                req_tx[o].write(current_level_tx[o]);
+                buffer[i][vc].Pop();
+                if (flit.flit_type == FLIT_TYPE_TAIL)
+                {
+                    TReservation r;
+                    r.input = i;
+                    r.vc = vc;
+                    reservation_table.release(r,o);
+                }
+            }
+        }
+    }
+}
+</code></pre>
+<p>在转发阶段，路由器将预留的 flit 从输入端口转发到输出端口：</p>
+<ul>
+<li>遍历所有输入端口，获取预留的输出端口和虚拟通道。</li>
+<li>随机选择一个预留的输出端口和虚拟通道。</li>
+<li>检查缓冲区是否为空，如果不为空，则读取缓冲区前端的 flit。</li>
+<li>检查当前发送电平和确认信号是否匹配，并且输出缓冲区状态是否未满。</li>
+<li>如果满足条件，将 flit 写入输出端口，切换当前发送电平，并更新请求信号。</li>
+<li>如果 flit 是尾 flit（FLIT_TYPE_TAIL），释放预留的输出端口和虚拟通道。</li>
+</ul>
+<h4 id="power--stats-处理"><a class="header" href="#power--stats-处理">Power &amp; Stats 处理</a></h4>
+<p>在这段代码中，路由器处理与功耗和统计相关的操作。具体步骤如下：</p>
+<h5 id="功耗处理"><a class="header" href="#功耗处理">功耗处理</a></h5>
+<pre><code class="language-cpp">if (o == DIRECTION_HUB) power.r2hLink();
+else power.r2rLink();
+
+power.bufferRouterPop();
+power.crossBar();
+</code></pre>
+<ul>
+<li>如果输出方向是 <code>DIRECTION_HUB</code>，调用 <code>power.r2hLink()</code> 记录从路由器到集线器的功耗。</li>
+<li>否则，调用 <code>power.r2rLink()</code> 记录从路由器到路由器的功耗。</li>
+<li>调用 <code>power.bufferRouterPop()</code> 记录从缓冲区弹出数据包的功耗。</li>
+<li>调用 <code>power.crossBar()</code> 记录交叉开关的功耗。</li>
+</ul>
+<h5 id="网络接口和统计处理"><a class="header" href="#网络接口和统计处理">网络接口和统计处理</a></h5>
+<pre><code class="language-cpp">if (o == DIRECTION_LOCAL) 
+{
+    power.networkInterface();
+    LOG &lt;&lt; "Consumed flit " &lt;&lt; flit &lt;&lt; endl;
+    stats.receivedFlit(sc_time_stamp().to_double() / GlobalParams::clock_period_ps, flit);
+    if (GlobalParams::max_volume_to_be_drained) 
+    {
+        if (drained_volume &gt;= GlobalParams::max_volume_to_be_drained)
+            sc_stop();
+        else 
+        {
+            drained_volume++;
+            local_drained++;
+        }
+    }
+} 
+else if (i != DIRECTION_LOCAL) // not generated locally
+    routed_flits++;
+</code></pre>
+<ul>
+<li>如果输出方向是 <code>DIRECTION_LOCAL</code>，调用 <code>power.networkInterface()</code> 记录网络接口的功耗。</li>
+<li>记录日志，输出已消耗的数据包（<code>flit</code>）。</li>
+<li>调用 <code>stats.receivedFlit()</code> 记录接收到的数据包，传入当前时间戳和数据包。</li>
+<li>如果 <code>GlobalParams::max_volume_to_be_drained</code> 被设置，检查是否达到最大排出量：
+<ul>
+<li>如果达到最大排出量，调用 <code>sc_stop()</code> 停止仿真。</li>
+<li>否则，增加 <code>drained_volume</code> 和 <code>local_drained</code> 的计数。</li>
+</ul>
+</li>
+<li>如果输入方向不是 <code>DIRECTION_LOCAL</code>，增加 <code>routed_flits</code> 的计数。</li>
+</ul>
+<h5 id="无法转发处理"><a class="header" href="#无法转发处理">无法转发处理</a></h5>
+<pre><code class="language-cpp">else
+{
+    LOG &lt;&lt; " Cannot forward Input[" &lt;&lt; i &lt;&lt; "][" &lt;&lt; vc &lt;&lt; "] to Output[" &lt;&lt; o &lt;&lt; "], flit: " &lt;&lt; flit &lt;&lt; endl;
+    LOG &lt;&lt; " **DEBUG buffer_full_status_tx " &lt;&lt; buffer_full_status_tx[o].read().mask[vc] &lt;&lt; endl;
+}
+</code></pre>
+<ul>
+<li>如果无法转发数据包，记录日志，输出无法转发的输入和输出端口信息以及当前的数据包（<code>flit</code>）。</li>
+<li>记录日志，输出 <code>buffer_full_status_tx</code> 的状态。</li>
+</ul>
+<h5 id="更新预留表索引"><a class="header" href="#更新预留表索引">更新预留表索引</a></h5>
+<pre><code class="language-cpp">if ((int)(sc_time_stamp().to_double() / GlobalParams::clock_period_ps) % 2 == 0)
+    reservation_table.updateIndex();
+</code></pre>
+<ul>
+<li>每隔两个时钟周期，调用 <code>reservation_table.updateIndex()</code> 更新预留表的索引。</li>
+</ul>
+<h2 id="percycleupdate"><a class="header" href="#percycleupdate">perCycleUpdate</a></h2>
+<pre><code class="language-cpp">void Router::perCycleUpdate()
+{
+    if (reset.read()) {
+	for (int i = 0; i &lt; DIRECTIONS + 1; i++)
+	    free_slots[i].write(buffer[i][DEFAULT_VC].GetMaxBufferSize());
+    } else {
+        selectionStrategy-&gt;perCycleUpdate(this);
+
+	power.leakageRouter();
+	for (int i = 0; i &lt; DIRECTIONS + 1; i++)
+	{
+	    for (int vc=0;vc&lt;GlobalParams::n_virtual_channels;vc++)
+	    {
+		power.leakageBufferRouter();
+		power.leakageLinkRouter2Router();
+	    }
+	}
+
+	power.leakageLinkRouter2Hub();
+    }
+}
+</code></pre>
+<p>这段代码定义了 <code>Router</code> 类的成员函数 <code>perCycleUpdate</code>，该函数用于在每个周期更新路由器的状态。</p>
+<p>首先，函数检查 <code>reset</code> 信号的状态。如果 <code>reset.read()</code> 返回 <code>true</code>，表示系统处于复位状态，此时函数会将所有方向的输入缓冲区的空闲槽位数设置为其最大值。具体来说，使用一个 <code>for</code> 循环遍历所有方向（由 <code>DIRECTIONS + 1</code> 定义），对于每个方向，调用 <code>buffer[i][DEFAULT_VC].GetMaxBufferSize()</code> 获取当前虚拟通道（<code>DEFAULT_VC</code>）的最大缓冲区大小，并将其写入到 <code>free_slots[i]</code>。</p>
+<p>如果 <code>reset.read()</code> 返回 <code>false</code>，表示系统处于正常运行状态，此时函数会执行以下操作：</p>
+<ol>
+<li>调用 <code>selectionStrategy-&gt;perCycleUpdate(this)</code>，更新选择策略的状态。</li>
+<li>调用 <code>power.leakageRouter()</code>，计算路由器的漏电功耗。</li>
+<li>使用一个嵌套的 <code>for</code> 循环遍历所有方向和虚拟通道（由 <code>DIRECTIONS + 1</code> 和 <code>GlobalParams::n_virtual_channels</code> 定义），对于每个方向和虚拟通道，调用 <code>power.leakageBufferRouter()</code> 和 <code>power.leakageLinkRouter2Router()</code>，分别计算缓冲区和路由器之间链路的漏电功耗。</li>
+<li>调用 <code>power.leakageLinkRouter2Hub()</code>，计算路由器到集线器链路的漏电功耗。</li>
+</ol>
+<h2 id="confiugre"><a class="header" href="#confiugre">Confiugre</a></h2>
+<p>这个代码片段定义了一个名为 <code>Router::configure</code> 的函数，用于配置路由器的各种参数。该函数接受四个参数：路由器的 ID、预热时间、最大缓冲区大小和全局路由表。函数的主要任务是初始化路由器的内部状态和缓冲区，并根据给定的全局路由表配置路由表。</p>
+<pre><code class="language-cpp">void Router::configure(const int _id,
+			    const double _warm_up_time,
+			    const unsigned int _max_buffer_size,
+			    GlobalRoutingTable &amp; grt)
+{
+    // 设置路由器的本地 ID
+    local_id = _id;
+    
+    // 配置统计信息
+    stats.configure(_id, _warm_up_time);
+
+    // 设置起始端口为本地方向
+    start_from_port = DIRECTION_LOCAL;
+
+    // 如果全局路由表有效，则配置路由表
+    if (grt.isValid())
+        routing_table.configure(grt, _id);
+
+    // 设置预定表的大小
+    reservation_table.setSize(DIRECTIONS + 2);
+
+    // 初始化每个方向和虚拟通道的缓冲区
+    for (int i = 0; i &lt; DIRECTIONS + 2; i++)
+    {
+        for (int vc = 0; vc &lt; GlobalParams::n_virtual_channels; vc++)
+        {
+            // 设置缓冲区的最大大小
+            buffer[i][vc].SetMaxBufferSize(_max_buffer_size);
+            
+            // 设置缓冲区的标签
+            buffer[i][vc].setLabel(string(name()) + "-&gt;buffer[" + i_to_string(i) + "]");
+        }
+        // 初始化每个方向的起始虚拟通道
+        start_from_vc[i] = 0;
+    }
+
+    // 如果拓扑结构是网格，则禁用边界缓冲区
+    if (GlobalParams::topology == TOPOLOGY_MESH)
+    {
+        int row = _id / GlobalParams::mesh_dim_x;
+        int col = _id % GlobalParams::mesh_dim_x;
+
+        for (int vc = 0; vc &lt; GlobalParams::n_virtual_channels; vc++)
+        {
+            // 禁用北边界的缓冲区
+            if (row == 0)
+                buffer[DIRECTION_NORTH][vc].Disable();
+            
+            // 禁用南边界的缓冲区
+            if (row == GlobalParams::mesh_dim_y - 1)
+                buffer[DIRECTION_SOUTH][vc].Disable();
+            
+            // 禁用西边界的缓冲区
+            if (col == 0)
+                buffer[DIRECTION_WEST][vc].Disable();
+            
+            // 禁用东边界的缓冲区
+            if (col == GlobalParams::mesh_dim_x - 1)
+                buffer[DIRECTION_EAST][vc].Disable();
+        }
+    }
+}
+</code></pre>
+<h3 id="代码解释"><a class="header" href="#代码解释">代码解释</a></h3>
+<ol>
+<li>
+<p><strong>设置路由器的本地 ID 和统计信息</strong>：</p>
+<ul>
+<li><code>local_id = _id;</code>：将传入的 ID 赋值给路由器的本地 ID。</li>
+<li><code>stats.configure(_id, _warm_up_time);</code>：配置统计信息，传入 ID 和预热时间。</li>
+</ul>
+</li>
+<li>
+<p><strong>设置起始端口和配置路由表</strong>：</p>
+<ul>
+<li><code>start_from_port = DIRECTION_LOCAL;</code>：设置起始端口为本地方向。</li>
+<li><code>if (grt.isValid()) routing_table.configure(grt, _id);</code>：如果全局路由表有效，则配置路由表。</li>
+</ul>
+</li>
+<li>
+<p><strong>设置预定表的大小和初始化缓冲区</strong>：</p>
+<ul>
+<li><code>reservation_table.setSize(DIRECTIONS + 2);</code>：设置预定表的大小。</li>
+<li>循环遍历每个方向和虚拟通道，设置缓冲区的最大大小和标签，并初始化起始虚拟通道。</li>
+</ul>
+</li>
+<li>
+<p><strong>根据拓扑结构禁用边界缓冲区</strong>：</p>
+<ul>
+<li>如果拓扑结构是网格，则根据路由器的位置（行和列）禁用北、南、西、东边界的缓冲区。</li>
+</ul>
+</li>
+</ol>
+<p>通过这些步骤，路由器的配置函数完成了对路由器内部状态和缓冲区的初始化和配置。</p>
+<h2 id="route"><a class="header" href="#route">route</a></h2>
+<pre><code class="language-cpp">int Router::route(const RouteData &amp; route_data)
+{
+    if (route_data.dst_id == local_id)
+        return DIRECTION_LOCAL;
+
+    power.routing();
+    vector &lt; int &gt;candidate_channels = routingFunction(route_data);
+
+    power.selection();
+    return selectionFunction(candidate_channels, route_data);
+}
+</code></pre>
+<p><code>route</code> 方法仅仅只做能量计算，相当于一个入口函数而实际工作则交给<code>routing_function</code> 与<code>selection_fucntion</code>来执行：</p>
+<ol>
+<li>
+<p><strong>目的地检查</strong></p>
+<ul>
+<li>如果数据包的目的地是当前路由器，返回 <code>DIRECTION_LOCAL</code></li>
+</ul>
+</li>
+<li>
+<p><strong>路由计算</strong></p>
+<ul>
+<li>调用 <code>power.routing()</code> 记录路由计算的功耗</li>
+<li>调用 <code>routingFunction</code> 获取可能的候选通道</li>
+</ul>
+</li>
+<li>
+<p><strong>选择计算</strong></p>
+<ul>
+<li>调用 <code>power.selection()</code> 记录选择过程的功耗</li>
+<li>调用 <code>selectionFunction</code> 从候选通道中选择最终的输出方向</li>
+</ul>
+</li>
+</ol>
+<h2 id="selectionfunction"><a class="header" href="#selectionfunction">selectionFunction</a></h2>
+<pre><code class="language-cpp">int Router::selectionFunction(const vector &lt; int &gt;&amp;directions,
+				   const RouteData &amp; route_data)
+{
+    // not so elegant but fast escape ;)
+    if (directions.size() == 1)
+	return directions[0];
+
+    return selectionStrategy-&gt;apply(this, directions, route_data);
+}
+</code></pre>
+<p><code>selectionFunction</code> 方法接受两个参数：候选方向列表和路由数据。如果候选方向列表只有一个元素，直接返回该方向；否则，调用选择策略的 <code>apply</code> 方法进行选择。</p>
+<h2 id="vector--int-routingfunctionconst-routedata--route_data"><a class="header" href="#vector--int-routingfunctionconst-routedata--route_data"><code>vector &lt; int &gt;routingFunction(const RouteData &amp; route_data);</code></a></h2>
+<p>这个方法实现了路由器的路由功能，包括无线和有线两种模式。让我们详细分析其实现：</p>
+<h3 id="无线路由处理"><a class="header" href="#无线路由处理">无线路由处理</a></h3>
+<pre><code class="language-cpp">if (GlobalParams::use_winoc) 
+{
+    if (hasRadioHub(local_id))
+    {
+        // 检查目标是否直接连接到集线器
+        if (hasRadioHub(route_data.dst_id) &amp;&amp; 
+            !sameRadioHub(local_id,route_data.dst_id))
+        {
+            // 如果目标和当前节点连接到不同的集线器
+            if (connectedHubs(it1-&gt;second,it2-&gt;second))
+            {
+                vector&lt;int&gt; dirv;
+                dirv.push_back(DIRECTION_HUB);
+                return dirv;
+            }
+        }
+
+        // 检查路由路径上的中继节点
+        if (GlobalParams::winoc_dst_hops &gt; 0)
+        {
+            vector&lt;int&gt; nexthops = nextDeltaHops(route_data);
+            
+            // 检查每个可能的中继节点
+            for (int i=1; i&lt;=GlobalParams::winoc_dst_hops; i++)
+            {
+                int candidate_hop = nexthops[nexthops.size()-1-i];
+                if (hasRadioHub(candidate_hop) &amp;&amp; 
+                    !sameRadioHub(local_id,candidate_hop))
+                {
+                    vector&lt;int&gt; dirv;
+                    dirv.push_back(DIRECTION_HUB_RELAY+candidate_hop);
+                    return dirv;
+                }
+            }
+        }
+    }
+}
+</code></pre>
+<h3 id="有线路由处理"><a class="header" href="#有线路由处理">有线路由处理</a></h3>
+<pre><code class="language-cpp">// 如果不使用无线路由或无线路由失败，使用常规路由算法
+return routingAlgorithm-&gt;route(this, route_data);
+</code></pre>
+<h3 id="主要功能"><a class="header" href="#主要功能">主要功能</a></h3>
+<ol>
+<li>
+<p><strong>无线通信选择</strong>：</p>
+<ul>
+<li>检查当前节点和目标是否连接到集线器</li>
+<li>支持通过中继节点进行无线通信</li>
+<li>使用距离阈值控制中继节点选择</li>
+</ul>
+</li>
+<li>
+<p><strong>有线通信回退</strong>：</p>
+<ul>
+<li>当无线通信不可用时，使用常规路由算法</li>
+<li>通过 <code>routingAlgorithm</code> 接口支持多种路由策略</li>
+</ul>
+</li>
+<li>
+<p><strong>路由决策输出</strong>：</p>
+<ul>
+<li>返回一个方向向量，指示数据包应该转发的方向</li>
+<li>支持直接无线传输和中继无线传输</li>
+</ul>
+</li>
+</ol>
+<h2 id="getcurrentnopdata"><a class="header" href="#getcurrentnopdata">getCurrentNoPData</a></h2>
+<p><code>getCurrentNoPData</code> 方法用于获取当前路由器的 NoP (Neighbor-on-Path) 数据，这些数据用于路由决策和流量控制。</p>
+<h3 id="实现细节"><a class="header" href="#实现细节">实现细节</a></h3>
+<pre><code class="language-cpp">NoP_data Router::getCurrentNoPData()
+{
+    NoP_data NoP_data;
+
+    for (int j = 0; j &lt; DIRECTIONS; j++) {
+        try {
+            NoP_data.channel_status_neighbor[j].free_slots = free_slots_neighbor[j].read();
+            NoP_data.channel_status_neighbor[j].available = (reservation_table.isNotReserved(j));
+        }
+        catch (int e)
+        {
+            if (e!=NOT_VALID) assert(false);
+            // Nothing to do if an NOT_VALID direction is caught
+        };
+    }
+
+    NoP_data.sender_id = local_id;
+
+    return NoP_data;
+}
+</code></pre>
+<p>该方法执行以下操作：</p>
+<ol>
+<li>
+<p><strong>创建新的 NoP 数据结构</strong>：创建一个 <code>NoP_data</code> 对象用于存储状态信息。</p>
+</li>
+<li>
+<p><strong>遍历各个方向</strong>：对每个方向（东南西北）：</p>
+<ul>
+<li>读取邻居的空闲槽位数量</li>
+<li>检查该方向是否已被预留</li>
+</ul>
+</li>
+<li>
+<p><strong>错误处理</strong>：使用 try-catch 处理无效方向的情况。</p>
+</li>
+<li>
+<p><strong>设置发送者 ID</strong>：将当前路由器的本地 ID 存储在 NoP 数据中。</p>
+</li>
+</ol>
+<h3 id="注意事项"><a class="header" href="#注意事项">注意事项</a></h3>
+<ul>
+<li>该方法主要用于拓扑和流量控制算法</li>
+<li>异常处理仅忽略 <code>NOT_VALID</code> 错误</li>
+<li>返回的数据包含通道状态和可用性信息</li>
+</ul>
+<h2 id="nopscore"><a class="header" href="#nopscore">NoPScore</a></h2>
+<p><code>NoPScore</code> 方法用于计算给定方向上的 NoP (Neighbor-on-Path) 分数，这个分数用于评估路由决策的质量。</p>
+<h3 id="实现分析"><a class="header" href="#实现分析">实现分析</a></h3>
+<pre><code class="language-cpp">int Router::NoPScore(const NoP_data &amp; nop_data,
+              const vector &lt; int &gt;&amp;nop_channels) const
+{
+    int score = 0;
+
+    for (unsigned int i = 0; i &lt; nop_channels.size(); i++) {
+        int available;
+
+        if (nop_data.channel_status_neighbor[nop_channels[i]].available)
+            available = 1;
+        else
+            available = 0;
+
+        int free_slots =
+            nop_data.channel_status_neighbor[nop_channels[i]].free_slots;
+
+        score += available * free_slots;
+    }
+
+    return score;
+}
+</code></pre>
+<p>该方法执行以下操作：</p>
+<ol>
+<li>
+<p><strong>分数计算</strong>：</p>
+<ul>
+<li>遍历所有给定的通道</li>
+<li>对每个通道检查其可用性（0 或 1）</li>
+<li>获取通道的空闲槽位数量</li>
+<li>将可用性与空闲槽位数相乘并累加到总分</li>
+</ul>
+</li>
+<li>
+<p><strong>评分标准</strong>：</p>
+<ul>
+<li>不可用通道得分为 0</li>
+<li>可用通道得分等于其空闲槽位数</li>
+<li>最终分数是所有通道分数的总和</li>
+</ul>
+</li>
+</ol>
+<h3 id="使用场景"><a class="header" href="#使用场景">使用场景</a></h3>
+<ul>
+<li>用于选择最佳路由路径</li>
+<li>帮助实现负载均衡</li>
+<li>支持自适应路由策略</li>
+</ul>
+<h2 id="reflexdirection"><a class="header" href="#reflexdirection">reflexDirection</a></h2>
+<pre><code class="language-cpp">int Router::reflexDirection(int direction) const
+{
+    if (direction == DIRECTION_NORTH)
+        return DIRECTION_SOUTH;
+    if (direction == DIRECTION_EAST)
+        return DIRECTION_WEST;
+    if (direction == DIRECTION_WEST)
+        return DIRECTION_EAST;
+    if (direction == DIRECTION_SOUTH)
+        return DIRECTION_NORTH;
+
+    // you shouldn't be here 
+    assert(false);
+    return NOT_VALID;
+}
+</code></pre>
+<p><code>reflexDirection</code> 方法用于获取给定方向的相反方向。它执行以下操作：</p>
+<ol>
+<li>
+<p><strong>方向映射</strong>：</p>
+<ul>
+<li>北方向返回南方向</li>
+<li>东方向返回西方向</li>
+<li>西方向返回东方向</li>
+<li>南方向返回北方向</li>
+</ul>
+</li>
+<li>
+<p><strong>错误处理</strong>：</p>
+<ul>
+<li>如果输入无效方向，触发断言</li>
+<li>返回 <code>NOT_VALID</code> 表示错误</li>
+</ul>
+</li>
+</ol>
+<h3 id="使用场景-1"><a class="header" href="#使用场景-1">使用场景</a></h3>
+<ul>
+<li>用于计算反向路由路径</li>
+<li>在双向通信中确定返回路径</li>
+<li>支持路由算法的方向计算</li>
+</ul>
+<h2 id="getneighborid"><a class="header" href="#getneighborid">getNeighborId</a></h2>
+<pre><code class="language-cpp">int Router::getNeighborId(int _id, int direction) const
+{
+    assert(GlobalParams::topology == TOPOLOGY_MESH);
+    Coord my_coord = id2Coord(_id); 
+
+    switch (direction) {
+    case DIRECTION_NORTH:
+        if (my_coord.y == 0) return NOT_VALID;
+        my_coord.y--;
+        break;
+    case DIRECTION_SOUTH:
+        if (my_coord.y == GlobalParams::mesh_dim_y - 1) return NOT_VALID;
+        my_coord.y++;
+        break;
+    case DIRECTION_EAST:
+        if (my_coord.x == GlobalParams::mesh_dim_x - 1) return NOT_VALID;
+        my_coord.x++;
+        break;
+    case DIRECTION_WEST:
+        if (my_coord.x == 0) return NOT_VALID;
+        my_coord.x--;
+        break;
+    default:
+        LOG &lt;&lt; "Direction not valid : " &lt;&lt; direction;
+        assert(false);
+    }
+
+    return coord2Id(my_coord);
+}
+</code></pre>
+<p>此方法用于计算网格拓扑中给定节点在指定方向上的邻居 ID。主要功能：</p>
+<ol>
+<li>
+<p><strong>拓扑检查</strong>：</p>
+<ul>
+<li>确保当前拓扑是网格型</li>
+<li>将节点 ID 转换为坐标</li>
+</ul>
+</li>
+<li>
+<p><strong>边界检查</strong>：</p>
+<ul>
+<li>北向：检查是否在顶部边界</li>
+<li>南向：检查是否在底部边界</li>
+<li>东向：检查是否在右侧边界</li>
+<li>西向：检查是否在左侧边界</li>
+</ul>
+</li>
+<li>
+<p><strong>坐标计算</strong>：</p>
+<ul>
+<li>根据方向更新坐标</li>
+<li>将新坐标转换回节点 ID</li>
+</ul>
+</li>
+</ol>
+<h3 id="使用场景-2"><a class="header" href="#使用场景-2">使用场景</a></h3>
+<ul>
+<li>路由算法中确定下一跳</li>
+<li>构建网络拓扑</li>
+<li>计算邻居关系</li>
+</ul>
+<h2 id="nextdeltahops"><a class="header" href="#nextdeltahops">nextDeltaHops</a></h2>
+<pre><code class="language-cpp">vector&lt;int&gt; Router::nextDeltaHops(RouteData rd)
+</code></pre>
+<p>该方法用于计算 Delta 网络（如 Omega、Butterfly、Baseline）中从源节点到目标节点的所有跳转节点序列。</p>
+<h3 id="主要流程"><a class="header" href="#主要流程">主要流程</a></h3>
+<ol>
+<li><strong>拓扑检查</strong></li>
+</ol>
+<pre><code class="language-cpp">if (GlobalParams::topology == TOPOLOGY_MESH) {
+    cout &lt;&lt; "Mesh topologies are not supported for nextDeltaHops() ";
+    assert(false);
+}
+</code></pre>
+<p>确保不是网格拓扑，因为该方法仅支持 Delta 网络。</p>
+<ol start="2">
+<li><strong>初始化</strong></li>
+</ol>
+<pre><code class="language-cpp">int src = rd.src_id;
+int dst = rd.dst_id;
+int current_node = src;
+vector&lt;int&gt; direction;
+vector&lt;int&gt; next_hops;
+</code></pre>
+<p>设置初始参数和结果向量。</p>
+<ol start="3">
+<li><strong>第一阶段路由</strong></li>
+</ol>
+<pre><code class="language-cpp">int sw = GlobalParams::n_delta_tiles/2;
+int stg = log2(GlobalParams::n_delta_tiles);
+</code></pre>
+<p>计算每阶段的交换机数量和总阶段数。</p>
+<p>根据不同拓扑计算第一跳：</p>
+<ul>
+<li>Omega 网络：根据源节点位置计算</li>
+<li>Butterfly/Baseline：使用右移操作计算</li>
+</ul>
+<ol start="4">
+<li><strong>阶段间路由</strong></li>
+</ol>
+<pre><code class="language-cpp">while (current_stage &lt; stg-1) {
+    // 获取当前位置
+    // 计算路由方向
+    // 根据位检查结果更新坐标
+    // 添加下一跳
+}
+</code></pre>
+<ul>
+<li>在每个阶段计算下一个节点</li>
+<li>使用位操作确定路由方向</li>
+<li>维护节点序列</li>
+</ul>
+<h3 id="返回值"><a class="header" href="#返回值">返回值</a></h3>
+<p>返回包含从源到目的地的所有中间节点 ID 的向量，包括源和目的节点。</p>
+<h3 id="使用场景-3"><a class="header" href="#使用场景-3">使用场景</a></h3>
+<ul>
+<li>在 Delta 网络中规划路由路径</li>
+<li>支持多跳无线通信</li>
+<li>辅助路由决策</li>
+</ul>
+<h2 id="incongestion"><a class="header" href="#incongestion">inCongestion</a></h2>
+<pre><code class="language-cpp">bool Router::inCongestion()
+{
+    for (int i = 0; i &lt; DIRECTIONS; i++) {
+        if (free_slots_neighbor[i]==NOT_VALID) continue;
+
+        int flits = GlobalParams::buffer_depth - free_slots_neighbor[i];
+        if (flits &gt; (int) (GlobalParams::buffer_depth * GlobalParams::dyad_threshold))
+            return true;
+    }
+
+    return false;
+}
+</code></pre>
+<p><code>inCongestion</code> 方法检查路由器是否处于拥塞状态。具体执行以下操作：</p>
+<ol>
+<li>
+<p><strong>遍历所有方向</strong>：</p>
+<ul>
+<li>检查每个方向的邻居节点</li>
+<li>跳过无效方向</li>
+</ul>
+</li>
+<li>
+<p><strong>拥塞判断</strong>：</p>
+<ul>
+<li>计算已使用的缓冲区槽位数量</li>
+<li>将已用槽位与阈值比较</li>
+<li>阈值由缓冲区深度和动态阈值参数决定</li>
+</ul>
+</li>
+<li>
+<p><strong>返回值</strong>：</p>
+<ul>
+<li>任一方向超过阈值返回 true</li>
+<li>所有方向都在阈值内返回 false</li>
+</ul>
+</li>
+</ol>
+<p>此方法用于：</p>
+<ul>
+<li>动态路由决策</li>
+<li>负载均衡</li>
+<li>流量控制</li>
+</ul>
+<h2 id="showbuffersstats"><a class="header" href="#showbuffersstats">ShowBuffersStats</a></h2>
+<pre><code class="language-cpp">void Router::ShowBuffersStats(std::ostream &amp; out)
+{
+    for (int i=0; i&lt;DIRECTIONS+2; i++)
+            for (int vc=0; vc&lt;GlobalParams::n_virtual_channels;vc++)
+                buffer[i][vc].ShowStats(out);
+}
+</code></pre>
+<p><code>ShowBuffersStats</code> 方法用于输出路由器所有缓冲区的统计信息：</p>
+<ol>
+<li>
+<p><strong>遍历缓冲区</strong>：</p>
+<ul>
+<li>外层循环遍历所有方向（DIRECTIONS+2表示4个方向加本地和无线）</li>
+<li>内层循环遍历每个方向的所有虚拟通道</li>
+</ul>
+</li>
+<li>
+<p><strong>统计输出</strong>：</p>
+<ul>
+<li>调用每个缓冲区的ShowStats方法</li>
+<li>将统计信息写入指定的输出流</li>
+</ul>
+</li>
+</ol>
+<p>使用场景：</p>
+<ul>
+<li>性能分析和调试</li>
+<li>监控缓冲区使用情况</li>
+<li>生成统计报告</li>
+</ul>
+<h2 id="connectedhubs"><a class="header" href="#connectedhubs">connectedHubs</a></h2>
+<pre><code class="language-cpp">bool Router::connectedHubs(int src_hub, int dst_hub)
+</code></pre>
+<p>该方法检查两个集线器是否通过共同的通道相连。具体实现如下：</p>
+<ol>
+<li>
+<p><strong>获取通道列表</strong>：</p>
+<ul>
+<li>获取源集线器的发送通道列表</li>
+<li>获取目标集线器的接收通道列表</li>
+</ul>
+</li>
+<li>
+<p><strong>查找共同通道</strong>：</p>
+<ul>
+<li>遍历源集线器的发送通道</li>
+<li>对每个发送通道，检查是否存在于目标集线器的接收通道中</li>
+<li>将找到的共同通道保存到交集列表中</li>
+</ul>
+</li>
+<li>
+<p><strong>连接判断</strong>：</p>
+<ul>
+<li>如果交集列表为空，返回 false（不相连）</li>
+<li>如果交集列表不为空，返回 true（相连）</li>
+</ul>
+</li>
+</ol>
+<p>使用场景：</p>
+<ul>
+<li>验证无线通信可行性</li>
+<li>路由决策时的连接性检查</li>
+<li>网络拓扑分析</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="处理单元-processing-element-pe"><a class="header" href="#处理单元-processing-element-pe">处理单元 (Processing Element, PE)</a></h1>
+<h1 id="处理单元-processing-element-pe-1"><a class="header" href="#处理单元-processing-element-pe-1">处理单元 (Processing Element, PE)</a></h1>
+<p>处理单元是片上网络(NoC)中的一个基本组件,负责数据包的生成、传输和接收。它被实现为一个具有特定网络通信功能的SystemC模块。</p>
+<h2 id="结构"><a class="header" href="#结构">结构</a></h2>
+<p>PE模块包含以下部分:</p>
+<h3 id="输入输出端口"><a class="header" href="#输入输出端口">输入/输出端口</a></h3>
+<ul>
+<li><code>clock</code>: 输入时钟信号</li>
+<li><code>reset</code>: 复位信号</li>
+<li>输入通道信号:
+<ul>
+<li><code>flit_rx</code>: 输入数据片</li>
+<li><code>req_rx</code>: 请求信号</li>
+<li><code>ack_rx</code>: 确认信号</li>
+<li><code>buffer_full_status_rx</code>: 缓冲区状态</li>
+</ul>
+</li>
+<li>输出通道信号:
+<ul>
+<li><code>flit_tx</code>: 输出数据片</li>
+<li><code>req_tx</code>: 请求信号</li>
+<li><code>ack_tx</code>: 确认信号</li>
+<li><code>buffer_full_status_tx</code>: 缓冲区状态</li>
+</ul>
+</li>
+</ul>
+<h3 id="内部组件"><a class="header" href="#内部组件">内部组件</a></h3>
+<ul>
+<li>本地ID,用于唯一标识</li>
+<li>ABP(交替位协议)级别,用于传输控制</li>
+<li>数据包队列,用于存储消息</li>
+<li>流量管理功能</li>
+</ul>
+<h2 id="流量模式"><a class="header" href="#流量模式">流量模式</a></h2>
+<p>PE支持多种流量分布模式:</p>
+<ul>
+<li>随机分布</li>
+<li>转置(1 &amp; 2)</li>
+<li>位反转</li>
+<li>洗牌</li>
+<li>蝶形</li>
+<li>局部/统一局部(具有局部性)</li>
+</ul>
+<h2 id="主要进程"><a class="header" href="#主要进程">主要进程</a></h2>
+<p>两个主要进程处理PE的操作:</p>
+<ol>
+<li><code>rxProcess</code>: 处理输入数据片</li>
+<li><code>txProcess</code>: 管理输出传输</li>
+</ol>
+<h2 id="实现代码说明"><a class="header" href="#实现代码说明">实现代码说明</a></h2>
+<h3 id="txprocess-1"><a class="header" href="#txprocess-1">txProcess</a></h3>
+<pre><code class="language-cpp">// 传输进程
+void ProcessingElement::txProcess() 
+{
+    if (reset.read()) {
+        req_tx.write(0);                    // 将请求信号置为0
+        current_level_tx = 0;               // 重置当前传输级别
+        transmittedAtPreviousCycle = false; // 标记上一个周期没有传输
+    } else {
+        Packet packet;                      // 创建一个新的数据包对象
+
+        // 检查是否可以生成新的数据包
+        if (canShot(packet)) {
+            packet_queue.push(packet);      // 将数据包推入队列
+            transmittedAtPreviousCycle = true;
+        } else {
+            transmittedAtPreviousCycle = false;
+        }
+
+        // 检查确认信号是否与当前传输级别匹配
+        if (ack_tx.read() == current_level_tx) {
+            if (!packet_queue.empty()) {
+        } else {
+            transmittedAtPreviousCycle = false; // 标记上一个周期没有传输
+        }
+
+        // 检查确认信号是否与当前传输级别匹配
+        if (ack_tx.read() == current_level_tx) {
+            // 如果数据包队列不为空
+            if (!packet_queue.empty()) {
+                Flit flit = nextFlit(); // 生成一个新的flit
+                flit_tx-&gt;write(flit); // 发送生成的flit
+                current_level_tx = 1 - current_level_tx; // 切换当前传输级别（用于交替位协议）
+                req_tx.write(current_level_tx); // 更新请求信号
+            }
+        }
+    }
+}
+</code></pre>
+<h3 id="代码解释-1"><a class="header" href="#代码解释-1">代码解释</a></h3>
+<ol>
+<li>
+<p><strong>复位处理</strong>：</p>
+<ul>
+<li>如果 <code>reset</code> 信号被激活，重置 <code>req_tx</code> 信号、<code>current_level_tx</code> 和 <code>transmittedAtPreviousCycle</code> 变量。</li>
+</ul>
+</li>
+<li>
+<p><strong>数据包生成</strong>：</p>
+<ul>
+<li>创建一个新的 <code>Packet</code> 对象。但是数据包的具体生成逻辑在 <code>canShot(packet)</code> 函数中实现。</li>
+<li>使用 <code>canShot(packet)</code> 函数检查是否可以生成新的数据包。如果可以，将数据包推入 <code>packet_queue</code> 队列，并标记 <code>transmittedAtPreviousCycle</code> 为 <code>true</code>。否则，标记为 <code>false</code>。</li>
+</ul>
+</li>
+<li>
+<p><strong>传输处理</strong>：</p>
+<ul>
+<li>检查 <code>ack_tx</code> 信号是否与 <code>current_level_tx</code> 匹配。</li>
+<li>如果匹配并且 <code>packet_queue</code> 不为空，生成一个新的 <code>Flit</code> 对象，并通过 <code>flit_tx</code> 信号发送。然后切换 <code>current_level_tx</code> 的值（用于交替位协议），并更新 <code>req_tx</code> 信号。</li>
+</ul>
+</li>
+</ol>
+<p>这样，代码实现了一个简单的传输处理逻辑，结合了复位处理、数据包生成和传输处理。</p>
+<h2 id="canshot-函数"><a class="header" href="#canshot-函数">canShot 函数</a></h2>
+<pre><code class="language-cpp">bool ProcessingElement::canShot(Packet &amp; packet)
+{
+    if (never_transmit) return false;
+
+    #ifdef DEADLOCK_AVOIDANCE
+    if (local_id % 2 == 0)
+        return false;
+    #endif
+
+    bool shot;
+    double threshold;
+    double now = sc_time_stamp().to_double() / GlobalParams::clock_period_ps;
+
+    if (GlobalParams::traffic_distribution != TRAFFIC_TABLE_BASED) {
+        if (!transmittedAtPreviousCycle)
+            threshold = GlobalParams::packet_injection_rate;
+        else
+            threshold = GlobalParams::probability_of_retransmission;
+
+        shot = (((double) rand()) / RAND_MAX &lt; threshold);
+        if (shot) {
+            switch (GlobalParams::traffic_distribution) {
+                case TRAFFIC_RANDOM:
+                    packet = trafficRandom();
+                    break;
+                case TRAFFIC_TRANSPOSE1:
+                    packet = trafficTranspose1();
+                    break;
+                case TRAFFIC_TRANSPOSE2:
+                    packet = trafficTranspose2();
+                    break;
+                case TRAFFIC_BIT_REVERSAL:
+                    packet = trafficBitReversal();
+                    break;
+                case TRAFFIC_SHUFFLE:
+                    packet = trafficShuffle();
+                    break;
+                case TRAFFIC_BUTTERFLY:
+                    packet = trafficButterfly();
+                    break;
+                case TRAFFIC_LOCAL:
+                    packet = trafficLocal();
+                    break;
+                case TRAFFIC_ULOCAL:
+                    packet = trafficULocal();
+                    break;
+                default:
+                    cout &lt;&lt; "Invalid traffic distribution: " &lt;&lt; GlobalParams::traffic_distribution &lt;&lt; endl;
+                    exit(-1);
+            }
+        }
+    } else {
+        if (never_transmit)
+            return false;
+
+        bool use_pir = (transmittedAtPreviousCycle == false);
+        vector&lt;pair&lt;int, double&gt;&gt; dst_prob;
+        double threshold = traffic_table-&gt;getCumulativePirPor(local_id, (int) now, use_pir, dst_prob);
+
+        double prob = (double) rand() / RAND_MAX;
+        shot = (prob &lt; threshold);
+        if (shot) {
+            for (unsigned int i = 0; i &lt; dst_prob.size(); i++) {
+                if (prob &lt; dst_prob[i].second) {
+                    int vc = randInt(0, GlobalParams::n_virtual_channels - 1);
+                    packet.make(local_id, dst_prob[i].first, vc, now, getRandomSize());
+                    break;
+                }
+            }
+        }
+    }
+
+    return shot;
+}
+</code></pre>
+<h3 id="代码解释-2"><a class="header" href="#代码解释-2">代码解释</a></h3>
+<ol>
+<li>
+<p><strong>基本检查</strong>：</p>
+<ul>
+<li>如果 <code>never_transmit</code> 为真，函数直接返回 <code>false</code>。</li>
+<li>如果定义了 <code>DEADLOCK_AVOIDANCE</code> 且 <code>local_id</code> 为偶数，函数返回 <code>false</code>。</li>
+</ul>
+</li>
+<li>
+<p><strong>流量分布处理</strong>：</p>
+<ul>
+<li>如果 <code>GlobalParams::traffic_distribution</code> 不是基于表的流量分布：
+<ul>
+<li>根据 <code>transmittedAtPreviousCycle</code> 设置 <code>threshold</code>。</li>
+<li>生成一个随机数并与 <code>threshold</code> 比较，决定是否生成数据包。</li>
+<li>根据不同的流量分布模式生成相应的数据包。</li>
+</ul>
+</li>
+<li>如果是基于表的流量分布：
+<ul>
+<li>获取当前时间和 <code>threshold</code>。</li>
+<li>生成一个随机数并与 <code>threshold</code> 比较，决定是否生成数据包。</li>
+<li>根据概率选择目标，并生成数据包。</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>
+<p><strong>返回值</strong>：</p>
+<ul>
+<li>返回 <code>shot</code>，表示是否生成了数据包。</li>
+</ul>
+</li>
+</ol>
+<p>这样，<code>canShot</code> 函数实现了根据不同的流量分布模式和条件生成数据包的逻辑。</p>
+<h2 id="trafficlocal-函数"><a class="header" href="#trafficlocal-函数">trafficLocal 函数</a></h2>
+<pre><code class="language-cpp">```cpp
+Packet ProcessingElement::trafficLocal()
+{
+    Packet p;
+    p.src_id = local_id;                    // 设置数据包的源ID为本地ID
+    double rnd = rand() / (double) RAND_MAX; // 生成一个随机概率值
+
+    vector&lt;int&gt; dst_set;                     // 创建目标ID集合
+
+    // 计算网格中的最大节点ID
+    int max_id = (GlobalParams::mesh_dim_x * GlobalParams::mesh_dim_y);
+
+    // 遍历所有可能的目标ID
+    for (int i = 0; i &lt; max_id; i++)
+    {
+        if (rnd &lt;= GlobalParams::locality)   // 如果随机值小于等于局部性参数
+        {
+            // 如果目标不是自己且在同一无线电集线器范围内，加入目标集合
+            if (local_id != i &amp;&amp; sameRadioHub(local_id, i))
+                dst_set.push_back(i);
+        }
+        else                                 // 如果随机值大于局部性参数
+        {
+            // 如果不在同一无线电集线器范围内，加入目标集合
+            if (!sameRadioHub(local_id, i))
+                dst_set.push_back(i);
+        }
+    }
+
+    // 从目标集合中随机选择一个目标ID
+    int i_rnd = rand() % dst_set.size();
+
+    p.dst_id = dst_set[i_rnd];              // 设置数据包的目标ID
+    // 设置数据包的时间戳（以时钟周期为单位）
+    p.timestamp = sc_time_stamp().to_double() / GlobalParams::clock_period_ps;
+    p.size = p.flit_left = getRandomSize(); // 设置数据包的大小和剩余flit数
+    // 随机选择一个虚拟通道ID
+    p.vc_id = randInt(0, GlobalParams::n_virtual_channels - 1);
+
+    return p;                               // 返回生成的数据包
+}
+</code></pre>
+<h3 id="代码解释-3"><a class="header" href="#代码解释-3">代码解释</a></h3>
+<ol>
+<li>
+<p><strong>初始化</strong>：</p>
+<ul>
+<li>创建一个 <code>Packet</code> 对象 <code>p</code> 并设置其源ID为 <code>local_id</code>。</li>
+<li>生成一个随机数 <code>rnd</code>。</li>
+</ul>
+</li>
+<li>
+<p><strong>目标集合生成</strong>：</p>
+<ul>
+<li>遍历所有可能的目标ID。</li>
+<li>根据 <code>rnd</code> 和 <code>GlobalParams::locality</code>，决定是否将目标ID加入 <code>dst_set</code>。</li>
+<li>如果 <code>rnd</code> 小于等于 <code>GlobalParams::locality</code>，则将与 <code>local_id</code> 在同一无线电集线器的目标ID加入集合。</li>
+<li>否则，将不在同一无线电集线器的目标ID加入集合。</li>
+</ul>
+</li>
+<li>
+<p><strong>选择目标</strong>：</p>
+<ul>
+<li>从 <code>dst_set</code> 中随机选择一个目标ID，并设置为数据包的目标ID <code>dst_id</code>。</li>
+</ul>
+</li>
+<li>
+<p><strong>设置数据包属性</strong>：</p>
+<ul>
+<li>设置数据包的时间戳、大小和虚拟通道ID。</li>
+</ul>
+</li>
+<li>
+<p><strong>返回数据包</strong>：</p>
+<ul>
+<li>返回生成的 <code>Packet</code> 对象 <code>p</code>。</li>
+</ul>
+</li>
+</ol>
+<p>这样，<code>trafficLocal</code> 函数实现了根据局部性生成目标ID并创建数据包的逻辑。</p>
+<h2 id="findrandomdestination-函数"><a class="header" href="#findrandomdestination-函数">findRandomDestination 函数</a></h2>
+<pre><code class="language-cpp">int ProcessingElement::findRandomDestination(int id, int hops)
+{
+    assert(GlobalParams::topology == TOPOLOGY_MESH);
+
+    int inc_y = rand()%2?-1:1;  // 随机选择Y方向增量(+1或-1)
+    int inc_x = rand()%2?-1:1;  // 随机选择X方向增量(+1或-1)
+    
+    Coord current = id2Coord(id); // 将ID转换为网格坐标
+    
+    // 在网格中随机行走hops步
+    for (int h = 0; h&lt;hops; h++) {
+        // 边界检查和调整
+        if (current.x==0 &amp;&amp; inc_x&lt;0) inc_x=0;
+        if (current.x==GlobalParams::mesh_dim_x-1 &amp;&amp; inc_x&gt;0) inc_x=0;
+        if (current.y==0 &amp;&amp; inc_y&lt;0) inc_y=0;
+        if (current.y==GlobalParams::mesh_dim_y-1 &amp;&amp; inc_y&gt;0) inc_y=0;
+
+        // 随机选择X或Y方向移动
+        if (rand()%2)
+            current.x += inc_x;
+        else
+            current.y += inc_y;
+    }
+
+    return coord2Id(current); // 将最终坐标转回ID
+}
+</code></pre>
+<h3 id="代码解释-4"><a class="header" href="#代码解释-4">代码解释</a></h3>
+<ol>
+<li>
+<p><strong>初始化</strong>：</p>
+<ul>
+<li>确保拓扑类型是网格(MESH)</li>
+<li>随机生成X和Y方向的移动增量(+1或-1)</li>
+<li>将输入的ID转换为网格坐标</li>
+</ul>
+</li>
+<li>
+<p><strong>随机行走</strong>：</p>
+<ul>
+<li>在网格中进行指定步数(hops)的随机行走</li>
+<li>检查并处理网格边界情况</li>
+<li>随机选择X或Y方向进行移动</li>
+</ul>
+</li>
+<li>
+<p><strong>返回结果</strong>：</p>
+<ul>
+<li>将最终坐标转换回ID并返回</li>
+</ul>
+</li>
+</ol>
+<h2 id="roulette-函数"><a class="header" href="#roulette-函数">roulette 函数</a></h2>
+<pre><code class="language-cpp">int ProcessingElement::roulette()
+{
+    // 计算轮盘赌的切片数（网格的X维度加Y维度减2）
+    int slices = GlobalParams::mesh_dim_x + GlobalParams::mesh_dim_y -2;
+
+    // 生成0到1之间的随机数
+    double r = rand()/(double)RAND_MAX;
+
+    // 根据概率分布选择跳数
+    for (int i=1;i&lt;=slices;i++)
+    {
+        if (r&lt; (1-1/double(2&lt;&lt;i)))
+        {
+            return i;
+        }
+    }
+    
+    assert(false);  // 不应该到达这里
+    return 1;
+}
+</code></pre>
+<h3 id="代码解释-5"><a class="header" href="#代码解释-5">代码解释</a></h3>
+<ol>
+<li>
+<p><strong>切片计算</strong>：</p>
+<ul>
+<li>根据网格维度计算轮盘赌的切片数</li>
+</ul>
+</li>
+<li>
+<p><strong>概率生成</strong>：</p>
+<ul>
+<li>生成一个0到1之间的随机数</li>
+</ul>
+</li>
+<li>
+<p><strong>概率选择</strong>：</p>
+<ul>
+<li>使用指数递减的概率分布选择跳数</li>
+<li>返回选中的跳数值</li>
+</ul>
+</li>
+</ol>
+<h2 id="trafficulocal-函数"><a class="header" href="#trafficulocal-函数">trafficULocal 函数</a></h2>
+<pre><code class="language-cpp">Packet ProcessingElement::trafficULocal()
+{
+    Packet p;
+    p.src_id = local_id;                    // 设置数据包的源ID为本地ID
+
+    int target_hops = roulette();           // 使用轮盘赌算法决定目标跳数
+
+    // 找到指定跳数范围内的随机目标
+    p.dst_id = findRandomDestination(local_id, target_hops);
+
+    // 设置数据包属性
+    p.timestamp = sc_time_stamp().to_double() / GlobalParams::clock_period_ps;
+    p.size = p.flit_left = getRandomSize(); // 设置数据包大小
+    p.vc_id = randInt(0, GlobalParams::n_virtual_channels-1); // 设置虚拟通道ID
+
+    return p;                               // 返回生成的数据包
+}
+</code></pre>
+<h3 id="代码解释-6"><a class="header" href="#代码解释-6">代码解释</a></h3>
+<ol>
+<li>
+<p><strong>初始化</strong>：</p>
+<ul>
+<li>创建数据包并设置源ID</li>
+<li>使用轮盘赌算法决定目标距离</li>
+</ul>
+</li>
+<li>
+<p><strong>目标选择</strong>：</p>
+<ul>
+<li>使用findRandomDestination函数在指定跳数范围内找到随机目标</li>
+</ul>
+</li>
+<li>
+<p><strong>数据包配置</strong>：</p>
+<ul>
+<li>设置时间戳、大小和虚拟通道</li>
+<li>返回配置完成的数据包</li>
+</ul>
+</li>
+</ol>
+<h2 id="trafficrandom-函数"><a class="header" href="#trafficrandom-函数">trafficRandom 函数</a></h2>
+<pre><code class="language-cpp">Packet ProcessingElement::trafficRandom()
+{
+    Packet p;
+    p.src_id = local_id;                    // 设置数据包的源ID
+    double rnd = rand() / (double) RAND_MAX; // 生成随机数
+    double range_start = 0.0;
+    int max_id;                             // 最大目标ID
+
+    // 根据网络拓扑设置最大ID
+    if (GlobalParams::topology == TOPOLOGY_MESH)
+        max_id = (GlobalParams::mesh_dim_x * GlobalParams::mesh_dim_y) - 1;
+    else    // 其他Delta拓扑
+        max_id = GlobalParams::n_delta_tiles - 1;
+
+    // 生成随机目标ID
+    do {
+        p.dst_id = randInt(0, max_id);      // 随机选择目标ID
+
+        // 检查热点目标
+        for (size_t i = 0; i &lt; GlobalParams::hotspots.size(); i++) {
+            if (rnd &gt;= range_start &amp;&amp; rnd &lt; range_start + GlobalParams::hotspots[i].second) {
+                if (local_id != GlobalParams::hotspots[i].first) {
+                    p.dst_id = GlobalParams::hotspots[i].first;
+                }
+                break;
+            }
+            range_start += GlobalParams::hotspots[i].second;
+        }
+
+        #ifdef DEADLOCK_AVOIDANCE
+        // 死锁避免处理
+        if (p.dst_id % 2 != 0) {
+            p.dst_id = (p.dst_id + 1) % 256;
+        }
+        #endif
+    } while (p.dst_id == p.src_id);         // 确保目标ID不等于源ID
+
+    // 设置数据包属性
+    p.timestamp = sc_time_stamp().to_double() / GlobalParams::clock_period_ps;
+    p.size = p.flit_left = getRandomSize(); // 设置数据包大小
+    p.vc_id = randInt(0, GlobalParams::n_virtual_channels - 1);
+
+    return p;                               // 返回生成的数据包
+}
+</code></pre>
+<h3 id="代码解释-7"><a class="header" href="#代码解释-7">代码解释</a></h3>
+<ol>
+<li>
+<p><strong>初始化</strong>：</p>
+<ul>
+<li>创建数据包并设置源ID</li>
+<li>生成随机数和设置网络最大ID</li>
+</ul>
+</li>
+<li>
+<p><strong>目标选择</strong>：</p>
+<ul>
+<li>随机选择目标ID</li>
+<li>处理热点目标分布</li>
+<li>实现死锁避免机制</li>
+</ul>
+</li>
+<li>
+<p><strong>数据包配置</strong>：</p>
+<ul>
+<li>设置时间戳、大小和虚拟通道</li>
+<li>确保目标不是源节点</li>
+</ul>
+</li>
+</ol>
+<p>该函数实现了随机流量模式的数据包生成，支持热点流量和死锁避免。</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="utilsh-头文件文档"><a class="header" href="#utilsh-头文件文档">Utils.h 头文件文档</a></h1>
+<p>本头文件是 Noxim 片上网络 (NoC) 模拟器的一部分,包含全局参数声明和实用工具函数的定义。</p>
+<h2 id="概述"><a class="header" href="#概述">概述</a></h2>
+<ul>
+<li>文件位置: <code>utils.h</code></li>
+<li>版权所有: © 2005-2018 卡塔尼亚大学</li>
+</ul>
+<h2 id="核心组件"><a class="header" href="#核心组件">核心组件</a></h2>
+<h3 id="调试日志系统"><a class="header" href="#调试日志系统">调试日志系统</a></h3>
+<ul>
+<li>基于 DEBUG 宏的条件日志系统</li>
+<li>非调试模式下的空流实现</li>
+<li>调试模式下支持时间戳和函数名跟踪</li>
+</ul>
+<h3 id="输出流运算符"><a class="header" href="#输出流运算符">输出流运算符</a></h3>
+<p>为以下数据结构重载了输出运算符:</p>
+<ul>
+<li>Flit (数据包)</li>
+<li>ChannelStatus (通道状态)</li>
+<li>NoP_data (网络包数据)</li>
+<li>TBufferFullStatus (缓冲区状态)</li>
+<li>Coord (坐标)</li>
+</ul>
+<h3 id="systemc-跟踪功能"><a class="header" href="#systemc-跟踪功能">SystemC 跟踪功能</a></h3>
+<p>用于仿真数据跟踪的函数:</p>
+<ul>
+<li>Flit 跟踪</li>
+<li>NoP_data 跟踪</li>
+<li>TBufferFullStatus 跟踪</li>
+<li>ChannelStatus 跟踪</li>
+</ul>
+<h3 id="实用工具函数"><a class="header" href="#实用工具函数">实用工具函数</a></h3>
+<p>常用辅助函数:</p>
+<ul>
+<li><code>id2Coord()</code>: 节点 ID 转换为坐标</li>
+<li><code>coord2Id()</code>: 坐标转换为节点 ID</li>
+<li><code>sameRadioHub </code>和 <code>hasRadioHub</code>：检查节点是否连接到相同的无线集线器。</li>
+<li><code>tile2Hub</code>：获取节点连接的集线器 ID。</li>
+<li><code>printMap</code>：打印映射表。</li>
+<li><code>i_to_string</code>：将整数转换为字符串。</li>
+<li><code>YouAreSwitch</code>：检查节点是否为交换机。</li>
+</ul>
+<p>这个函数是 <code>ostream</code> 操作符 <code>&lt;&lt;</code> 的重载，用于输出 <code>Flit</code> 对象的信息。<code>Flit</code> 是网络芯片模拟器 Noxim 中的数据包单元。该函数根据全局参数 <code>GlobalParams::verbose_mode</code> 的值，以不同的详细程度输出 <code>Flit</code> 对象的信息。</p>
+<p>这个函数 <code>id2Coord</code> 用于将节点 ID 转换为坐标 <code>Coord</code>。根据不同的网络拓扑结构（如网格拓扑或其他 Delta 拓扑），函数计算节点的 <code>x</code> 和 <code>y</code> 坐标，并返回一个 <code>Coord</code> 对象。</p>
+<h2 id="id2coord"><a class="header" href="#id2coord">id2Coord</a></h2>
+<pre><code class="language-cpp">inline Coord id2Coord(int id)
+</code></pre>
+<ul>
+<li><strong>功能</strong>：将节点 ID 转换为坐标 <code>Coord</code>。</li>
+<li><strong>参数</strong>：节点 ID。</li>
+<li><strong>返回值</strong>：对应的坐标 <code>Coord</code> 对象。</li>
+</ul>
+<h3 id="坐标对象初始化"><a class="header" href="#坐标对象初始化">坐标对象初始化</a></h3>
+<pre><code class="language-cpp">Coord coord;
+</code></pre>
+<ul>
+<li><strong>初始化</strong>：创建一个 <code>Coord</code> 对象 <code>coord</code>，用于存储计算得到的坐标。</li>
+</ul>
+<h3 id="网格拓扑处理"><a class="header" href="#网格拓扑处理">网格拓扑处理</a></h3>
+<pre><code class="language-cpp">if (GlobalParams::topology == TOPOLOGY_MESH)
+{
+    coord.x = id % GlobalParams::mesh_dim_x;
+    coord.y = id / GlobalParams::mesh_dim_x;
+
+    assert(coord.x &lt; GlobalParams::mesh_dim_x);
+    assert(coord.y &lt; GlobalParams::mesh_dim_y);
+}
+</code></pre>
+<ul>
+<li><strong>网格拓扑</strong>：如果全局参数 <code>GlobalParams::topology</code> 为 <code>TOPOLOGY_MESH</code>，表示当前网络拓扑为网格结构。
+<ul>
+<li>计算 <code>x</code> 坐标：<code>coord.x = id % GlobalParams::mesh_dim_x</code>，即节点 ID 对网格宽度取模。</li>
+<li>计算 <code>y</code> 坐标：<code>coord.y = id / GlobalParams::mesh_dim_x</code>，即节点 ID 除以网格宽度。</li>
+<li>断言检查：确保计算得到的 <code>x</code> 和 <code>y</code> 坐标在网格范围内。</li>
+</ul>
+</li>
+</ul>
+<h3 id="其他-delta-拓扑处理"><a class="header" href="#其他-delta-拓扑处理">其他 Delta 拓扑处理</a></h3>
+<pre><code class="language-cpp">else // other delta topologies
+{
+    id = id - GlobalParams::n_delta_tiles;
+    coord.x = id / (int)(GlobalParams::n_delta_tiles/2);
+    coord.y = id % (int)(GlobalParams::n_delta_tiles/2);
+
+    assert(coord.x &lt; log2(GlobalParams::n_delta_tiles));
+    assert(coord.y &lt; (GlobalParams::n_delta_tiles/2));
+}
+</code></pre>
+<ul>
+<li><strong>Delta 拓扑</strong>：如果当前网络拓扑不是网格结构，则处理其他 Delta 拓扑。
+<ul>
+<li>调整 ID：<code>id = id - GlobalParams::n_delta_tiles</code>，将节点 ID 减去 Delta 瓦片数量。</li>
+<li>计算 <code>x</code> 坐标：<code>coord.x = id / (int)(GlobalParams::n_delta_tiles/2)</code>，即调整后的节点 ID 除以 Delta 瓦片数量的一半。</li>
+<li>计算 <code>y</code> 坐标：<code>coord.y = id % (int)(GlobalParams::n_delta_tiles/2)</code>，即调整后的节点 ID 对 Delta 瓦片数量的一半取模。</li>
+<li>断言检查：确保计算得到的 <code>x</code> 和 <code>y</code> 坐标在 Delta 拓扑范围内。</li>
+</ul>
+</li>
+</ul>
+<h3 id="返回坐标"><a class="header" href="#返回坐标">返回坐标</a></h3>
+<pre><code class="language-cpp">return coord;
+</code></pre>
+<ul>
+<li><strong>返回值</strong>：返回计算得到的坐标 <code>Coord</code> 对象。</li>
+</ul>
+<h2 id="coord2id"><a class="header" href="#coord2id">coord2Id</a></h2>
+<pre><code class="language-cpp">inline int coord2Id(const Coord &amp; coord)
+</code></pre>
+<ul>
+<li><strong>功能</strong>：将坐标 <code>Coord</code> 转换为节点 ID。</li>
+<li><strong>参数</strong>：坐标 <code>Coord</code> 对象。</li>
+<li><strong>返回值</strong>：对应的节点 ID。</li>
+</ul>
+<h3 id="网格拓扑处理-1"><a class="header" href="#网格拓扑处理-1">网格拓扑处理</a></h3>
+<pre><code class="language-cpp">if (GlobalParams::topology == TOPOLOGY_MESH)
+{
+    id = (coord.y * GlobalParams::mesh_dim_x) + coord.x;
+    assert(id &lt; GlobalParams::mesh_dim_x * GlobalParams::mesh_dim_y);
+}
+</code></pre>
+<ul>
+<li><strong>网格拓扑</strong>：如果全局参数 <code>GlobalParams::topology</code> 为 <code>TOPOLOGY_MESH</code>，表示当前网络拓扑为网格结构。
+<ul>
+<li>计算节点 ID：<code>id = (coord.y * GlobalParams::mesh_dim_x) + coord.x</code>，即坐标 <code>y</code> 乘以网格宽度加上坐标 <code>x</code>。</li>
+<li>断言检查：确保计算得到的节点 ID 在网格范围内。</li>
+</ul>
+</li>
+</ul>
+<h3 id="其他-delta-拓扑处理-1"><a class="header" href="#其他-delta-拓扑处理-1">其他 Delta 拓扑处理</a></h3>
+<pre><code class="language-cpp">else
+{
+    id = (coord.x * (GlobalParams::n_delta_tiles/2)) + coord.y + GlobalParams::n_delta_tiles;
+    assert(id &gt; (GlobalParams::n_delta_tiles-1));
+}
+</code></pre>
+<ul>
+<li><strong>Delta 拓扑</strong>：如果当前网络拓扑不是网格结构，则处理其他 Delta 拓扑。
+<ul>
+<li>计算节点 ID：<code>id = (coord.x * (GlobalParams::n_delta_tiles/2)) + coord.y + GlobalParams::n_delta_tiles</code>，即坐标 <code>x</code> 乘以 Delta 瓦片数量的一半加上坐标 <code>y</code>，再加上 Delta 瓦片数量。</li>
+<li>断言检查：确保计算得到的节点 ID 在 Delta 拓扑范围内。</li>
+</ul>
+</li>
+</ul>
+<h3 id="返回节点-id"><a class="header" href="#返回节点-id">返回节点 ID</a></h3>
+<pre><code class="language-cpp">return id;
+</code></pre>
+<ul>
+<li><strong>返回值</strong>：返回计算得到的节点 ID。</li>
+</ul>
+<h2 id="sameradiohub"><a class="header" href="#sameradiohub">sameRadioHub</a></h2>
+<pre><code class="language-cpp">inline bool sameRadioHub(int id1, int id2)
+</code></pre>
+<ul>
+<li><strong>功能</strong>：检查两个节点是否连接到相同的无线集线器。</li>
+<li><strong>参数</strong>：两个节点 ID。</li>
+<li><strong>返回值</strong>：如果两个节点连接到相同的无线集线器，返回 <code>true</code>，否则返回 <code>false</code>。</li>
+</ul>
+<h3 id="查找集线器"><a class="header" href="#查找集线器">查找集线器</a></h3>
+<pre><code class="language-cpp">map&lt;int, int&gt;::iterator it1 = GlobalParams::hub_for_tile.find(id1); 
+map&lt;int, int&gt;::iterator it2 = GlobalParams::hub_for_tile.find(id2); 
+</code></pre>
+<ul>
+<li><strong>查找</strong>：在全局参数 <code>GlobalParams::hub_for_tile</code> 中查找节点 ID 对应的集线器。</li>
+</ul>
+<h3 id="断言检查"><a class="header" href="#断言检查">断言检查</a></h3>
+<pre><code class="language-cpp">assert( (it1 != GlobalParams::hub_for_tile.end()) &amp;&amp; "Specified Tile is not connected to any Hub");
+assert( (it2 != GlobalParams::hub_for_tile.end()) &amp;&amp; "Specified Tile is not connected to any Hub");
+</code></pre>
+<ul>
+<li><strong>检查</strong>：确保两个节点都连接到某个集线器。</li>
+</ul>
+<h3 id="返回结果"><a class="header" href="#返回结果">返回结果</a></h3>
+<pre><code class="language-cpp">return (it1-&gt;second == it2-&gt;second);
+</code></pre>
+<ul>
+<li><strong>返回值</strong>：返回两个节点是否连接到相同的集线器。</li>
+</ul>
+<h2 id="hasradiohub"><a class="header" href="#hasradiohub">hasRadioHub</a></h2>
+<pre><code class="language-cpp">inline bool hasRadioHub(int id)
+</code></pre>
+<ul>
+<li><strong>功能</strong>：检查节点是否连接到无线集线器。</li>
+<li><strong>参数</strong>：节点 ID。</li>
+<li><strong>返回值</strong>：如果节点连接到无线集线器，返回 <code>true</code>，否则返回 <code>false</code>。</li>
+</ul>
+<h3 id="查找集线器-1"><a class="header" href="#查找集线器-1">查找集线器</a></h3>
+<pre><code class="language-cpp">map&lt;int, int&gt;::iterator it = GlobalParams::hub_for_tile.find(id);
+</code></pre>
+<ul>
+<li><strong>查找</strong>：在全局参数 <code>GlobalParams::hub_for_tile</code> 中查找节点 ID 对应的集线器。</li>
+</ul>
+<h3 id="返回结果-1"><a class="header" href="#返回结果-1">返回结果</a></h3>
+<pre><code class="language-cpp">return (it != GlobalParams::hub_for_tile.end());
+</code></pre>
+<ul>
+<li><strong>返回值</strong>：返回节点是否连接到无线集线器。</li>
+</ul>
+<h2 id="tile2hub"><a class="header" href="#tile2hub">tile2Hub</a></h2>
+<pre><code class="language-cpp">inline int tile2Hub(int id)
+</code></pre>
+<ul>
+<li><strong>功能</strong>：获取节点连接的集线器 ID。</li>
+<li><strong>参数</strong>：节点 ID。</li>
+<li><strong>返回值</strong>：对应的集线器 ID。</li>
+</ul>
+<h3 id="查找集线器-2"><a class="header" href="#查找集线器-2">查找集线器</a></h3>
+<pre><code class="language-cpp">map&lt;int, int&gt;::iterator it = GlobalParams::hub_for_tile.find(id); 
+</code></pre>
+<ul>
+<li><strong>查找</strong>：在全局参数 <code>GlobalParams::hub_for_tile</code> 中查找节点 ID 对应的集线器。</li>
+</ul>
+<h3 id="断言检查-1"><a class="header" href="#断言检查-1">断言检查</a></h3>
+<pre><code class="language-cpp">assert( (it != GlobalParams::hub_for_tile.end()) &amp;&amp; "Specified Tile is not connected to any Hub");
+</code></pre>
+<ul>
+<li><strong>检查</strong>：确保节点连接到某个集线器。</li>
+</ul>
+<h3 id="返回结果-2"><a class="header" href="#返回结果-2">返回结果</a></h3>
+<pre><code class="language-cpp">return it-&gt;second;
+</code></pre>
+<ul>
+<li><strong>返回值</strong>：返回节点连接的集线器 ID。</li>
+</ul>
+<h2 id="printmap"><a class="header" href="#printmap">printMap</a></h2>
+<pre><code class="language-cpp">inline void printMap(string label, const map&lt;string,double&gt; &amp; m, std::ostream &amp; out)
+</code></pre>
+<ul>
+<li><strong>功能</strong>：打印映射表。</li>
+<li><strong>参数</strong>：
+<ul>
+<li><code>label</code>：映射表的标签。</li>
+<li><code>m</code>：映射表对象。</li>
+<li><code>out</code>：输出流对象。</li>
+</ul>
+</li>
+<li><strong>返回值</strong>：无。</li>
+</ul>
+<h3 id="打印映射表"><a class="header" href="#打印映射表">打印映射表</a></h3>
+<pre><code class="language-cpp">out &lt;&lt; label &lt;&lt; " = [" &lt;&lt; endl;
+for (map&lt;string,double&gt;::const_iterator i = m.begin(); i != m.end(); i++)
+        out &lt;&lt; "\t" &lt;&lt; std::scientific &lt;&lt; i-&gt;second &lt;&lt; "\t % " &lt;&lt; i-&gt;first &lt;&lt; endl;
+out &lt;&lt; "];" &lt;&lt; endl;
+</code></pre>
+<ul>
+<li><strong>打印</strong>：以科学计数法格式打印映射表的内容。</li>
+</ul>
+<h2 id="i_to_string"><a class="header" href="#i_to_string">i_to_string</a></h2>
+<pre><code class="language-cpp">template&lt;typename T&gt; std::string i_to_string(const T&amp; t)
+</code></pre>
+<ul>
+<li><strong>功能</strong>：将整数转换为字符串。</li>
+<li><strong>参数</strong>：整数 <code>t</code>。</li>
+<li><strong>返回值</strong>：对应的字符串。</li>
+</ul>
+<h3 id="转换为字符串"><a class="header" href="#转换为字符串">转换为字符串</a></h3>
+<pre><code class="language-cpp">std::stringstream s;
+s &lt;&lt; t;
+return s.str();
+</code></pre>
+<ul>
+<li><strong>转换</strong>：使用 <code>stringstream</code> 将整数转换为字符串。</li>
+</ul>
+<h2 id="youareswitch"><a class="header" href="#youareswitch">YouAreSwitch</a></h2>
+<pre><code class="language-cpp">inline bool YouAreSwitch(int id)
+</code></pre>
+<ul>
+<li><strong>功能</strong>：检查节点是否为交换机。</li>
+<li><strong>参数</strong>：节点 ID。</li>
+<li><strong>返回值</strong>：如果节点为交换机，返回 <code>true</code>，否则返回 <code>false</code>。</li>
+</ul>
+<h3 id="检查节点"><a class="header" href="#检查节点">检查节点</a></h3>
+<pre><code class="language-cpp">if (id &lt; (GlobalParams::n_delta_tiles / 2) * log2(GlobalParams::n_delta_tiles))
+        return true;
+else
+        return false;
+</code></pre>
+<ul>
+<li><strong>检查</strong>：根据节点 ID 和 Delta 瓦片数量判断节点是否为交换机。</li>
 </ul>
 
                     </main>
