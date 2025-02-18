@@ -2216,6 +2216,1345 @@ else
 <ul>
 <li><strong>检查</strong>：根据节点 ID 和 Delta 瓦片数量判断节点是否为交换机。</li>
 </ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="channel"><a class="header" href="#channel">Channel</a></h1>
+<p>Channel</p>
+<p>结构体是一个系统C模块，用于模拟片上网络（NoC）中的通信通道。它支持多个发起者和多个目标，并实现了多种传输接口。以下是该结构体的主要功能和实现细节：</p>
+<ol>
+<li>
+<p><strong>多发起者和多目标支持</strong>：</p>
+<ul>
+<li><code>tlm_utils::multi_passthrough_target_socket&lt;Channel&gt; targ_socket;</code></li>
+<li><code>tlm_utils::multi_passthrough_initiator_socket&lt;Channel&gt; init_socket;</code>
+这些套接字允许多个发起者和目标连接到该通道。</li>
+</ul>
+</li>
+<li>
+<p><strong>唯一ID</strong>：</p>
+<ul>
+<li><code>int local_id;</code>
+每个通道都有一个唯一的ID，用于标识和配置。</li>
+</ul>
+</li>
+<li>
+<p><strong>构造函数</strong>：</p>
+<ul>
+<li><code>Channel(sc_module_name nm, int id)</code>
+构造函数初始化模块名称、套接字，并注册传输方法。它还计算并记录了flit（流控制单元）的传输延迟。</li>
+</ul>
+</li>
+<li>
+<p><strong>功率管理</strong>：</p>
+<ul>
+<li><code>Power power;</code>
+通道包含一个功率管理对象，用于处理功率相关的计算。</li>
+</ul>
+</li>
+<li>
+<p><strong>传输方法</strong>：</p>
+<ul>
+<li><code>virtual void b_transport(int id, tlm::tlm_generic_payload&amp; trans, sc_time&amp; delay);</code></li>
+<li><code>virtual bool get_direct_mem_ptr(int id, tlm::tlm_generic_payload&amp; trans, tlm::tlm_dmi&amp; dmi_data);</code></li>
+<li><code>virtual unsigned int transport_dbg(int id, tlm::tlm_generic_payload&amp; trans);</code></li>
+<li><code>virtual void invalidate_direct_mem_ptr(int id, sc_dt::uint64 start_range, sc_dt::uint64 end_range);</code>
+这些方法实现了阻塞传输、直接内存访问（DMI）、调试传输和DMI失效等功能。</li>
+</ul>
+</li>
+<li>
+<p><strong>地址解码和组合</strong>：</p>
+<ul>
+<li><code>inline unsigned int decode_address(sc_dt::uint64 address, sc_dt::uint64&amp; masked_address);</code></li>
+<li><code>inline sc_dt::uint64 compose_address(unsigned int target_nr, sc_dt::uint64 address);</code>
+这些方法用于解码和组合地址，以便正确路由传输。</li>
+</ul>
+</li>
+<li>
+<p><strong>flit传输周期计算</strong>：</p>
+<ul>
+<li><code>int getFlitTransmissionCycles();</code>
+该方法返回计算的flit传输周期数。</li>
+</ul>
+</li>
+<li>
+<p><strong>功率管理方法</strong>：</p>
+<ul>
+<li><code>void powerManager(unsigned int hub_dst_index, tlm::tlm_generic_payload&amp; trans);</code></li>
+<li><code>void accountWirelessRxPower();</code>
+这些方法处理与功率管理相关的操作。</li>
+</ul>
+</li>
+</ol>
+<p>总体来说，<code>Channel</code>结构体实现了一个复杂的通信通道模型，支持多种传输接口和功率管理功能，适用于片上网络模拟。</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="hub-类详细分析"><a class="header" href="#hub-类详细分析">Hub 类详细分析</a></h1>
+<p>这是一个用于网络芯片(NoC)中集线器(Hub)功能实现的类定义。让我们分析其主要组成部分：</p>
+<h2 id="基本结构和接口"><a class="header" href="#基本结构和接口">基本结构和接口</a></h2>
+<h3 id="系统接口"><a class="header" href="#系统接口">系统接口</a></h3>
+<pre><code class="language-cpp">SC_MODULE(Hub) {
+    sc_in_clk clock;      // 时钟输入
+    sc_in&lt;bool&gt; reset;    // 复位信号
+    int local_id;         // 集线器唯一标识
+}
+</code></pre>
+<h3 id="通信端口"><a class="header" href="#通信端口">通信端口</a></h3>
+<pre><code class="language-cpp">sc_in&lt;Flit&gt;* flit_rx;    // 数据包接收端口
+sc_out&lt;Flit&gt;* flit_tx;   // 数据包发送端口
+sc_in&lt;bool&gt;* req_rx;     // 请求接收信号
+sc_out&lt;bool&gt;* req_tx;    // 请求发送信号
+</code></pre>
+<h2 id="主要功能组件"><a class="header" href="#主要功能组件">主要功能组件</a></h2>
+<h3 id="缓冲区管理"><a class="header" href="#缓冲区管理">缓冲区管理</a></h3>
+<pre><code class="language-cpp">BufferBank* buffer_from_tile;   // 从瓦片接收数据的缓冲区
+BufferBank* buffer_to_tile;     // 向瓦片发送数据的缓冲区
+</code></pre>
+<h3 id="令牌环控制"><a class="header" href="#令牌环控制">令牌环控制</a></h3>
+<pre><code class="language-cpp">map&lt;int, sc_in&lt;int&gt;* &gt; current_token_holder;      // 当前令牌持有者
+map&lt;int, sc_in&lt;int&gt;* &gt; current_token_expiration;  // 令牌过期时间
+map&lt;int, sc_inout&lt;int&gt;* &gt; flag;                   // 状态标志
+</code></pre>
+<h2 id="构造函数实现"><a class="header" href="#构造函数实现">构造函数实现</a></h2>
+<p>构造函数主要完成以下初始化工作：</p>
+<ol>
+<li>注册处理方法：</li>
+</ol>
+<pre><code class="language-cpp">if (GlobalParams::use_winoc) {
+    SC_METHOD(tileToAntennaProcess);
+    SC_METHOD(antennaToTileProcess);
+}
+</code></pre>
+<ol start="2">
+<li>配置基本参数：</li>
+</ol>
+<pre><code class="language-cpp">local_id = id;
+num_ports = GlobalParams::hub_configuration[local_id].attachedNodes.size();
+</code></pre>
+<ol start="3">
+<li>初始化通信通道：</li>
+</ol>
+<pre><code class="language-cpp">flit_rx = new sc_in&lt;Flit&gt;[num_ports];
+flit_tx = new sc_out&lt;Flit&gt;[num_ports];
+</code></pre>
+<h2 id="函数"><a class="header" href="#函数">函数</a></h2>
+<h3 id="int-hubrouteflit-f"><a class="header" href="#int-hubrouteflit-f"><code>int Hub::route(Flit&amp; f)</code></a></h3>
+<p>这段代码实现了 Hub 类中的路由决策方法，用于确定数据包（Flit）的下一跳方向。</p>
+<pre><code class="language-cpp">int Hub::route(Flit&amp; f)
+{
+	// 本地连接到 Hub 的节点 ID
+	for (vector&lt;int&gt;::size_type i=0; i&lt; GlobalParams::hub_configuration[local_id].attachedNodes.size();i++)
+	{
+		// ...to a destination which is connected to the Hub
+		if (GlobalParams::hub_configuration[local_id].attachedNodes[i]==f.dst_id)
+		{
+			return tile2Port(f.dst_id);
+		}
+		//到连接到目的节点并与hub相连的一个节点
+		if (GlobalParams::hub_configuration[local_id].attachedNodes[i]==f.hub_relay_node)
+		{
+			assert(GlobalParams::winoc_dst_hops&gt;0);
+			return tile2Port(f.hub_relay_node);
+		}
+
+	}
+	return DIRECTION_WIRELESS;
+//两者条件都不满足，表示需要无线路由
+}
+</code></pre>
+<h3 id="hubrxpowermanager"><a class="header" href="#hubrxpowermanager"><code>Hub::rxPowerManager</code></a></h3>
+<p>这是 Hub 类中的接收功率管理方法，用于控制和统计接收相关的功耗。</p>
+<pre><code class="language-cpp">void Hub::rxPowerManager()
+{
+    // Check wheter accounting or not buffer to tile leakage
+    // For each port, two poweroff condition should be checked:
+    // - the buffer to tile is empty
+    // - it has not been reserved
+    // currently only supported without VC
+    assert(GlobalParams::n_virtual_channels==1);
+    for (int port=0;port&lt;num_ports;port++)
+    {
+        if (!buffer_to_tile[port][DEFAULT_VC].IsEmpty() ||
+            antenna2tile_reservation_table.isNotReserved(port))//BUFFER非空或者端口未被预留
+            power.leakageBufferToTile();
+        else
+            buffer_to_tile_poweroff_cycles[port]++; //端口休眠cycle++
+    }
+    for (unsigned int i=0;i&lt;rxChannels.size();i++)
+    {
+        int ch_id = rxChannels[i];
+        if (!target[ch_id]-&gt;buffer_rx.IsEmpty()) //检查天线接收缓冲区是否为空
+        {
+            power.leakageAntennaBuffer();
+        }
+        else
+            buffer_rx_sleep_cycles[ch_id]++;
+    } 
+    // Check wheter accounting antenna RX buffer
+    // check if there is at least one not empty antenna RX buffer
+    // To be only applied if the current hub is in RADIO_EVENT_SLEEP_ON mode
+    if (power.isSleeping())
+        total_sleep_cycles++;
+    else // not sleeping
+    {
+        power.wirelessSnooping();
+        power.leakageTransceiverRx();
+        power.biasingRx();
+    }
+}
+</code></pre>
+<h3 id="void-hubupdaterxpower"><a class="header" href="#void-hubupdaterxpower"><code>void Hub::updateRxPower()</code></a></h3>
+<pre><code class="language-cpp">void Hub::updateRxPower()
+{
+   // 1. 检查是否使用功率管理器
+   if (GlobalParams::use_powermanager)
+       // 2. 如果使用，调用 rxPowerManager 进行详细的功率管理
+       rxPowerManager();
+   else
+   {
+       // 3. 如果不使用，执行基本的功率计算
+       power.wirelessSnooping();       // 无线监听功耗
+       power.leakageTransceiverRx();   // 接收器泄漏功耗
+       power.biasingRx();              // 接收器偏置功耗
+
+       // 4. 遍历所有接收通道和虚拟通道，计算天线缓冲区泄漏功耗
+       for (unsigned int i=0; i&lt;rxChannels.size(); i++)
+           for (int vc=0; vc&lt;GlobalParams::n_virtual_channels; vc++)
+               power.leakageAntennaBuffer();
+
+       // 5. 遍历所有端口和虚拟通道，计算 Tile 缓冲区泄漏功耗
+       for (int i = 0; i &lt; num_ports; i++)
+           for (int vc=0; vc&lt;GlobalParams::n_virtual_channels; vc++)
+               power.leakageBufferToTile();
+   }
+}
+</code></pre>
+<h3 id="void-hubtxpowermanager"><a class="header" href="#void-hubtxpowermanager"><code>void Hub::txPowerManager()</code></a></h3>
+<pre><code class="language-cpp">void Hub::txPowerManager()
+{
+    // 1. 遍历所有发送通道
+    for (unsigned int i = 0; i &lt; txChannels.size(); i++)
+    {
+        // 2. 检查通道是否为空闲或未被预留
+        if (!init[i]-&gt;buffer_tx.IsEmpty() ||
+            tile2antenna_reservation_table.isNotReserved(i))
+        {
+            // 3. 如果通道活动，则计算天线缓冲区泄漏功耗
+            power.leakageAntennaBuffer();
+
+            // 4. 检查 Hub 是否处于休眠状态
+            if (power.isSleeping())
+            {
+                // 5. 如果处于休眠状态，则增加模拟发送关闭周期计数
+                analogtxoff_cycles[i]++;
+            }
+            else
+            {
+                // 6. 如果未处于休眠状态，则计算发送器泄漏功耗和偏置功耗
+                power.leakageTransceiverTx();
+                power.biasingTx();
+            }
+        }
+        else
+        {
+            // 7. 如果通道空闲且未被预留，则增加各种关闭周期计数
+            abtxoff_cycles[i]++;        // 天线缓冲区关闭周期
+            analogtxoff_cycles[i]++;    // 模拟发送关闭周期
+            total_ttxoff_cycles++;       // 总发送关闭周期
+        }
+    }
+}
+</code></pre>
+<h3 id="void-hubupdatetxpower"><a class="header" href="#void-hubupdatetxpower"><code>void Hub::updateTxPower()</code></a></h3>
+<pre><code class="language-cpp">void Hub::updateTxPower()
+{
+    // 1. 检查是否使用功率管理器
+    if (GlobalParams::use_powermanager)
+        // 2. 如果使用，调用 txPowerManager 进行详细的功率管理
+        txPowerManager();
+    else
+    {
+        // 3. 如果不使用，则执行基本的功率计算
+        for (unsigned int i=0; i&lt;txChannels.size(); i++)
+            for (int vc=0; vc&lt;GlobalParams::n_virtual_channels; vc++)
+                power.leakageAntennaBuffer();  // 计算天线缓冲区泄漏功耗
+
+        power.leakageTransceiverTx();      // 计算发送器泄漏功耗
+        power.biasingTx();                 // 计算发送器偏置功耗
+    }
+
+    // 4. 强制执行的功率计算
+    power.leakageLinkRouter2Hub();         // 计算 Router 到 Hub 链路的泄漏功耗
+    for (int i = 0; i &lt; num_ports; i++)
+        for (int vc=0; vc&lt;GlobalParams::n_virtual_channels; vc++)
+            power.leakageBufferFromTile();   // 计算 Tile 到 Hub 缓冲区的泄漏功耗
+}
+</code></pre>
+<h3 id="hubtxradioprocesstokenpacket"><a class="header" href="#hubtxradioprocesstokenpacket">Hub::txRadioProcessTokenPacket</a></h3>
+<p>这是 Hub 类中处理令牌包传输的方法。让我们详细分析其实现和功能。</p>
+<h4 id="核心功能"><a class="header" href="#核心功能">核心功能</a></h4>
+<h4 id="1-状态检查"><a class="header" href="#1-状态检查">1. 状态检查</a></h4>
+<pre><code class="language-cpp">int current_holder = current_token_holder[channel]-&gt;read();
+int current_channel_flag = flag[channel]-&gt;read();
+</code></pre>
+<ul>
+<li>获取当前令牌持有者</li>
+<li>获取当前通道标志状态</li>
+</ul>
+<h4 id="2-处理逻辑"><a class="header" href="#2-处理逻辑">2. 处理逻辑</a></h4>
+<p>当本地节点持有令牌且通道未释放时，进行以下处理：</p>
+<h5 id="发送缓冲区非空时"><a class="header" href="#发送缓冲区非空时">发送缓冲区非空时：</a></h5>
+<pre><code class="language-cpp">if (!init[channel]-&gt;buffer_tx.IsEmpty()) {
+    Flit flit = init[channel]-&gt;buffer_tx.Front();
+    init[channel]-&gt;start_request_event.notify();
+}
+</code></pre>
+<ul>
+<li>获取待发送的数据包</li>
+<li>触发传输请求事件</li>
+</ul>
+<h5 id="发送缓冲区为空时"><a class="header" href="#发送缓冲区为空时">发送缓冲区为空时：</a></h5>
+<ul>
+<li>如果没有正在进行的传输，释放令牌</li>
+<li>如果有传输正在进行，保持令牌</li>
+</ul>
+<pre><code class="language-cpp">void Hub::txRadioProcessTokenPacket(int channel)
+{
+    int current_holder = current_token_holder[channel]-&gt;read();//获取当前令牌持有者
+    int current_channel_flag =flag[channel]-&gt;read();//获取当前通道标志状态
+    if ( current_holder == local_id &amp;&amp; current_channel_flag !=RELEASE_CHANNEL) //本地节点持有令牌且通道未释放
+    {
+        if (!init[channel]-&gt;buffer_tx.IsEmpty())//发送缓冲区非空时
+        {
+            Flit flit = init[channel]-&gt;buffer_tx.Front();//获取待发送的数据包
+            // TODO: check whether it would make sense to use transmission_in_progress to
+            // avoid multiple notify()
+            LOG &lt;&lt; "*** [Ch"&lt;&lt;channel&lt;&lt;"] Requesting transmission event of flit " &lt;&lt; flit &lt;&lt; endl;
+            init[channel]-&gt;start_request_event.notify(); //触发传输请求事件
+        }
+        else
+        {
+            if (!transmission_in_progress.at(channel)) //没有传输正在进行
+            {
+                LOG &lt;&lt; "*** [Ch"&lt;&lt;channel&lt;&lt;"] Buffer_tx empty and no trasmission in progress, releasing token" &lt;&lt; endl;
+                flag[channel]-&gt;write(RELEASE_CHANNEL); //标记通道为释放状态
+            }
+            else
+                LOG &lt;&lt; "*** [Ch"&lt;&lt;channel&lt;&lt;"] Buffer_tx empty, but trasmission in progress, holding token" &lt;&lt; endl;
+        }
+    }
+}
+</code></pre>
+<h3 id="void-hubtxradioprocesstokenhold"><a class="header" href="#void-hubtxradioprocesstokenhold"><code>void Hub::txRadioProcessTokenHold</code></a></h3>
+<pre><code class="language-cpp">void Hub::txRadioProcessTokenHold(int channel)
+{
+    // 1. 如果通道被释放，则重新持有
+    if (flag[channel]-&gt;read() == RELEASE_CHANNEL)
+        flag[channel]-&gt;write(HOLD_CHANNEL);
+
+    // 2. 检查当前 Hub 是否为令牌持有者
+    if (current_token_holder[channel]-&gt;read() == local_id)
+    {
+        // 3. 检查发送缓冲区是否为空
+        if (!init[channel]-&gt;buffer_tx.IsEmpty())
+        {
+            // 4. 检查令牌过期时间是否足够发送数据包
+            if (current_token_expiration[channel]-&gt;read() &lt; flit_transmission_cycles[channel])
+            {
+                // 5. 如果令牌时间不足，则不发送数据包
+                //LOG &lt;&lt; "TOKEN_HOLD policy: Not enough token expiration time for sending channel " &lt;&lt; channel &lt;&lt; endl;
+            }
+            else
+            {
+                // 6. 如果令牌时间足够，则持有通道并触发传输事件
+                flag[channel]-&gt;write(HOLD_CHANNEL);
+                LOG &lt;&lt; "*** [Ch" &lt;&lt; channel &lt;&lt; "] Starting transmission event" &lt;&lt; endl;
+                init[channel]-&gt;start_request_event.notify();
+            }
+        }
+        else
+        {
+            // 7. 如果发送缓冲区为空，则继续持有令牌
+            //LOG &lt;&lt; "TOKEN_HOLD policy: nothing to transmit, holding token for channel " &lt;&lt; channel &lt;&lt; endl;
+        }
+    }
+}
+</code></pre>
+<h3 id="void-hubtxradioprocesstokenmaxhold"><a class="header" href="#void-hubtxradioprocesstokenmaxhold"><code>void Hub::txRadioProcessTokenMaxHold</code></a></h3>
+<pre><code class="language-cpp">void Hub::txRadioProcessTokenMaxHold(int channel)
+{
+    // 1. 如果通道被释放，则重新持有
+    if (flag[channel]-&gt;read() == RELEASE_CHANNEL)
+        flag[channel]-&gt;write(HOLD_CHANNEL);
+
+    // 2. 检查当前 Hub 是否为令牌持有者
+    if (current_token_holder[channel]-&gt;read() == local_id)
+    {
+        // 3. 检查发送缓冲区是否为空
+        if (!init[channel]-&gt;buffer_tx.IsEmpty())
+        {
+            // 4. 检查令牌过期时间是否足够发送数据包
+            if (current_token_expiration[channel]-&gt;read() &lt; flit_transmission_cycles[channel])
+            {
+                // 5. 如果令牌时间不足，则释放令牌
+                //LOG &lt;&lt; "TOKEN_MAX_HOLD: Not enough token expiration time, releasing token for channel " &lt;&lt; channel &lt;&lt; endl;
+                flag[channel]-&gt;write(RELEASE_CHANNEL);
+            }
+            else
+            {
+                // 6. 如果令牌时间足够，则持有通道并触发传输事件
+                flag[channel]-&gt;write(HOLD_CHANNEL);
+                LOG &lt;&lt; "Starting transmission on channel " &lt;&lt; channel &lt;&lt; endl;
+                init[channel]-&gt;start_request_event.notify();
+            }
+        }
+        else
+        {
+            // 7. 如果发送缓冲区为空，则释放令牌
+            //LOG &lt;&lt; "TOKEN_MAX_HOLD: Buffer_tx empty, releasing token for channel " &lt;&lt; channel &lt;&lt; endl;
+            flag[channel]-&gt;write(RELEASE_CHANNEL);
+        }
+    }
+}
+</code></pre>
+<pre><code class="language-cpp">void Hub::antennaToTileProcess()
+{
+    // 1. 复位处理: 如果复位信号有效，则初始化输出端口
+    if (reset.read())
+    {
+        for (int i = 0; i &lt; num_ports; i++)
+        {
+            req_tx[i]-&gt;write(0);		// 关闭请求信号
+            current_level_tx[i] = 0;	// 重置当前发送电平
+        }
+        return;
+    }
+    // 重要: 请勿移动此行!
+    // rxPowerManager 必须在从缓冲区移除 Flit 之前执行其检查
+    updateRxPower();
+
+    /***********************************************************************************
+      数据从天线流向 Tile 包含 3 个不同的步骤:
+
+      1) 从无线信道接收的数据存储到特定的 buffer_rx (如果可能)
+      2) 在 buffer_rx 中找到的数据移动到 buffer_to_tile
+      3) 在 buffer_to_tile 中找到的数据移动到 signal_tx
+
+      从实现的角度来看, 它们以 3-2-1 的顺序执行, 以模拟一种流水线序列
+     ***********************************************************************************/
+
+    //////////////////////////////////////////////////////////////////////////////////////
+    // 将 Flit 从 buffer_to_tile 移动到相应的 signal_tx
+    // 无需路由: 每个端口都与一个预定义的 Tile 相关联
+    for (int i = 0; i &lt; num_ports; i++)
+    {
+        // TODO: 检查阻塞通道 (例如阻塞单个信号?)
+        for (int k = 0; k &lt; GlobalParams::n_virtual_channels; k++)
+        {
+            int vc = (start_from_vc[i] + k) % (GlobalParams::n_virtual_channels);
+
+            if (!buffer_to_tile[i][vc].IsEmpty())
+            {
+                Flit flit = buffer_to_tile[i][vc].Front();
+
+                LOG &lt;&lt; "Flit " &lt;&lt; flit &lt;&lt; " found on buffer_to_tile[" &lt;&lt; i &lt;&lt; "][" &lt;&lt; vc &lt;&lt; "] " &lt;&lt; endl;
+                if (current_level_tx[i] == ack_tx[i].read() &amp;&amp;
+                    buffer_full_status_tx[i].read().mask[vc] == false)
+                {
+                    LOG &lt;&lt; "Flit " &lt;&lt; flit &lt;&lt; " moved from buffer_to_tile[" &lt;&lt; i &lt;&lt; "][" &lt;&lt; vc &lt;&lt; "] to signal flit_tx[" &lt;&lt; i &lt;&lt; "] " &lt;&lt; endl;
+
+                    flit_tx[i].write(flit);					// 将 Flit 写入输出端口
+                    current_level_tx[i] = 1 - current_level_tx[i];	// 翻转当前电平
+                    req_tx[i].write(current_level_tx[i]);		// 写入请求信号
+
+                    buffer_to_tile[i][vc].Pop();			// 从 buffer_to_tile 移除 Flit
+                    power.bufferToTilePop();				// 更新 bufferToTile 弹出操作的功耗统计
+                    power.r2hLink();					// 更新 Router 到 Hub 链路的功耗统计
+                    break; // 端口 Flit 已发送, 跳过剩余 VC
+                }
+                else
+                {
+                    LOG &lt;&lt; "Flit " &lt;&lt; flit &lt;&lt; " cannot move from buffer_to_tile[" &lt;&lt; i &lt;&lt; "][" &lt;&lt; vc &lt;&lt; "] to signal flit_tx[" &lt;&lt; i &lt;&lt; "] " &lt;&lt; endl;
+                }
+            } // if buffer not empty
+        }
+        start_from_vc[i] = (start_from_vc[i] + 1) % GlobalParams::n_virtual_channels;
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////
+    // 将 Flit 从天线 buffer_rx 移动到相应的 buffer_to_tile
+    //
+    // 两个不同的阶段:
+    // 1) 存储有关传入 Flit 的路由决策 (例如, 到哪个输出端口)
+    // 2) 移动 Flit 并从天线 buffer_rx 中移除
+
+    for (unsigned int i = 0; i &lt; rxChannels.size(); i++)
+    {
+        int channel = rxChannels[i];
+
+        if (!(target[channel]-&gt;buffer_rx.IsEmpty()))
+        {
+            Flit received_flit = target[channel]-&gt;buffer_rx.Front();
+            power.antennaBufferFront();
+
+            // 检查天线 buffer_rx 并进行适当的预留
+            if (received_flit.flit_type == FLIT_TYPE_HEAD)
+            {
+                int dst_port;
+
+                if (received_flit.hub_relay_node != NOT_VALID)
+                    dst_port = tile2Port(received_flit.hub_relay_node);
+                else
+                    dst_port = tile2Port(received_flit.dst_id);
+
+                TReservation r;
+                r.input = channel;
+                r.vc = received_flit.vc_id;
+
+                LOG &lt;&lt; " Checking reservation availability of output port " &lt;&lt; dst_port &lt;&lt; " by channel " &lt;&lt; channel &lt;&lt; " for flit " &lt;&lt; received_flit &lt;&lt; endl;
+
+                int rt_status = antenna2tile_reservation_table.checkReservation(r, dst_port);
+
+                if (rt_status == RT_AVAILABLE)
+                {
+                    LOG &lt;&lt; "Reserving output port " &lt;&lt; dst_port &lt;&lt; " by channel " &lt;&lt; channel &lt;&lt; " for flit " &lt;&lt; received_flit &lt;&lt; endl;
+                    antenna2tile_reservation_table.reserve(r, dst_port);
+
+                    // 使用无线网络进行的通信次数, 也包括部分有线路径
+                    wireless_communications_counter++;
+                }
+                else if (rt_status == RT_ALREADY_SAME)
+                {
+                    LOG &lt;&lt; " RT_ALREADY_SAME reserved direction " &lt;&lt; dst_port &lt;&lt; " for flit " &lt;&lt; received_flit &lt;&lt; endl;
+                }
+                else if (rt_status == RT_OUTVC_BUSY)
+                {
+                    LOG &lt;&lt; " RT_OUTVC_BUSY reservation direction " &lt;&lt; dst_port &lt;&lt; " for flit " &lt;&lt; received_flit &lt;&lt; endl;
+                }
+                else assert(false); // 此处没有有意义的状态
+            }
+        }
+    }
+    // 转发
+    for (unsigned int i = 0; i &lt; rxChannels.size(); i++)
+    {
+        int channel = rxChannels[i];
+        vector&lt;pair&lt;int, int&gt; &gt; reservations = antenna2tile_reservation_table.getReservations(channel);
+
+        if (reservations.size() != 0)
+        {
+            int rnd_idx = rand() % reservations.size();
+
+            int port = reservations[rnd_idx].first;
+            int vc = reservations[rnd_idx].second;
+
+            if (!(target[channel]-&gt;buffer_rx.IsEmpty()))
+            {
+                Flit received_flit = target[channel]-&gt;buffer_rx.Front();
+                power.antennaBufferFront();
+
+                if (!buffer_to_tile[port][vc].IsFull())
+                {
+                    target[channel]-&gt;buffer_rx.Pop();		// 从天线 buffer_rx 移除 Flit
+                    power.antennaBufferPop();			// 更新天线缓冲区弹出操作的功耗统计
+                    LOG &lt;&lt; "*** [Ch" &lt;&lt; channel &lt;&lt; "] Moving flit  " &lt;&lt; received_flit &lt;&lt; " from buffer_rx to buffer_to_tile[" &lt;&lt; port &lt;&lt; "][" &lt;&lt; vc &lt;&lt; "]" &lt;&lt; endl;
+
+                    buffer_to_tile[port][vc].Push(received_flit);	// 将 Flit 推送到 buffer_to_tile
+                    power.bufferToTilePush();			// 更新 bufferToTile 推送操作的功耗统计
+
+                    if (received_flit.flit_type == FLIT_TYPE_TAIL)
+                    {
+                        LOG &lt;&lt; "Releasing reservation for output port " &lt;&lt; port &lt;&lt; ", flit " &lt;&lt; received_flit &lt;&lt; endl;
+                        TReservation r;
+                        r.input = channel;
+                        r.vc = vc;
+                        antenna2tile_reservation_table.release(r, port);
+                    }
+                }
+                else
+                    LOG &lt;&lt; "Full buffer_to_tile[" &lt;&lt; port &lt;&lt; "][" &lt;&lt; vc &lt;&lt; "], cannot store " &lt;&lt; received_flit &lt;&lt; endl;
+            }
+            else
+            {
+                // 应该没问题
+                /*
+                LOG &lt;&lt; "WARNING: empty target["&lt;&lt;channel&lt;&lt;"] buffer_rx, but reservation still present, if correct, remove assertion below " &lt;&lt; endl;
+                assert(false);
+                */
+            }
+        }
+    }
+}
+</code></pre>
+<h3 id="void-hubtiletoantennaprocess"><a class="header" href="#void-hubtiletoantennaprocess"><code>void Hub::tileToAntennaProcess()</code></a></h3>
+<pre><code class="language-cpp">void Hub::tileToAntennaProcess()
+{
+    // double cycle = sc_time_stamp().to_double() / GlobalParams::clock_period_ps;
+    // if (cycle &gt; 0 &amp;&amp; cycle &lt; 58428)
+    // {
+    //     if (local_id == 1)
+    //     {
+    //         cout &lt;&lt; "CYCLES " &lt;&lt; cycle &lt;&lt; endl;
+    //         for (int j = 0; j &lt; num_ports; j++)
+    //     	buffer_from_tile[j].Print();;
+    //         init[0]-&gt;buffer_tx.Print();
+    //         cout &lt;&lt; endl;
+    //     }
+    // }
+
+    // 1. 复位处理：如果复位信号有效，则初始化发送通道
+    if (reset.read())
+    {
+        for (unsigned int i = 0; i &lt; txChannels.size(); i++)
+        {
+            int channel = txChannels[i];
+            flag[channel]-&gt;write(HOLD_CHANNEL); // 设置通道为 HOLD 状态
+        }
+
+        TBufferFullStatus bfs;
+        for (int i = 0; i &lt; num_ports; i++)
+        {
+            ack_rx[i]-&gt;write(0);				   // 关闭确认信号
+            buffer_full_status_rx[i].write(bfs);   // 初始化缓冲区满状态
+            current_level_rx[i] = 0;			   // 重置当前接收电平
+        }
+        return;
+    }
+
+    // 2. 令牌环 MAC 策略处理：根据配置的 MAC 策略处理每个发送通道
+    for (unsigned int i = 0; i &lt; txChannels.size(); i++)
+    {
+        int channel = txChannels[i];
+
+        string macPolicy = token_ring-&gt;getPolicy(channel).first;
+
+        if (macPolicy == TOKEN_PACKET)
+            txRadioProcessTokenPacket(channel); // TOKEN_PACKET 策略
+        else if (macPolicy == TOKEN_HOLD)
+            txRadioProcessTokenHold(channel);   // TOKEN_HOLD 策略
+        else if (macPolicy == TOKEN_MAX_HOLD)
+            txRadioProcessTokenMaxHold(channel); // TOKEN_MAX_HOLD 策略
+        else
+            assert(false); // 未知的 MAC 策略
+    }
+
+    int last_reserved = NOT_VALID;
+
+    // 用于存储路由决策
+    int *r_from_tile[num_ports];
+    for (int i = 0; i &lt; num_ports; i++)
+        r_from_tile[i] = new int[GlobalParams::n_virtual_channels];
+
+    // 3. 预留阶段：为从 Tile 到天线的传输进行通道预留
+    for (int j = 0; j &lt; num_ports; j++)
+    {
+        int i = (start_from_port + j) % (num_ports); // 循环遍历端口
+
+        for (int k = 0; k &lt; GlobalParams::n_virtual_channels; k++)
+        {
+            int vc = (start_from_vc[i] + k) % (GlobalParams::n_virtual_channels);
+
+            // 4. 检查 buffer_from_tile 是否为空
+            if (!buffer_from_tile[i][vc].IsEmpty())
+            {
+                LOG &lt;&lt; "Reservation: buffer_from_tile[" &lt;&lt; i &lt;&lt; "][" &lt;&lt; vc &lt;&lt; "] not empty " &lt;&lt; endl;
+
+                Flit flit = buffer_from_tile[i][vc].Front();
+
+                assert(flit.vc_id == vc);
+
+                power.bufferFromTileFront();		// 更新 bufferFromTile 前端操作的功耗统计
+                r_from_tile[i][vc] = route(flit); // 进行路由决策
+
+                // 5. 如果是 HEAD Flit，则进行通道预留
+                if (flit.flit_type == FLIT_TYPE_HEAD)
+                {
+                    TReservation r;
+                    r.input = i;
+                    r.vc = vc;
+
+                    assert(r_from_tile[i][vc] == DIRECTION_WIRELESS);
+                    int channel;
+
+                    // 确定目标通道
+                    if (flit.hub_relay_node == NOT_VALID)
+                        channel = selectChannel(local_id, tile2Hub(flit.dst_id));
+                    else
+                        channel = selectChannel(local_id, tile2Hub(flit.hub_relay_node));
+
+                    assert(channel != NOT_VALID &amp;&amp; "hubs are not connected by any channel");
+
+                    LOG &lt;&lt; "Checking reservation availability of Channel " &lt;&lt; channel &lt;&lt; " by Hub port[" &lt;&lt; i &lt;&lt; "][" &lt;&lt; vc &lt;&lt; "] for flit " &lt;&lt; flit &lt;&lt; endl;
+
+                    int rt_status = tile2antenna_reservation_table.checkReservation(r, channel);
+
+                    if (rt_status == RT_AVAILABLE)
+                    {
+                        LOG &lt;&lt; "Reservation of channel " &lt;&lt; channel &lt;&lt; " from Hub port[" &lt;&lt; i &lt;&lt; "][" &lt;&lt; vc &lt;&lt; "] by flit " &lt;&lt; flit &lt;&lt; endl;
+                        tile2antenna_reservation_table.reserve(r, channel); // 预留通道
+                    }
+                    else if (rt_status == RT_ALREADY_SAME)
+                    {
+                        LOG &lt;&lt; "RT_ALREADY_SAME reserved channel " &lt;&lt; channel &lt;&lt; " for flit " &lt;&lt; flit &lt;&lt; endl;
+                    }
+                    else if (rt_status == RT_OUTVC_BUSY)
+                    {
+                        LOG &lt;&lt; "RT_OUTVC_BUSY reservation for channel " &lt;&lt; channel &lt;&lt; " for flit " &lt;&lt; flit &lt;&lt; endl;
+                    }
+                    else if (rt_status == RT_ALREADY_OTHER_OUT)
+                    {
+                        LOG &lt;&lt; "RT_ALREADY_OTHER_OUT a channel different from " &lt;&lt; channel &lt;&lt; " already reserved by Hub port[" &lt;&lt; i &lt;&lt; "][" &lt;&lt; vc &lt;&lt; "]" &lt;&lt; endl;
+                    }
+                    else
+                        assert(false); // 此处没有有意义的状态
+                }
+            }
+        }
+        start_from_vc[i] = (start_from_vc[i] + 1) % GlobalParams::n_virtual_channels;
+    } // for num_ports
+
+    if (last_reserved != NOT_VALID)
+        start_from_port = (last_reserved + 1) % num_ports;
+
+    // 6. 转发阶段：将 Flit 从 buffer_from_tile 转发到天线 buffer_tx
+    for (int i = 0; i &lt; num_ports; i++)
+    {
+        vector&lt;pair&lt;int, int&gt; &gt; reservations = tile2antenna_reservation_table.getReservations(i);
+
+        if (reservations.size() != 0)
+        {
+            int rnd_idx = rand() % reservations.size();
+
+            int o = reservations[rnd_idx].first;
+            int vc = reservations[rnd_idx].second;
+
+            // 7. 检查 buffer_from_tile 是否为空
+            if (!buffer_from_tile[i][vc].IsEmpty())
+            {
+                Flit flit = buffer_from_tile[i][vc].Front();
+                // powerFront already accounted in 1st phase
+
+                assert(r_from_tile[i][vc] == DIRECTION_WIRELESS);
+
+                int channel = o;
+
+                if (channel != NOT_RESERVED)
+                {
+                    // 8. 检查天线 buffer_tx 是否已满
+                    if (!(init[channel]-&gt;buffer_tx.IsFull()))
+                    {
+                        buffer_from_tile[i][vc].Pop();	  // 从 buffer_from_tile 移除 Flit
+                        power.bufferFromTilePop();		  // 更新 bufferFromTile 弹出操作的功耗统计
+                        init[channel]-&gt;buffer_tx.Push(flit); // 将 Flit 推送到天线 buffer_tx
+                        power.antennaBufferPush();		  // 更新天线缓冲区推送操作的功耗统计
+                        if (flit.flit_type == FLIT_TYPE_TAIL)
+                        {
+                            TReservation r;
+                            r.input = i;
+                            r.vc = vc;
+                            tile2antenna_reservation_table.release(r, channel); // 释放通道预留
+                        }
+
+                        LOG &lt;&lt; "Flit " &lt;&lt; flit &lt;&lt; " moved from buffer_from_tile[" &lt;&lt; i &lt;&lt; "][" &lt;&lt; vc &lt;&lt; "]  to buffer_tx[" &lt;&lt; channel &lt;&lt; "] " &lt;&lt; endl;
+                    }
+                    else
+                    {
+                        LOG &lt;&lt; "Buffer Full: Cannot move flit " &lt;&lt; flit &lt;&lt; " from buffer_from_tile[" &lt;&lt; i &lt;&lt; "] to buffer_tx[" &lt;&lt; channel &lt;&lt; "] " &lt;&lt; endl;
+                        //init[channel]-&gt;buffer_tx.Print();
+                    }
+                }
+                else
+                {
+                    LOG &lt;&lt; "Forwarding: No channel reserved for input port [" &lt;&lt; i &lt;&lt; "][" &lt;&lt; vc &lt;&lt; "], flit " &lt;&lt; flit &lt;&lt; endl;
+                }
+            }
+
+        } // for all the ports
+    }
+
+    // 9. 从 flit_rx 信号读取 Flit 并存储到 buffer_from_tile
+    for (int i = 0; i &lt; num_ports; i++)
+    {
+        // 10. 检查是否有新的 Flit 到达
+        if (req_rx[i]-&gt;read() == 1 - current_level_rx[i])
+        {
+            Flit received_flit = flit_rx[i]-&gt;read();
+            int vc = received_flit.vc_id;
+            LOG &lt;&lt; "Reading " &lt;&lt; received_flit &lt;&lt; " from signal flit_rx[" &lt;&lt; i &lt;&lt; "]" &lt;&lt; endl;
+
+            /*
+            if (!buffer_from_tile[i][vc].deadlockFree())
+            {
+            LOG &lt;&lt; " deadlock on buffer " &lt;&lt; i &lt;&lt; endl;
+            buffer_from_tile[i][vc].Print();
+            }
+            */
+
+            // 11. 检查 buffer_from_tile 是否已满
+            if (!buffer_from_tile[i][vc].IsFull())
+            {
+                LOG &lt;&lt; "Storing " &lt;&lt; received_flit &lt;&lt; " on buffer_from_tile[" &lt;&lt; i &lt;&lt; "][" &lt;&lt; vc &lt;&lt; "]" &lt;&lt; endl;
+
+                buffer_from_tile[i][vc].Push(received_flit); // 将 Flit 推送到 buffer_from_tile
+                power.bufferFromTilePush();				   // 更新 bufferFromTile 推送操作的功耗统计
+
+                current_level_rx[i] = 1 - current_level_rx[i]; // 翻转当前接收电平
+            }
+            else
+            {
+                LOG &lt;&lt; "Buffer Full: Cannot store " &lt;&lt; received_flit &lt;&lt; " on buffer_from_tile[" &lt;&lt; i &lt;&lt; "][" &lt;&lt; vc &lt;&lt; "]" &lt;&lt; endl;
+                //buffer_from_tile[i][TODO_VC].Print();
+            }
+        }
+        ack_rx[i]-&gt;write(current_level_rx[i]); // 写入确认信号
+
+        // 12. 更新 VC 的掩码以防止数据进入已满的缓冲区
+        TBufferFullStatus bfs;
+        for (int vc = 0; vc &lt; GlobalParams::n_virtual_channels; vc++)
+            bfs.mask[vc] = buffer_from_tile[i][vc].IsFull();
+        buffer_full_status_rx[i].write(bfs);
+    }
+
+    // 重要: 请勿移动此行!
+    // txPowerManager 假设所有 Flit 缓冲区写入操作已完成
+    updateTxPower();
+}
+</code></pre>
+<p><strong>关键步骤：</strong></p>
+<ol>
+<li><strong>复位处理</strong>：初始化发送通道状态。</li>
+<li><strong>MAC 策略处理</strong>：根据配置的 MAC 策略处理每个发送通道（TOKEN_PACKET, TOKEN_HOLD, TOKEN_MAX_HOLD）。</li>
+<li><strong>预留阶段</strong>：为从 Tile 到天线的传输进行通道预留。</li>
+<li><strong>检查 buffer_from_tile</strong>：判断缓冲区是否为空。</li>
+<li><strong>HEAD Flit 处理</strong>：如果是 HEAD Flit，则进行通道预留。</li>
+<li><strong>转发阶段</strong>：将 Flit 从 buffer_from_tile 转发到天线 buffer_tx。</li>
+<li><strong>检查 buffer_from_tile</strong>：判断缓冲区是否为空。</li>
+<li><strong>检查天线 buffer_tx</strong>：判断天线缓冲区是否已满。</li>
+<li><strong>从 flit_rx 读取 Flit</strong>：从 flit_rx 信号读取 Flit 并存储到 buffer_from_tile。</li>
+<li><strong>检查是否有新 Flit</strong>：判断是否有新的 Flit 到达。</li>
+<li><strong>检查 buffer_from_tile</strong>：判断缓冲区是否已满。</li>
+<li><strong>更新 VC 掩码</strong>：更新 VC 的掩码以防止数据进入已满的缓冲区。</li>
+<li><strong>更新发送功率</strong>：更新发送功率统计。</li>
+</ol>
+<h3 id="hubselectchannel"><a class="header" href="#hubselectchannel"><code>Hub::selectChannel()</code></a></h3>
+<pre><code class="language-cpp">int Hub::selectChannel(int src_hub, int dst_hub) const
+{
+    // 1. 获取源 Hub 的发送通道和目标 Hub 的接收通道
+    vector&lt;int&gt; &amp; first = GlobalParams::hub_configuration[src_hub].txChannels;
+    vector&lt;int&gt; &amp; second = GlobalParams::hub_configuration[dst_hub].rxChannels;
+
+    // 2. 找到两个 Hub 之间共有的通道（交集）
+    vector&lt;int&gt; intersection;
+
+    for (unsigned int i = 0; i &lt; first.size(); i++)
+    {
+        for (unsigned int j = 0; j &lt; second.size(); j++)
+        {
+            if (first[i] == second[j])
+                intersection.push_back(first[i]); // 将共有通道添加到交集向量
+        }
+    }
+
+    // 3. 如果没有找到共有通道，则返回 NOT_VALID
+    if (intersection.size() == 0)
+        return NOT_VALID;
+
+    // 4. 根据全局参数选择通道
+    if (GlobalParams::channel_selection == CHSEL_RANDOM)
+        // 5. 如果选择随机通道，则从交集中随机选择一个通道
+        return intersection[rand() % intersection.size()];
+    else if (GlobalParams::channel_selection == CHSEL_FIRST_FREE)
+    {
+        // 6. 如果选择第一个空闲通道，则从交集中查找第一个空闲通道
+        int start_channel = rand() % intersection.size(); // 随机选择起始通道
+        int k;
+
+        for (vector&lt;int&gt;::size_type i = 0; i &lt; intersection.size(); i++)
+        {
+            k = (start_channel + i) % intersection.size(); // 循环遍历交集
+
+            // 7. 检查通道是否空闲
+            if (!transmission_in_progress.at(intersection[k]))
+            {
+                cout &lt;&lt; "Found free channel " &lt;&lt; intersection[k] &lt;&lt; " on (src,dest) (" &lt;&lt; src_hub &lt;&lt; "," &lt;&lt; dst_hub &lt;&lt; ") " &lt;&lt; endl;
+                return intersection[k]; // 找到空闲通道，返回
+            }
+        }
+        // 8. 如果所有通道都忙，则应用随机选择
+        cout &lt;&lt; "All channel busy, applying random selection " &lt;&lt; endl;
+        return intersection[rand() % intersection.size()];
+    }
+
+    return NOT_VALID; // 未知的通道选择策略
+}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="tokenring-模块分析"><a class="header" href="#tokenring-模块分析">TokenRing 模块分析</a></h1>
+<p>本章将分析 TokenRing 模块的实现，这是一个用于令牌环网络控制的 SystemC 模块。</p>
+<h2 id="基本结构"><a class="header" href="#基本结构">基本结构</a></h2>
+<p>TokenRing 模块的核心声明如下：</p>
+<pre><code class="language-cpp">SC_MODULE(TokenRing)
+{
+    SC_HAS_PROCESS(TokenRing);
+}
+</code></pre>
+<h2 id="接口定义"><a class="header" href="#接口定义">接口定义</a></h2>
+<h3 id="时钟和复位端口"><a class="header" href="#时钟和复位端口">时钟和复位端口</a></h3>
+<p>模块包含基本的同步接口：</p>
+<pre><code class="language-cpp">sc_in_clk clock;    // 时钟输入端口
+sc_in&lt;bool&gt; reset;  // 复位信号输入端口
+</code></pre>
+<h3 id="令牌控制信号"><a class="header" href="#令牌控制信号">令牌控制信号</a></h3>
+<p>模块使用三种映射来管理令牌状态：</p>
+<ol>
+<li><strong>令牌持有者信号</strong>：</li>
+</ol>
+<pre><code class="language-cpp">map&lt;int, sc_out&lt;int&gt;* &gt; current_token_holder;
+</code></pre>
+<ol start="2">
+<li><strong>令牌过期信号</strong>：</li>
+</ol>
+<pre><code class="language-cpp">map&lt;int, sc_out&lt;int&gt;* &gt; current_token_expiration;
+</code></pre>
+<ol start="3">
+<li><strong>标志信号</strong>：</li>
+</ol>
+<pre><code class="language-cpp">map&lt;int, map&lt;int,sc_inout&lt;int&gt;* &gt; &gt; flag;
+</code></pre>
+<h2 id="内部实现"><a class="header" href="#内部实现">内部实现</a></h2>
+<h3 id="内部信号"><a class="header" href="#内部信号">内部信号</a></h3>
+<p>模块维护三组内部信号用于状态管理：</p>
+<pre><code class="language-cpp">map&lt;int, sc_signal&lt;int&gt;* &gt; token_holder_signals;
+map&lt;int, sc_signal&lt;int&gt;* &gt; token_expiration_signals;
+map&lt;int, map&lt;int, sc_signal&lt;int&gt;* &gt; &gt; flag_signals;
+</code></pre>
+<h2 id="函数-1"><a class="header" href="#函数-1">函数</a></h2>
+<h3 id="void-tokenringupdatetokenpacketint-channel"><a class="header" href="#void-tokenringupdatetokenpacketint-channel"><code>void TokenRing::updateTokenPacket(int channel)</code></a></h3>
+<p>这段代码实现了令牌环网络中令牌传递的更新逻辑。让我们详细分析其功能和实现。</p>
+<pre><code class="language-cpp">void TokenRing::updateTokenPacket(int channel)
+{
+    int token_pos = token_position[channel]; \\获取令牌所在的位置
+    int token_holder = rings_mapping[channel][token_pos]; \\获取当前令牌持有者
+    // TEST HOLD BUG
+	//if (flag[channel][token_pos]-&gt;read() == RELEASE_CHANNEL)
+
+    if (flag[channel][token_holder]-&gt;read() == RELEASE_CHANNEL) \\如果当前令牌可以被释放
+	{
+	    // number of hubs of the ring
+	    int num_hubs = rings_mapping[channel].size();
+
+	    token_position[channel] = (token_position[channel]+1)%num_hubs; //更新令牌位置
+
+	    int new_token_holder = rings_mapping[channel][token_position[channel]]; //获取新的令牌持有者
+        LOG &lt;&lt; "*** Token of channel " &lt;&lt; channel &lt;&lt; " has been assigned to Hub_" &lt;&lt;  new_token_holder &lt;&lt; endl; //记录日志
+	    current_token_holder[channel]-&gt;write(new_token_holder); //更新令牌持有者
+	    // TEST HOLD BUG
+	    //flag[channel][token_position[channel]]-&gt;write(HOLD_CHANNEL);
+        flag[channel][new_token_holder]-&gt;write(HOLD_CHANNEL); //更新令牌为持有状态
+	}
+}
+</code></pre>
+<h3 id="void-tokenringupdatetokenmaxholdint-channel"><a class="header" href="#void-tokenringupdatetokenmaxholdint-channel"><code>void TokenRing::updateTokenMaxHold(int channel)</code></a></h3>
+<pre><code class="language-cpp">void TokenRing::updateTokenMaxHold(int channel)
+{
+	if (--token_hold_count[channel] == 0 ||
+		flag[channel][token_position[channel]]-&gt;read() == RELEASE_CHANNEL) \\如果令牌的持有时间已经达到最大或者令牌可以被释放
+	{
+	    token_hold_count[channel] = atoi(GlobalParams::channel_configuration[channel].macPolicy[1].c_str()); //重置令牌的持有时间
+	    // number of hubs of the ring
+	    int num_hubs = rings_mapping[channel].size(); //获取环网中的Hub数量
+
+	    token_position[channel] = (token_position[channel]+1)%num_hubs; //更新令牌位置
+	    LOG &lt;&lt; "*** Token of channel " &lt;&lt; channel &lt;&lt; " has been assigned to Hub_" &lt;&lt;  rings_mapping[channel][token_position[channel]] &lt;&lt; endl; //记录日志
+
+	    current_token_holder[channel]-&gt;write(rings_mapping[channel][token_position[channel]]); //更新令牌持有者
+	}
+
+	current_token_expiration[channel]-&gt;write(token_hold_count[channel]); //更新令牌过期时间
+}
+</code></pre>
+<h3 id="void-tokenringupdatetokenholdint-channel"><a class="header" href="#void-tokenringupdatetokenholdint-channel"><code>void TokenRing::updateTokenHold(int channel)</code></a></h3>
+<pre><code class="language-cpp">void TokenRing::updateTokenHold(int channel) {
+    // 1. 检查令牌持有时间是否到期
+    if (--token_hold_count[channel] == 0) {
+        // 2. 如果到期，则重置令牌持有时间
+        token_hold_count[channel] = atoi(GlobalParams::channel_configuration[channel].macPolicy[1].c_str());
+
+        // 3. 获取环中 Hub 的数量
+        int num_hubs = rings_mapping[channel].size();
+
+        // 4. 更新令牌在环中的位置
+        token_position[channel] = (token_position[channel] + 1) % num_hubs;
+
+        // 5. 记录令牌分配信息
+        LOG &lt;&lt; "*** Token of channel " &lt;&lt; channel &lt;&lt; " has been assigned to Hub_"
+            &lt;&lt; rings_mapping[channel][token_position[channel]] &lt;&lt; endl;
+
+        // 6. 更新令牌持有者
+        current_token_holder[channel]-&gt;write(rings_mapping[channel][token_position[channel]]);
+    }
+
+    // 7. 更新令牌过期时间
+    current_token_expiration[channel]-&gt;write(token_hold_count[channel]);
+}
+</code></pre>
+<h3 id="void-tokenringupdatetokens"><a class="header" href="#void-tokenringupdatetokens"><code>void TokenRing::updateTokens()</code></a></h3>
+<p>这是令牌环网络中用于更新令牌状态的主要方法。让我们分析其实现和功能。</p>
+<pre><code class="language-cpp">void TokenRing::updateTokens()
+{
+    if (reset.read()) {//复位信号
+        for (map&lt;int,ChannelConfig&gt;::iterator i = GlobalParams::channel_configuration.begin();
+             i!=GlobalParams::channel_configuration.end();
+             i++)
+            current_token_holder[i-&gt;first]-&gt;write(rings_mapping[i-&gt;first][0]);
+    }
+    else //非复位信号
+    {
+        for (map&lt;int,ChannelConfig&gt;::iterator i = GlobalParams::channel_configuration.begin(); i!=GlobalParams::channel_configuration.end(); i++) //遍历所有通道
+        {
+            int channel = i-&gt;first;
+            //int channel_holder;
+            //channel_holder = current_token_holder[channel]-&gt;read();
+            string macPolicy = getPolicy(channel).first; //获取当前通道的MAC策略
+            if (macPolicy == TOKEN_PACKET) 
+                updateTokenPacket(channel);
+            else if (macPolicy == TOKEN_HOLD)
+                updateTokenHold(channel);
+            else if (macPolicy == TOKEN_MAX_HOLD)
+                updateTokenMaxHold(channel);
+            else
+                assert(false);
+        }
+    }
+}
+</code></pre>
+<h3 id="void-tokenringattachhub"><a class="header" href="#void-tokenringattachhub"><code>void TokenRing::attachHub()</code></a></h3>
+<pre><code class="language-cpp">void TokenRing::attachHub(int channel, int hub, sc_in&lt;int&gt;* hub_token_holder_port, sc_in&lt;int&gt;* hub_token_expiration_port, sc_inout&lt;int&gt;* hub_flag_port) {
+    // 1. 检查是否已存在该通道的端口
+    if (!current_token_holder[channel]) {
+        // 2. 如果不存在，则初始化该通道的令牌环相关数据结构
+        token_position[channel] = 0;  // 初始化令牌位置
+
+        // 3. 创建并分配端口和信号
+        current_token_holder[channel] = new sc_out&lt;int&gt;();       // 当前令牌持有者端口
+        current_token_expiration[channel] = new sc_out&lt;int&gt;();   // 令牌过期时间端口
+        token_holder_signals[channel] = new sc_signal&lt;int&gt;();    // 令牌持有者信号
+        token_expiration_signals[channel] = new sc_signal&lt;int&gt;();// 令牌过期时间信号
+
+        // 4. 绑定端口和信号
+        current_token_holder[channel]-&gt;bind(*(token_holder_signals[channel]));
+        current_token_expiration[channel]-&gt;bind(*(token_expiration_signals[channel]));
+
+        // 5. 初始化令牌持有时间
+        token_hold_count[channel] = 0;
+
+        // 6. 根据 MAC 策略设置令牌持有时间
+        if (GlobalParams::channel_configuration[channel].macPolicy[0] != TOKEN_PACKET) {
+            // 计算延迟周期数
+            double delay_ps = 1000 * GlobalParams::flit_size / GlobalParams::channel_configuration[channel].dataRate;
+            int cycles = ceil(delay_ps / GlobalParams::clock_period_ps);
+
+            // 获取最大持有周期数
+            int max_hold_cycles = atoi(GlobalParams::channel_configuration[channel].macPolicy[1].c_str());
+
+            // 断言周期数小于最大持有周期数
+            assert(cycles &lt; max_hold_cycles);
+
+            // 设置令牌持有时间
+            token_hold_count[channel] = atoi(GlobalParams::channel_configuration[channel].macPolicy[1].c_str());
+        }
+    }
+
+    // 7. 创建并绑定 Hub 的标志端口和信号
+    flag[channel][hub] = new sc_inout&lt;int&gt;();
+    flag_signals[channel][hub] = new sc_signal&lt;int&gt;();
+    flag[channel][hub]-&gt;bind(*(flag_signals[channel][hub]));
+    hub_flag_port-&gt;bind(*(flag_signals[channel][hub]));
+
+    // 8. 连接 TokenRing 到 Hub
+    hub_token_holder_port-&gt;bind(*(token_holder_signals[channel]));
+    hub_token_expiration_port-&gt;bind(*(token_expiration_signals[channel]));
+
+    // 9. 将 Hub 添加到环的映射中
+    rings_mapping[channel].push_back(hub);
+
+    // 10. 设置初始令牌持有者
+    int starting_hub = rings_mapping[channel][0];
+    current_token_holder[channel]-&gt;write(starting_hub);
+}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="buffer"><a class="header" href="#buffer">Buffer</a></h1>
+<h2 id="buffer-类功能介绍"><a class="header" href="#buffer-类功能介绍">Buffer 类功能介绍</a></h2>
+<p><code>Buffer</code> 类模拟了网络中的缓冲区，用于存储和管理数据包（Flit）。以下是该类的主要功能：</p>
+<p><strong>1. 缓冲区管理</strong></p>
+<ul>
+<li><strong>设置和获取缓冲区大小</strong>：<code>SetMaxBufferSize()</code> 和 <code>GetMaxBufferSize()</code> 用于设置和获取缓冲区的最大容量（以 Flit 为单位）。</li>
+<li><strong>检查缓冲区状态</strong>：<code>IsFull()</code> 和 <code>IsEmpty()</code> 用于判断缓冲区是否已满或为空。</li>
+<li><strong>获取可用槽位数</strong>：<code>getCurrentFreeSlots()</code> 用于获取缓冲区中可用的空闲槽位数。</li>
+</ul>
+<p><strong>2. 数据包操作</strong></p>
+<ul>
+<li><strong>入队（Push）</strong>：<code>Push()</code> 方法将一个 Flit 添加到缓冲区。如果缓冲区已满，则调用 <code>Drop()</code> 方法进行处理（例如丢弃数据包）。</li>
+<li><strong>出队（Pop）</strong>：<code>Pop()</code> 方法从缓冲区中移除并返回一个 Flit。如果缓冲区为空，则调用 <code>Empty()</code> 方法进行处理。</li>
+<li><strong>查看队首（Front）</strong>：<code>Front()</code> 方法返回缓冲区中第一个 Flit 的副本，但不移除它。</li>
+</ul>
+<p><strong>3. 统计信息</strong></p>
+<ul>
+<li><strong>统计信息显示</strong>：<code>ShowStats()</code> 方法用于输出缓冲区的统计信息，例如最大占用率、平均占用时间等。</li>
+<li><strong>禁用</strong>：<code>Disable()</code> 方法用于禁用缓冲区。</li>
+</ul>
+<p><strong>4. 调试功能</strong></p>
+<ul>
+<li><strong>打印缓冲区内容</strong>：<code>Print()</code> 方法用于打印缓冲区中的内容，方便调试。</li>
+<li><strong>死锁检测</strong>：<code>deadlockFree()</code> 和 <code>deadlockCheck()</code> 方法用于检测缓冲区是否发生死锁。</li>
+</ul>
+<p><strong>5. 其他功能</strong></p>
+<ul>
+<li><strong>设置和获取标签</strong>：<code>setLabel()</code> 和 <code>getLabel()</code> 方法用于设置和获取缓冲区的标签，方便识别。</li>
+</ul>
+<p><strong>内部实现</strong></p>
+<ul>
+<li><code>buffer</code>：使用 <code>queue&lt;Flit&gt;</code> 存储 Flit 数据包。</li>
+<li><code>max_buffer_size</code>：存储缓冲区的最大容量。</li>
+<li><code>max_occupancy</code>、<code>hold_time</code>、<code>mean_occupancy</code>：用于统计缓冲区占用率等信息。</li>
+</ul>
+<p><strong>类型定义</strong></p>
+<ul>
+<li><code>BufferBank</code>：定义了一个 <code>Buffer</code> 数组，用于表示一组虚拟通道的缓冲区。</li>
+</ul>
+<p>总而言之，<code>Buffer</code> 类提供了一个灵活且可配置的缓冲区实现，用于在 NoC 模拟中存储和管理数据包，并提供了一些统计和调试功能，方便分析和优化网络性能。</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="datastructs"><a class="header" href="#datastructs">Datastructs</a></h1>
+<h2 id="datastructsh-数据结构介绍"><a class="header" href="#datastructsh-数据结构介绍">DataStructs.h 数据结构介绍</a></h2>
+<p>该文件定义了 Noxim 模拟器中使用的一些关键数据结构，用于表示网络中的各种元素和信息。</p>
+<p><strong>1. <code>Coord</code></strong></p>
+<ul>
+<li>表示 Tile 在 Mesh 网络中的 XY 坐标。</li>
+<li><code>x</code>：X 坐标。</li>
+<li><code>y</code>：Y 坐标。</li>
+<li>重载了 <code>==</code> 运算符，用于比较两个 <code>Coord</code> 对象是否相等。</li>
+</ul>
+<p><strong>2. <code>FlitType</code></strong></p>
+<ul>
+<li>枚举类型，表示 Flit 的类型。</li>
+<li><code>FLIT_TYPE_HEAD</code>：Head Flit，表示数据包的头部。</li>
+<li><code>FLIT_TYPE_BODY</code>：Body Flit，表示数据包的主体。</li>
+<li><code>FLIT_TYPE_TAIL</code>：Tail Flit，表示数据包的尾部。</li>
+</ul>
+<p><strong>3. <code>Payload</code></strong></p>
+<ul>
+<li>表示 Flit 的有效载荷。</li>
+<li><code>data</code>：<code>sc_uint&lt;32&gt;</code> 类型，用于存储要交换的数据。</li>
+<li>重载了 <code>==</code> 运算符，用于比较两个 <code>Payload</code> 对象是否相等。</li>
+</ul>
+<p><strong>4. <code>Packet</code></strong></p>
+<ul>
+<li>表示一个数据包。</li>
+<li><code>src_id</code>：源节点 ID。</li>
+<li><code>dst_id</code>：目标节点 ID。</li>
+<li><code>vc_id</code>：虚拟通道 ID。</li>
+<li><code>timestamp</code>：数据包生成的时间戳。</li>
+<li><code>size</code>：数据包的大小（Flit 数量）。</li>
+<li><code>flit_left</code>：数据包中剩余的 Flit 数量。</li>
+<li><code>use_low_voltage_path</code>：是否使用低电压路径。</li>
+<li><code>make()</code>：构造函数，用于初始化 <code>Packet</code> 对象。</li>
+</ul>
+<p><strong>5. <code>RouteData</code></strong></p>
+<ul>
+<li>表示路由所需的数据。</li>
+<li><code>current_id</code>：当前节点 ID。</li>
+<li><code>src_id</code>：源节点 ID。</li>
+<li><code>dst_id</code>：目标节点 ID。</li>
+<li><code>dir_in</code>：数据包进入路由器的方向。</li>
+<li><code>vc_id</code>：虚拟通道 ID。</li>
+</ul>
+<p><strong>6. <code>ChannelStatus</code></strong></p>
+<ul>
+<li>表示通道的状态。</li>
+<li><code>free_slots</code>：空闲的缓冲区槽位数。</li>
+<li><code>available</code>：通道是否可用。</li>
+<li>重载了 <code>==</code> 运算符，用于比较两个 <code>ChannelStatus</code> 对象是否相等。</li>
+</ul>
+<p><strong>7. <code>NoP_data</code></strong></p>
+<ul>
+<li>表示 NoP（No Operation）数据，用于流量控制。</li>
+<li><code>sender_id</code>：发送者 ID。</li>
+<li><code>channel_status_neighbor</code>：相邻通道的状态数组。</li>
+<li>重载了 <code>==</code> 运算符，用于比较两个 <code>NoP_data</code> 对象是否相等。</li>
+</ul>
+<p><strong>8. <code>TBufferFullStatus</code></strong></p>
+<ul>
+<li>表示缓冲区满状态。</li>
+<li><code>mask</code>：布尔数组，用于指示每个虚拟通道是否已满。</li>
+<li>重载了 <code>==</code> 运算符，用于比较两个 <code>TBufferFullStatus</code> 对象是否相等。</li>
+</ul>
+<p><strong>9. <code>Flit</code></strong></p>
+<ul>
+<li>表示一个 Flit（Flow control unit）。</li>
+<li><code>src_id</code>：源节点 ID。</li>
+<li><code>dst_id</code>：目标节点 ID。</li>
+<li><code>vc_id</code>：虚拟通道 ID。</li>
+<li><code>flit_type</code>：Flit 类型（<code>FLIT_TYPE_HEAD</code>、<code>FLIT_TYPE_BODY</code>、<code>FLIT_TYPE_TAIL</code>）。</li>
+<li><code>sequence_no</code>：Flit 在数据包中的序列号。</li>
+<li><code>sequence_length</code>：数据包的总长度。</li>
+<li><code>payload</code>：有效载荷（<code>Payload</code> 类型）。</li>
+<li><code>timestamp</code>：数据包生成的时间戳。</li>
+<li><code>hop_no</code>：从源到目标的跳数。</li>
+<li><code>use_low_voltage_path</code>：是否使用低电压路径。</li>
+<li><code>hub_relay_node</code>：Hub 中继节点。</li>
+<li>重载了 <code>==</code> 运算符，用于比较两个 <code>Flit</code> 对象是否相等。</li>
+</ul>
+<p><strong>10. <code>PowerBreakdownEntry</code></strong></p>
+<ul>
+<li>表示功耗分解条目。</li>
+<li><code>label</code>：标签，描述功耗类型。</li>
+<li><code>value</code>：功耗值。</li>
+</ul>
+<p><strong>11. 枚举类型</strong></p>
+<ul>
+<li>定义了多个枚举类型，用于表示不同的功耗分解条目。</li>
+</ul>
+<p><strong>12. <code>PowerBreakdown</code></strong></p>
+<ul>
+<li>表示功耗分解信息。</li>
+<li><code>size</code>：分解条目的数量。</li>
+<li><code>breakdown</code>：<code>PowerBreakdownEntry</code> 数组，存储功耗分解条目。</li>
+</ul>
+<p>这些数据结构在 Noxim 模拟器中被广泛使用，用于表示网络拓扑、数据包信息、路由信息、通道状态以及功耗信息等。</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="reservationtable"><a class="header" href="#reservationtable">ReservationTable</a></h1>
+<p>类实现了以下功能：</p>
+<ol>
+<li>
+<p><strong>预留管理</strong>：</p>
+<ul>
+<li><code>checkReservation(const TReservation r, const int port_out)</code>: 检查指定的输入端口/虚拟通道是否已经预留了指定的输出端口。</li>
+<li><code>reserve(const TReservation r, const int port_out)</code>: 为指定的输入端口/虚拟通道预留指定的输出端口。如果该输出端口已经被预留，则会触发断言。</li>
+<li><code>release(const TReservation r, const int port_out)</code>: 释放指定的输入端口/虚拟通道对指定输出端口的预留。如果该输出端口没有被预留或者预留信息不匹配，则会触发断言。</li>
+<li><code>isNotReserved(const int port_out)</code>: 检查指定的输出端口是否没有被任何输入端口/虚拟通道预留。</li>
+</ul>
+</li>
+<li>
+<p><strong>查询</strong>：</p>
+<ul>
+<li><code>getReservations(const int port_int)</code>: 获取指定输入端口预留的所有输出端口和虚拟通道的对应关系。</li>
+</ul>
+</li>
+<li>
+<p><strong>优先级管理</strong>：</p>
+<ul>
+<li><code>updateIndex()</code>: 更新预留表中每个输出端口的优先级最高的预留项的索引（具体优先级策略未在此头文件中定义）。</li>
+</ul>
+</li>
+<li>
+<p><strong>配置</strong>：</p>
+<ul>
+<li><code>setSize(const int n_outputs)</code>: 设置预留表的大小，即交换机的输出端口数量。</li>
+</ul>
+</li>
+<li>
+<p><strong>调试</strong>：</p>
+<ul>
+<li><code>print()</code>: 打印预留表的内容，用于调试和查看预留状态。</li>
+</ul>
+</li>
+</ol>
+<h2 id="类成员函数"><a class="header" href="#类成员函数">类成员函数</a></h2>
+<ul>
+<li>
+<p><strong>ReservationTable()</strong><br />
+构造函数，用于初始化预留表。</p>
+</li>
+<li>
+<p><code>name() const</code><br />
+返回预留表的名字（"ReservationTable"）。</p>
+</li>
+<li>
+<p><code>checkReservation(const TReservation r, const int port_out)</code></p>
+</li>
+<li>
+<p><code>reserve(const TReservation r, const int port_out)</code></p>
+</li>
+<li>
+<p><code>release(const TReservation r, const int port_out)</code></p>
+</li>
+<li>
+<p><code>getReservations(const int port_int)</code></p>
+</li>
+<li>
+<p><code>updateIndex()</code></p>
+</li>
+<li>
+<p><code>isNotReserved(const int port_out)</code></p>
+</li>
+<li>
+<p><code>setSize(const int n_outputs)</code></p>
+</li>
+<li>
+<p><code>print()</code></p>
+</li>
+</ul>
+<h2 id="私有成员变量"><a class="header" href="#私有成员变量">私有成员变量</a></h2>
+<ul>
+<li>
+<p><code>TRTEntry *rtable</code><br />
+指向 TRTEntry 类型数组的指针，用于存储预留信息。<code>rtable[i]</code> 存储了预留输出端口 <code>i</code> 的所有输入端口/虚拟通道的集合。</p>
+</li>
+<li>
+<p><code>int n_outputs</code><br />
+输出端口的数量。</p>
+</li>
+</ul>
+<h2 id="辅助数据结构"><a class="header" href="#辅助数据结构">辅助数据结构</a></h2>
+<ul>
+<li>
+<p><strong>TReservation</strong><br />
+结构体，表示一个预留项，包含输入端口 <code>input</code> 和虚拟通道 <code>vc</code>。</p>
+</li>
+<li>
+<p><strong>RTEntry</strong><br />
+结构体，表示预留表中的一个条目，包含一个 <code>TReservation</code> 类型的向量 <code>reservations</code> 和一个索引 <code>index</code>，用于指示当前优先级最高的预留项。</p>
+</li>
+</ul>
+<h2 id="checkreservationconst-treservation-r-const-int-port_out"><a class="header" href="#checkreservationconst-treservation-r-const-int-port_out"><code>checkReservation(const TReservation r, const int port_out)</code></a></h2>
+<pre><code class="language-cpp">int ReservationTable::checkReservation(const TReservation r, const int port_out)
+{
+    // 1. 检查是否存在禁止的表状态：相同的输入/VC 存在于不同的输出行中
+    for (int o = 0; o &lt; n_outputs; o++)
+    {
+        for (vector&lt;TReservation&gt;::size_type i = 0; i &lt; rtable[o].reservations.size(); i++)
+        {
+            // 在当前实现中，这不应该发生
+            if (o != port_out &amp;&amp; rtable[o].reservations[i] == r)
+            {
+                return RT_ALREADY_OTHER_OUT; // 相同的输入/VC 已经预留了另一个输出端口
+            }
+        }
+    }
+
+    // 2. 在给定的输出条目上，预留必须按 VC 区分
+    // 动机：它们将按周期交错，因为索引会移动
+
+    int n_reservations = rtable[port_out].reservations.size();
+    for (int i = 0; i &lt; n_reservations; i++)
+    {
+        // 3. 预留已经存在
+        if (rtable[port_out].reservations[i] == r)
+            return RT_ALREADY_SAME; // 相同的输入/VC 已经预留了该输出端口
+
+        // 4. 同一个 VC 已经被另一个输入预留了该输出端口
+        if (rtable[port_out].reservations[i].input != r.input &amp;&amp;
+            rtable[port_out].reservations[i].vc == r.vc)
+            return RT_OUTVC_BUSY; // 该输出端口的同一个 VC 已经被另一个输入端口预留
+    }
+    // 5. 没有冲突，该输出端口可用
+    return RT_AVAILABLE; // 该输出端口可用
+}
+</code></pre>
+<h3 id="reserveconst-treservation-r-const-int-port_out"><a class="header" href="#reserveconst-treservation-r-const-int-port_out"><code>reserve(const TReservation r, const int port_out)</code></a></h3>
+<pre><code class="language-cpp">void ReservationTable::reserve(const TReservation r, const int port_out)
+{
+    // 1. 重要提示：当 Hub 与更多连接一起使用时存在问题
+    //
+    // 预留已预留/无效的端口是非法的。正确性应由 ReservationTable 用户保证
+    assert(checkReservation(r, port_out) == RT_AVAILABLE); // 确保要预留的端口可用
+
+    // 2. TODO：更好的策略可以在尽可能远离当前索引的特定位置插入
+    rtable[port_out].reservations.push_back(r); // 将预留信息添加到指定输出端口的预留列表中
+}
+</code></pre>
 
                     </main>
 
