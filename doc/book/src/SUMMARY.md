@@ -11,3 +11,6 @@
 - [Buffer](./Buffer.md)
 - [DataStructs](./DataStructs.md)
 - [ReservationTable](./ReservationTable.md)
+- [GlobalTrafficTable](./GlobalTrafficTable.md)
+- [GlobalRoutingTable](./GlobalRoutingTable.md)
+- [GlobalParams](./GlobalParams.md)

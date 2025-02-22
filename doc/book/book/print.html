@@ -3555,6 +3555,136 @@ map&lt;int, map&lt;int, sc_signal&lt;int&gt;* &gt; &gt; flag_signals;
     rtable[port_out].reservations.push_back(r); // 将预留信息添加到指定输出端口的预留列表中
 }
 </code></pre>
+<h3 id="releaseconst-treservation-r-const-int-port_out"><a class="header" href="#releaseconst-treservation-r-const-int-port_out"><code>release(const TReservation r, const int port_out)</code></a></h3>
+<pre><code class="language-cpp">void ReservationTable::release(const TReservation r, const int port_out)
+{
+    // 1. 断言检查：确保要释放的端口号在有效范围内
+    assert(port_out &lt; n_outputs);
+
+    // 2. 遍历指定输出端口的预留列表
+    for (vector&lt;TReservation&gt;::iterator i = rtable[port_out].reservations.begin();
+         i != rtable[port_out].reservations.end(); i++)
+    {
+        // 3. 查找要释放的预留项
+        if (*i == r)
+        {
+            // 4. 从预留列表中移除该预留项
+            rtable[port_out].reservations.erase(i);
+
+            // 5. 计算被移除预留项的索引
+            vector&lt;TReservation&gt;::size_type removed_index = i - rtable[port_out].reservations.begin();
+
+            // 6. 更新优先级索引
+            if (removed_index &lt; rtable[port_out].index)
+                rtable[port_out].index--; // 如果移除的预留项在当前优先级索引之前，则减小优先级索引
+            else if (rtable[port_out].index &gt;= rtable[port_out].reservations.size())
+                rtable[port_out].index = 0; // 如果优先级索引超出了预留列表的范围，则重置为 0
+
+            return; // 释放成功，退出函数
+        }
+    }
+    // 7. 如果没有找到要释放的预留项，则断言失败
+    assert(false); // trying to release a never made reservation  ?
+}
+</code></pre>
+<h3 id="getreservationsconst-int-port_int"><a class="header" href="#getreservationsconst-int-port_int"><code>getReservations(const int port_int)</code></a></h3>
+<pre><code class="language-cpp">/* Returns the pairs of output port and virtual channel reserved by port_in
+ * Note that in current implementation, only one pair can be reserved by
+ * the same output in the same clock cycle. */
+vector&lt;pair&lt;int, int&gt; &gt; ReservationTable::getReservations(const int port_in)
+{
+    vector&lt;pair&lt;int, int&gt; &gt; reservations; // 用于存储预留信息的向量
+
+    for (int o = 0; o &lt; n_outputs; o++) // 遍历所有输出端口
+    {
+        if (rtable[o].reservations.size() &gt; 0) // 如果该输出端口有预留
+        {
+            int current_index = rtable[o].index; // 获取当前优先级最高的预留项的索引
+            if (rtable[o].reservations[current_index].input ==
+                port_in) // 如果该预留项的输入端口与指定的输入端口相同
+                reservations.push_back(pair&lt;int, int&gt;(
+                    o, rtable[o].reservations[current_index].vc)); // 将输出端口和虚拟通道添加到结果向量中
+        }
+    }
+    return reservations; // 返回结果向量
+}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="globaltraffictable"><a class="header" href="#globaltraffictable">GlobalTrafficTable</a></h1>
+<h2 id="全局流量表说明"><a class="header" href="#全局流量表说明">全局流量表说明</a></h2>
+<p>这段代码定义了一个全局流量表，用于管理和存储网络中各节点之间的通信数据，为网络仿真提供流量模型支持。</p>
+<h3 id="数据结构定义"><a class="header" href="#数据结构定义">数据结构定义</a></h3>
+<ul>
+<li><strong>Communication 结构体</strong><br />
+用于存储单个通信链路的详细信息，包括：
+<ul>
+<li><code>src</code>：源节点ID</li>
+<li><code>dst</code>：目标节点ID</li>
+<li><code>pir</code>：数据包注入率</li>
+<li><code>por</code>：重传概率</li>
+<li><code>t_on</code>：活动开始时间</li>
+<li><code>t_off</code>：活动结束时间</li>
+<li><code>t_period</code>：活动周期</li>
+</ul>
+</li>
+</ul>
+<h3 id="类定义"><a class="header" href="#类定义">类定义</a></h3>
+<ul>
+<li><strong>GlobalTrafficTable 类</strong><br />
+负责管理全局通信信息，主要包括：
+<ul>
+<li>构造函数 <code>GlobalTrafficTable()</code>：初始化流量表</li>
+<li>函数 <code>load(const char *fname)</code>：从指定文件加载流量表数据</li>
+<li>函数 <code>getCumulativePirPor(...)</code>：计算特定周期内源节点的累积数据包注入率和重传概率，并返回目标节点及其累积概率向量</li>
+<li>函数 <code>occurrencesAsSource(const int src_id)</code>：统计指定源节点在流量表中的出现次数</li>
+</ul>
+</li>
+</ul>
+<h3 id="数据存储"><a class="header" href="#数据存储">数据存储</a></h3>
+<ul>
+<li><strong>traffic_table</strong><br />
+私有成员变量，通常为一个存储所有 <code>Communication</code> 信息的向量。</li>
+</ul>
+<p>该模块为网络通信管理提供了结构化的数据模型和相关操作接口，支持复杂的流量查询与统计功能。</p>
+<h2 id="double-getcumulativepirporconst-int-src_id"><a class="header" href="#double-getcumulativepirporconst-int-src_id">`double getCumulativePirPor(const int src_id,</a></h2>
+<pre><code>		       const int ccycle,
+		       const bool pir_not_por,
+		       vector &lt; pair &lt; int, double &gt; &gt; &amp;dst_prob);`
+</code></pre>
+<pre><code class="language-cpp">double GlobalTrafficTable::getCumulativePirPor(const int src_id, const int ccycle,const bool pir_not_por,vector &lt; pair &lt; int, double &gt; &gt; &amp;dst_prob)
+{
+  double cpirnpor = 0.0; // 累积的 PIR 或 POR 值
+
+  dst_prob.clear(); // 清空目标节点概率向量
+
+  for (unsigned int i = 0; i &lt; traffic_table.size(); i++) { // 遍历流量表
+    Communication comm = traffic_table[i]; // 获取当前通信信息
+    if (comm.src == src_id) { // 如果当前通信的源节点与指定的源节点 ID 匹配
+      int r_ccycle = ccycle % comm.t_period; // 计算当前周期在通信周期内的相对位置
+      if (r_ccycle &gt; comm.t_on &amp;&amp; r_ccycle &lt; comm.t_off) { // 如果当前周期在通信的活动时间内
+    cpirnpor += pir_not_por ? comm.pir : comm.por; // 根据 pir_not_por 标志累加 PIR 或 POR
+    pair &lt; int, double &gt;dp(comm.dst, cpirnpor); // 创建一个目标节点和累积概率的键值对
+    dst_prob.push_back(dp); // 将键值对添加到目标节点概率向量中
+      }
+    }
+  }
+
+  return cpirnpor; // 返回累积的 PIR 或 POR 值
+}
+</code></pre>
+<h2 id="int-occurrencesassourceconst-int-src_id"><a class="header" href="#int-occurrencesassourceconst-int-src_id"><code>int occurrencesAsSource(const int src_id)</code></a></h2>
+<pre><code class="language-cpp">int GlobalTrafficTable::occurrencesAsSource(const int src_id)
+{
+  int count = 0; // 初始化计数器
+
+  for (unsigned int i = 0; i &lt; traffic_table.size(); i++) // 遍历流量表
+    if (traffic_table[i].src == src_id) // 如果当前通信的源节点 ID 与指定的源节点 ID 匹配
+      count++; // 计数器加 1
+
+  return count; // 返回源节点 ID 出现的次数
+}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="globalroutingtable"><a class="header" href="#globalroutingtable">GlobalRoutingTable</a></h1>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="globalparams"><a class="header" href="#globalparams">GlobalParams</a></h1>
 
                     </main>
 

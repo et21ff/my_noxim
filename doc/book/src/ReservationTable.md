@@ -111,3 +111,60 @@ void ReservationTable::reserve(const TReservation r, const int port_out)
 }
 ```
 
+### `release(const TReservation r, const int port_out)`
+```cpp
+void ReservationTable::release(const TReservation r, const int port_out)
+{
+    // 1. 断言检查：确保要释放的端口号在有效范围内
+    assert(port_out < n_outputs);
+
+    // 2. 遍历指定输出端口的预留列表
+    for (vector<TReservation>::iterator i = rtable[port_out].reservations.begin();
+         i != rtable[port_out].reservations.end(); i++)
+    {
+        // 3. 查找要释放的预留项
+        if (*i == r)
+        {
+            // 4. 从预留列表中移除该预留项
+            rtable[port_out].reservations.erase(i);
+
+            // 5. 计算被移除预留项的索引
+            vector<TReservation>::size_type removed_index = i - rtable[port_out].reservations.begin();
+
+            // 6. 更新优先级索引
+            if (removed_index < rtable[port_out].index)
+                rtable[port_out].index--; // 如果移除的预留项在当前优先级索引之前，则减小优先级索引
+            else if (rtable[port_out].index >= rtable[port_out].reservations.size())
+                rtable[port_out].index = 0; // 如果优先级索引超出了预留列表的范围，则重置为 0
+
+            return; // 释放成功，退出函数
+        }
+    }
+    // 7. 如果没有找到要释放的预留项，则断言失败
+    assert(false); // trying to release a never made reservation  ?
+}
+```
+
+### `getReservations(const int port_int)`
+```cpp
+/* Returns the pairs of output port and virtual channel reserved by port_in
+ * Note that in current implementation, only one pair can be reserved by
+ * the same output in the same clock cycle. */
+vector<pair<int, int> > ReservationTable::getReservations(const int port_in)
+{
+    vector<pair<int, int> > reservations; // 用于存储预留信息的向量
+
+    for (int o = 0; o < n_outputs; o++) // 遍历所有输出端口
+    {
+        if (rtable[o].reservations.size() > 0) // 如果该输出端口有预留
+        {
+            int current_index = rtable[o].index; // 获取当前优先级最高的预留项的索引
+            if (rtable[o].reservations[current_index].input ==
+                port_in) // 如果该预留项的输入端口与指定的输入端口相同
+                reservations.push_back(pair<int, int>(
+                    o, rtable[o].reservations[current_index].vc)); // 将输出端口和虚拟通道添加到结果向量中
+        }
+    }
+    return reservations; // 返回结果向量
+}
+```
