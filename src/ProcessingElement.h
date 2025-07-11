@@ -75,9 +75,39 @@ SC_MODULE(ProcessingElement)
     int roulett();
     int findRandomDestination(int local_id,int hops);
     unsigned int getQueueSize() const;
+public:
+    // --- 角色定义 ---
+    enum PE_Role { ROLE_UNUSED,ROLE_GLB, ROLE_SPAD, ROLE_COMPUTE };
+    PE_Role role;
 
+    // --- 存储状态 (所有角色都可能用到) ---
+    int current_data_size;
+    int max_capacity;
+
+    // --- 生产者状态 (GLB and SPAD) ---
+    int transfer_chunk_size;
+    int current_downstream_target_index;
+    std::vector<int> downstream_node_ids;
+
+
+    // --- 消费者状态 (ComputePE) ---
+    bool is_computing;
+    int compute_cycles_left;
+    bool is_stalled_waiting_for_data;
+    int required_data_per_compute;
+    int data_to_spad; // SPAD需要从上级获取的数据量
+
+     // **** END OF OUR NEW VARIABLES ****
+
+    void pe_init();
+    void run_glb_logic();
+    void run_spad_logic();
+    void run_compute_logic();
     // Constructor
     SC_CTOR(ProcessingElement) {
+    SC_METHOD(pe_init);
+    sensitive << reset;
+
 	SC_METHOD(rxProcess);
 	sensitive << reset;
 	sensitive << clock.pos();

@@ -16,46 +16,290 @@ int ProcessingElement::randInt(int min, int max)
 	(int) ((double) (max - min + 1) * rand() / (RAND_MAX + 1.0));
 }
 
-void ProcessingElement::rxProcess()
-{
-    if (reset.read()) {
-	ack_rx.write(0);
-	current_level_rx = 0;
-    } else {
-	if (req_rx.read() == 1 - current_level_rx) {
-	    Flit flit_tmp = flit_rx.read();
-	    current_level_rx = 1 - current_level_rx;	// Negate the old value for Alternating Bit Protocol (ABP)
-	}
-	ack_rx.write(current_level_rx);
+void ProcessingElement::pe_init() {
+    // 根据 local_id 分配角色
+    if (local_id == 0) {
+        role = ROLE_GLB;
+        current_data_size = 10000; // GLB初始有大量数据
+        max_capacity = 20000;
+        transfer_chunk_size = 10; // 每次向SPAD传输10个单位
+        downstream_node_ids.push_back(1); // 下游是ID=1 (SPAD)
+        current_downstream_target_index = 0;
+    } else if (local_id == 1) {
+        role = ROLE_SPAD;
+        current_data_size = 0;
+        max_capacity = 100;
+        transfer_chunk_size = 5; // 每次向ComputePE传输5个单位
+        downstream_node_ids.push_back(2); // 下游是ID=2 (Compute)
+        current_downstream_target_index = 0;
+        data_to_spad = 20; // 每次从GLB获取20个单位数据
+    } else if (local_id == 2) {
+        role = ROLE_COMPUTE;
+        is_computing = false;
+        is_stalled_waiting_for_data = false;
+        compute_cycles_left = 0;
+        required_data_per_compute = 5;
+        current_data_size = 0; // compute pe的本地buffer
+        max_capacity = 20;
     }
+
+    // 重置后，所有PE的发送状态都应该是干净的
+    transmittedAtPreviousCycle = false;
 }
 
+// 在 ProcessingElement.cpp 中
+
+void ProcessingElement::rxProcess() {
+    // 步骤 0: 处理Reset信号 (保持不变)
+    if (reset.read()) {
+        ack_rx.write(0);
+        current_level_rx = 0;
+        // 在reset时，也应该清理其他与接收相关的状态
+        return;
+    }
+
+    // 步骤 1: 遵循Noxim的握手协议 (核心结构保持不变)
+    if (req_rx.read() == 1 - current_level_rx) {
+        // 读取flit，这是我们处理的输入
+        Flit flit = flit_rx.read();
+
+        // ------------------- 我们注入的新逻辑 [开始] -------------------
+
+        // 步骤 2: 只在接收到包尾(TAIL)时，才触发我们的上层逻辑
+        if (flit.flit_type == FLIT_TYPE_TAIL) {
+            
+            cout << sc_time_stamp() << ": " << name() << " RX <<< TAIL from " 
+                 << flit.src_id << ", packet size: " << flit.sequence_length << endl;
+
+            // 步骤 3: 根据角色执行不同的操作
+            switch (role) {
+                case ROLE_SPAD:
+                    // SPAD接收到来自上游(GLB)的数据
+                    current_data_size += flit.sequence_length; // 假设flit.size就是我们约定的块大小
+                    // max_capacity = GlobalParams::buffer_depth * GlobalParams::flit_size;
+                    if(current_data_size > max_capacity) current_data_size = max_capacity;
+                    
+                    cout << sc_time_stamp() << ": SPAD[" << local_id << "] RX data. New size: " 
+                         << current_data_size << "/" << max_capacity << endl;
+                    break;
+
+                case ROLE_COMPUTE:
+                    // ComputePE接收到来自SPAD的数据
+                    current_data_size += flit.sequence_length;
+                    // max_capacity = GlobalParams::buffer_depth * GlobalParams::flit_size;
+                    if(current_data_size > max_capacity) current_data_size = max_capacity;
+                    
+                    cout << sc_time_stamp() << ": COMPUTE[" << local_id << "] RX data. New size: " 
+                         << current_data_size << "/" << max_capacity << endl;
+
+                    // ** 事件响应: 检查是否可以解除停机状态 **
+                    if (is_stalled_waiting_for_data && current_data_size >= required_data_per_compute) {
+                        is_stalled_waiting_for_data = false;
+                        cout << sc_time_stamp() << ": COMPUTE[" << local_id << "] Data arrived, UNSTALLING." << endl;
+                    }
+                    break;
+                
+                case ROLE_GLB:
+                    // GLB 在我们的模型中是顶级生产者，它只发送不接收。
+                    // 但为了完整性，可以加个日志。
+                    cout << sc_time_stamp() << ": WARNING - GLB[" << local_id << "] received a packet unexpectedly." << endl;
+                    break;
+            }
+        }
+        // ------------------- 我们注入的新逻辑 [结束] -------------------
+
+
+        // 步骤 4: 翻转握手信号 (核心结构保持不变)
+        current_level_rx = 1 - current_level_rx;
+    }
+
+    // 步骤 5: 将新的ack level写回端口 (核心结构保持不变)
+    ack_rx.write(current_level_rx);
+}
+// void ProcessingElement::rxProcess()
+// {
+//     if (reset.read()) {
+// 	ack_rx.write(0);
+// 	current_level_rx = 0;
+//     } else {
+// 	if (req_rx.read() == 1 - current_level_rx) {
+// 	    Flit flit_tmp = flit_rx.read();
+// 	    current_level_rx = 1 - current_level_rx;	// Negate the old value for Alternating Bit Protocol (ABP)
+// 	}
+// 	ack_rx.write(current_level_rx);
+//     }
+// }
+
+// void ProcessingElement::txProcess()
+// {
+//     if (reset.read()) {
+// 	req_tx.write(0);
+// 	current_level_tx = 0;
+// 	transmittedAtPreviousCycle = false;
+//     } else {
+// 	Packet packet;
+
+// 	if (canShot(packet)) {
+// 	    packet_queue.push(packet);
+// 	    transmittedAtPreviousCycle = true;
+// 	} else
+// 	    transmittedAtPreviousCycle = false;
+
+
+// 	if (ack_tx.read() == current_level_tx) {
+// 	    if (!packet_queue.empty()) {
+// 		Flit flit = nextFlit();	// Generate a new flit
+// 		flit_tx->write(flit);	// Send the generated flit
+// 		current_level_tx = 1 - current_level_tx;	// Negate the old value for Alternating Bit Protocol (ABP)
+// 		req_tx.write(current_level_tx);
+// 	    }
+// 	}
+//     }
+// }
 void ProcessingElement::txProcess()
 {
+    // 步骤 0: 处理Reset信号 (保持不变)
     if (reset.read()) {
-	req_tx.write(0);
-	current_level_tx = 0;
-	transmittedAtPreviousCycle = false;
+        req_tx.write(0);
+        current_level_tx = 0;
+        transmittedAtPreviousCycle = false; // <-- 注意：原始代码这里可能有点问题，reset时也应该清空队列
+        while(!packet_queue.empty()) packet_queue.pop();
+        return;
+    }
+
+    // ------------------- 我们注入的新逻辑 [开始] -------------------
+
+    // 步骤 1: 决定是否要生成新的数据包
+    // 只有在队列为空时，我们才考虑生成新的包。这可以防止我们无限地产生包。
+    if (packet_queue.empty()) {
+        transmittedAtPreviousCycle = false; // 确保可以生成新包
+        
+        // 根据角色调用不同的逻辑
+        switch (role) {
+            case ROLE_GLB:
+                run_glb_logic(); // 这个函数会判断是否该生成包，如果该，就生成并push到packet_queue
+                break;
+            case ROLE_SPAD:
+                run_spad_logic();
+                break;
+            case ROLE_COMPUTE:
+                run_compute_logic();
+                break;
+        }
+    }
+    // ------------------- 我们注入的新逻辑 [结束] -------------------
+
+
+    // ------------------- 复用Noxim的底层发送逻辑 [开始] -------------------
+
+    // 步骤 2: 处理与下游的握手和Flit发送 (这部分代码几乎直接从原始代码复制)
+    if (ack_tx.read() == current_level_tx) {
+        if (!packet_queue.empty()) {
+            // 从队首数据包中取出下一个flit
+            Flit flit = nextFlit();
+            
+            // 我们可以在这里加一些日志来调试
+            if (flit.flit_type == FLIT_TYPE_HEAD) {
+                 cout << sc_time_stamp() << ": " << name() << " TX >>> Flit HEAD to " << flit.dst_id << endl;
+            }
+
+            flit_tx.write(flit); // 通过端口发送flit
+
+            // 更新握手协议的状态
+            current_level_tx = 1 - current_level_tx;
+            req_tx.write(current_level_tx);
+        }
+    }
+    // ------------------- 复用Noxim的底层发送逻辑 [结束] -------------------
+}
+
+// 这是 run_compute_logic() 函数，它在 txProcess() 中被调用
+void ProcessingElement::run_compute_logic() {
+    // 状态1: 如果正在计算，就倒计时
+    if (is_computing) {
+        compute_cycles_left--;
+        if (compute_cycles_left == 0) {
+            is_computing = false;
+            cout << sc_time_stamp() << ": COMPUTE[" << local_id << "] Finished compute task." << endl;
+        }
+        return;
+    }
+
+    // 状态2: 如果停机等待数据，就什么也不做
+    // rxProcess会负责解除这个状态
+    if (is_stalled_waiting_for_data) {
+        return; 
+    }
+
+    // 状态3: 空闲状态，并且数据已就绪 (因为stall状态已被解除)
+    // 检查是否可以开始新的计算
+    if (current_data_size >= required_data_per_compute) {
+        // 数据充足，开始计算！
+        is_computing = true;
+        compute_cycles_left = 5;
+        current_data_size -= required_data_per_compute; // 消耗数据
+
+        cout << sc_time_stamp() << ": COMPUTE[" << local_id << "] Starting compute task. "
+             << "Remaining data: " << current_data_size << endl;
     } else {
-	Packet packet;
-
-	if (canShot(packet)) {
-	    packet_queue.push(packet);
-	    transmittedAtPreviousCycle = true;
-	} else
-	    transmittedAtPreviousCycle = false;
-
-
-	if (ack_tx.read() == current_level_tx) {
-	    if (!packet_queue.empty()) {
-		Flit flit = nextFlit();	// Generate a new flit
-		flit_tx->write(flit);	// Send the generated flit
-		current_level_tx = 1 - current_level_tx;	// Negate the old value for Alternating Bit Protocol (ABP)
-		req_tx.write(current_level_tx);
-	    }
-	}
+        // 数据不足，进入停机等待状态
+        is_stalled_waiting_for_data = true;
+        cout << sc_time_stamp() << ": COMPUTE[" << local_id << "] Not enough data, STALLING." << endl;
     }
 }
+
+void ProcessingElement::run_glb_logic() {
+        if (downstream_node_ids.empty()) {
+        // 如果一个PE的下游列表是空的，它绝对不应该执行这个函数。
+        // 打印一个错误信息然后直接返回。
+        cout << sc_time_stamp() << ": ERROR! " << name() 
+             << " with empty downstream list tried to run GLB logic. Aborting logic." << endl;
+        return;
+    }
+    // 检查是否有数据可发
+    if (current_data_size >= transfer_chunk_size) {
+        // 创建一个数据包
+        Packet pkt;
+        pkt.src_id = local_id;
+        pkt.dst_id = downstream_node_ids[0]; // 简化，假设只有一个下游
+        pkt.timestamp = sc_time_stamp().to_double() / GlobalParams::clock_period_ps;
+        pkt.size = pkt.flit_left = transfer_chunk_size; 
+        pkt.vc_id = randInt(0,GlobalParams::n_virtual_channels-1);
+        
+        // 将包放入发送队列
+        packet_queue.push(pkt);
+
+        // 更新自己的状态
+        current_data_size -= transfer_chunk_size;
+
+        cout << sc_time_stamp() << ": GLB[" << local_id << "] PUSHED a packet to queue for SPAD[" 
+             << pkt.dst_id << "]. New size: " << current_data_size << endl;
+    }
+}
+
+void ProcessingElement::run_spad_logic() {
+    // 检查是否有数据可发
+    if (current_data_size >= transfer_chunk_size) {
+        // 创建一个数据包
+        Packet pkt;
+        pkt.src_id = local_id;
+        pkt.dst_id = downstream_node_ids[0]; // 简化，假设只有一个下游
+        pkt.timestamp = sc_time_stamp().to_double() / GlobalParams::clock_period_ps;
+        pkt.size = pkt.flit_left = transfer_chunk_size; 
+        pkt.vc_id = randInt(0,GlobalParams::n_virtual_channels-1);
+        
+        // 将包放入发送队列
+        packet_queue.push(pkt);
+
+        // 更新自己的状态
+        current_data_size -= transfer_chunk_size;
+
+        cout << sc_time_stamp() << ": SPAD[" << local_id << "] PUSHED a packet to queue for Compute[" 
+             << pkt.dst_id << "]. New size: " << current_data_size << endl;
+    }
+}
+
+
 
 Flit ProcessingElement::nextFlit()
 {
