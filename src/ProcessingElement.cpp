@@ -22,7 +22,7 @@ void ProcessingElement::pe_init() {
         role = ROLE_GLB;
         current_data_size = 10000; // GLB初始有大量数据
         max_capacity = 20000;
-        transfer_chunk_size = 20; // 每次向SPAD传输10个单位
+        transfer_chunk_size = 10; // 每次向SPAD传输20个单位
         downstream_node_ids.push_back(1); // 下游是ID=1 (SPAD)
         current_downstream_target_index = 0;
         receive_chunk_size=0; // GLB不接收数据
@@ -33,7 +33,7 @@ void ProcessingElement::pe_init() {
         transfer_chunk_size = 5; // 每次向ComputePE传输5个单位
         downstream_node_ids.push_back(2); // 下游是ID=2 (Compute)
         current_downstream_target_index = 0;
-        receive_chunk_size=20; // SPAD期望每次接收20个单位数据
+        receive_chunk_size=10; // SPAD期望每次接收20个单位数据
     } else if (local_id == 2) {
         role = ROLE_COMPUTE;
         is_computing = false;
@@ -69,6 +69,8 @@ void ProcessingElement::update_ready_signal() {
         // 如果想写 false, 就写入一个负值，比如 -m_id
         downstream_ready_out.write(-local_id);
     }
+    // if(role==ROLE_SPAD)
+    // dbg(sc_time_stamp(), name(), "Updating ready signal to %d", downstream_ready_out.read());
     
 }
 
@@ -213,6 +215,7 @@ void ProcessingElement::run_compute_logic() {
         compute_cycles_left--;
         if (compute_cycles_left == 0) {
             is_computing = false;
+            current_data_size.write(current_data_size.read()-required_data_per_compute) ; // 消耗数据
             cout << sc_time_stamp() << ": COMPUTE[" << local_id << "] Finished compute task." << endl;
         }
         return;
@@ -230,10 +233,9 @@ void ProcessingElement::run_compute_logic() {
         // 数据充足，开始计算！
         is_computing = true;
         compute_cycles_left = 10;
-        current_data_size.write(current_data_size.read()-required_data_per_compute) ; // 消耗数据
 
         cout << sc_time_stamp() << ": COMPUTE[" << local_id << "] Starting compute task. "
-             << "Remaining data: " << current_data_size << endl;
+             << "Remaining data: " <<current_data_size.read() << endl;
     } else {
         // 数据不足，进入停机等待状态
         is_stalled_waiting_for_data = true;
