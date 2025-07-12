@@ -2142,6 +2142,20 @@ void NoC::buildOmega()
 
 void NoC::buildMesh()
 {
+	// **** 1. 初始化我们的vector ****
+    // 将其resize为 mesh_dim_y x mesh_dim_x 的大小
+    pe_ready_signals_x.resize(GlobalParams::mesh_dim_y);
+    for (int j=0; j<GlobalParams::mesh_dim_y; ++j) {
+        pe_ready_signals_x[j].resize(GlobalParams::mesh_dim_x);
+		for (int i=0; i<GlobalParams::mesh_dim_x; ++i) {
+            // 为每个位置 new 一个新的 sc_signal 对象
+            // 并且可以给它一个有意义的名字，方便调试
+            char signal_name[32];
+            sprintf(signal_name, "ready_signal_x_%d_%d", j, i);
+            pe_ready_signals_x[j][i] = new sc_signal<int>(signal_name);
+        }
+    }
+
     buildCommon();
 
     // Initialize signals
@@ -2195,6 +2209,7 @@ void NoC::buildMesh()
 					      GlobalParams::flit_size,
 					      string(GlobalParams::routing_algorithm),
 					      "default");
+
 					      
 
 
@@ -2316,6 +2331,71 @@ void NoC::buildMesh()
 
 	}
     }
+	
+	// **** 第二遍循环：修复后的连接逻辑 ****
+for (int j = 0; j < GlobalParams::mesh_dim_y; j++) {
+    for (int i = 0; i < GlobalParams::mesh_dim_x; i++) {
+        // 获取当前处理的PE
+        ProcessingElement* current_pe = t[i][j]->pe;
+
+        // ** 1. 绑定输入端口 (downstream_ready_in) **
+        //    PE[i] 需要监听其下游 PE[i+1] 的状态。
+        if (i < GlobalParams::mesh_dim_x - 1) {
+            // 如果不是最右边一列，就连接到右边的信号线
+            sc_signal<int>& signal_line = *pe_ready_signals_x[j][i + 1];
+            current_pe->downstream_ready_in(signal_line);
+        } else {
+            // 如果是最右边一列，没有下游，连接到哑信号
+            // 这通常意味着它永远ready（如果dummy_signal是正值）或永远不ready
+            current_pe->downstream_ready_in(dummy_signal);
+        }
+
+        // ** 2. 绑定输出端口 (downstream_ready_out) **
+        //    PE[i] 需要向其上游 PE[i-1] 报告自己的状态。
+        if (i > 0) {
+            // 如果不是最左边一列，就连接到左边的信号线
+            sc_signal<int>& signal_line = *pe_ready_signals_x[j][i];
+            current_pe->downstream_ready_out(signal_line);
+        } else {
+            // 如果是最左边一列，没有上游需要它报告，连接到哑信号
+            current_pe->downstream_ready_out(dummy_signal);
+        }
+    }
+}
+
+cout << "Verifying PE ready signal connections..." << endl;
+
+for (int j = 0; j < GlobalParams::mesh_dim_y; j++) {
+    // 我们只验证内部连接，所以循环到 mesh_dim_x - 1
+    for (int i = 1; i < GlobalParams::mesh_dim_x; i++) {
+        // 获取 PE[i-1] (上游) 和 PE[i] (下游)
+        ProcessingElement* upstream_pe = t[i - 1][j]->pe;
+        ProcessingElement* downstream_pe = t[i][j]->pe;
+
+        // 获取它们之间应该连接的信号线
+        sc_signal<int>* signal_line = pe_ready_signals_x[j][i];
+
+        // 1. 验证下游PE的输出是否连接到了这条信号线
+        // get_interface() 返回一个指向 sc_signal_inout_if 的指针
+        auto downstream_if = downstream_pe->downstream_ready_out.get_interface();
+        assert(downstream_if == signal_line && "Assertion failed: Downstream PE's ready_out is not connected to the correct signal line.");
+        
+        // 2. 验证上游PE的输入是否连接到了这条信号线
+        auto upstream_if = upstream_pe->downstream_ready_in.get_interface();
+        assert(upstream_if == signal_line && "Assertion failed: Upstream PE's ready_in is not connected to the correct signal line.");
+        
+        cout << "  - Connection between PE[" << i-1 << "][" << j << "] and PE[" << i << "][" << j << "] on signal "
+             << signal_line->name() << " is CORRECT." << endl;
+    }
+}
+
+// 验证边界条件
+// PE 最左边一列的 ready_out 应该连接到 dummy_signal
+assert(t[0][0]->pe->downstream_ready_out.get_interface() == &dummy_signal);
+// PE 最右边一列的 ready_in 应该连接到 dummy_signal
+assert(t[GlobalParams::mesh_dim_x - 1][0]->pe->downstream_ready_in.get_interface() == &dummy_signal);
+
+cout << "All PE ready signal connections verified successfully!" << endl;
 
     // dummy NoP_data structure
     NoP_data tmp_NoP;

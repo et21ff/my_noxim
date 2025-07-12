@@ -62,7 +62,8 @@ int sc_main(int arg_num, char *arg_vet[])
     n->clock(clock);
     n->reset(reset);
 
-    // Trace signals
+
+
     sc_trace_file *tf = NULL;
     if (GlobalParams::trace_mode) {
 	tf = sc_create_vcd_trace_file(GlobalParams::trace_filename.c_str());
@@ -93,6 +94,9 @@ int sc_main(int arg_num, char *arg_vet[])
 	    }
 	}
     }
+    sc_trace(tf, n->t[2][0]->pe->downstream_ready_out,"pe2_ready_out");
+    sc_trace(tf, n->t[2][0]->pe->current_data_size,"pe2_current_data_size");
+    sc_trace(tf, n->t[2][0]->pe->is_receiving_packet,"pe2_is_receiving_packet");
     // Reset the chip and run the simulation
     reset.write(1);
     cout << "Reset for " << (int)(GlobalParams::reset_time) << " cycles... ";

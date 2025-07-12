@@ -24,6 +24,11 @@ SC_MODULE(ProcessingElement)
 {
 
     // I/O Ports
+
+    // **** 我们新增的、用于握手的端口 ****
+    sc_in<int> downstream_ready_in; // 从下游PE接收的"ready"信号
+    sc_out<int> downstream_ready_out; // 向上游PE发送的"ready"信号
+
     sc_in_clk clock;		// The input clock for the PE
     sc_in < bool > reset;	// The reset signal for the PE
 
@@ -80,8 +85,6 @@ public:
     enum PE_Role { ROLE_UNUSED,ROLE_GLB, ROLE_SPAD, ROLE_COMPUTE };
     PE_Role role;
 
-    // --- 存储状态 (所有角色都可能用到) ---
-    int current_data_size;
     int max_capacity;
 
     // --- 生产者状态 (GLB and SPAD) ---
@@ -95,11 +98,14 @@ public:
     int compute_cycles_left;
     bool is_stalled_waiting_for_data;
     int required_data_per_compute;
-    int data_to_spad; // SPAD需要从上级获取的数据量
+    int  receive_chunk_size;; // 期望从上级获取的数据量
 
-     // **** END OF OUR NEW VARIABLES ****
-
+    sc_signal<int> current_data_size;
+    sc_signal<bool> is_receiving_packet;
+    std::string role_to_str(const PE_Role& role); // 用于将角色转换为字符串
+     void update_ready_signal(); // 一个新的SC_METHOD,用于向上级存储器更新当前空闲状态
     void pe_init();
+    void run_storage_logic();
     void run_glb_logic();
     void run_spad_logic();
     void run_compute_logic();
@@ -108,6 +114,7 @@ public:
     SC_METHOD(pe_init);
     sensitive << reset;
 
+
 	SC_METHOD(rxProcess);
 	sensitive << reset;
 	sensitive << clock.pos();
@@ -115,6 +122,13 @@ public:
 	SC_METHOD(txProcess);
 	sensitive << reset;
 	sensitive << clock.pos();
+
+    SC_METHOD(update_ready_signal);
+    sensitive << reset;
+    sensitive << current_data_size;      // 3. 直接对信号敏感
+    sensitive << is_receiving_packet;    // 3. 直接对信号敏感
+
+
     }
 
 };

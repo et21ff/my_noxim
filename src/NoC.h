@@ -41,13 +41,16 @@ struct sc_signal_NSWEH
     sc_signal<T> from_hub;
 };
 
-
 SC_MODULE(NoC)
 {
-    public: bool SwitchOnly; //true if the tile are switch only 
+    std::vector<std::vector<sc_signal<int> *>> pe_ready_signals_x;
+    sc_signal<int> dummy_signal;
+
+public:
+    bool SwitchOnly; // true if the tile are switch only
     // I/O Ports
-    sc_in_clk clock;		// The input clock for the NoC
-    sc_in < bool > reset;	// The reset signal for the NoC
+    sc_in_clk clock;   // The input clock for the NoC
+    sc_in<bool> reset; // The reset signal for the NoC
 
     // Signals mesh and switch bloc in delta topologies
     sc_signal_NSWEH<bool> **req;
@@ -59,7 +62,7 @@ SC_MODULE(NoC)
     // NoP
     sc_signal_NSWE<NoP_data> **nop_data;
 
-    //signals for connecting Core2Hub (just to test wireless in Butterfly)
+    // signals for connecting Core2Hub (just to test wireless in Butterfly)
     sc_signal<Flit> *flit_from_hub;
     sc_signal<Flit> *flit_to_hub;
 
@@ -72,67 +75,64 @@ SC_MODULE(NoC)
     sc_signal<TBufferFullStatus> *buffer_full_status_from_hub;
     sc_signal<TBufferFullStatus> *buffer_full_status_to_hub;
 
-
-
     // Matrix of tiles
     Tile ***t;
-    Tile ** core;
+    Tile **core;
 
-    map<int, Hub*> hub;
-    map<int, Channel*> channel;
+    map<int, Hub *> hub;
+    map<int, Channel *> channel;
 
-    TokenRing* token_ring;
+    TokenRing *token_ring;
 
     // Global tables
     GlobalRoutingTable grtable;
     GlobalTrafficTable gttable;
 
-
     // Constructor
 
-    SC_CTOR(NoC) 
+    SC_CTOR(NoC)
     {
 
+        dummy_signal = sc_signal<bool>("dummy_signal");
 
-	if (GlobalParams::topology == TOPOLOGY_MESH)
-	    // Build the Mesh
-	    buildMesh();
-	else if (GlobalParams::topology == TOPOLOGY_BUTTERFLY)
-        buildButterfly(); 
-	else if (GlobalParams::topology == TOPOLOGY_BASELINE)
-	    buildBaseline();
-	else if (GlobalParams::topology == TOPOLOGY_OMEGA)
-	    buildOmega();
-	else {
-	    cerr << "ERROR: Topology " << GlobalParams::topology << " is not yet supported." << endl;
-	    exit(0);
-    }
-	GlobalParams::channel_selection = CHSEL_RANDOM;
-	// out of yaml configuration (experimental features)
-	//GlobalParams::channel_selection = CHSEL_FIRST_FREE;
+        if (GlobalParams::topology == TOPOLOGY_MESH)
+            // Build the Mesh
+            buildMesh();
+        else if (GlobalParams::topology == TOPOLOGY_BUTTERFLY)
+            buildButterfly();
+        else if (GlobalParams::topology == TOPOLOGY_BASELINE)
+            buildBaseline();
+        else if (GlobalParams::topology == TOPOLOGY_OMEGA)
+            buildOmega();
+        else
+        {
+            cerr << "ERROR: Topology " << GlobalParams::topology << " is not yet supported." << endl;
+            exit(0);
+        }
+        GlobalParams::channel_selection = CHSEL_RANDOM;
+        // out of yaml configuration (experimental features)
+        // GlobalParams::channel_selection = CHSEL_FIRST_FREE;
 
-	if (GlobalParams::ascii_monitor)
-	{
-	    SC_METHOD(asciiMonitor);
-	    sensitive << clock.pos();
-	}
-
+        if (GlobalParams::ascii_monitor)
+        {
+            SC_METHOD(asciiMonitor);
+            sensitive << clock.pos();
+        }
     }
 
     // Support methods
     Tile *searchNode(const int id) const;
 
-  private:
-
+private:
     void buildMesh();
     void buildButterfly();
     void buildBaseline();
     void buildOmega();
     void buildCommon();
     void asciiMonitor();
-    int * hub_connected_ports;
+    int *hub_connected_ports;
 };
 
-//Hub * dd;
+// Hub * dd;
 
 #endif

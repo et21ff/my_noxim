@@ -27,7 +27,6 @@ SC_MODULE(Tile)
     sc_in <bool> reset;	                        // The reset signal for the tile
 
     int local_id; // Unique ID
-
     sc_in <Flit> flit_rx[DIRECTIONS];	// The input channels
     sc_in <bool> req_rx[DIRECTIONS];	        // The requests associated with the input channels
     sc_out <bool> ack_rx[DIRECTIONS];	        // The outgoing ack signals associated with the input channels
@@ -127,8 +126,9 @@ SC_MODULE(Tile)
 	r->buffer_full_status_tx[DIRECTION_HUB] (hub_buffer_full_status_tx);
 
 
-	// Processing Element pin assignments
+
 	pe = new ProcessingElement("ProcessingElement");
+
 	pe->clock(clock);
 	pe->reset(reset);
 
