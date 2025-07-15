@@ -97,17 +97,22 @@ public:
     bool is_computing;
     int compute_cycles_left;
     bool is_stalled_waiting_for_data;
-    int required_data_per_compute;
+    int required_data_per_fill;
+    int required_data_per_delta;
     int  receive_chunk_size;; // 期望从上级获取的数据量
 
+    int compute_loop_target;
+    int compute_loop_current; // 当前计算循环计数器
+
+    bool ended_compute_loop; // 是否结束了计算循环
+    enum DataStage { STAGE_FILL, STAGE_DELTA };
+    DataStage current_stage; // 当前数据阶段
     sc_signal<int> current_data_size;
     sc_signal<bool> is_receiving_packet;
     std::string role_to_str(const PE_Role& role); // 用于将角色转换为字符串
      void update_ready_signal(); // 一个新的SC_METHOD,用于向上级存储器更新当前空闲状态
     void pe_init();
     void run_storage_logic();
-    void run_glb_logic();
-    void run_spad_logic();
     void run_compute_logic();
     // Constructor
     SC_CTOR(ProcessingElement) {

@@ -26,6 +26,7 @@ void ProcessingElement::pe_init() {
         downstream_node_ids.push_back(1); // 下游是ID=1 (SPAD)
         current_downstream_target_index = 0;
         receive_chunk_size=0; // GLB不接收数据
+        ended_compute_loop=false;
     } else if (local_id == 1) {
         role = ROLE_SPAD;
         current_data_size = 0;
@@ -33,16 +34,24 @@ void ProcessingElement::pe_init() {
         transfer_chunk_size = 5; // 每次向ComputePE传输5个单位
         downstream_node_ids.push_back(2); // 下游是ID=2 (Compute)
         current_downstream_target_index = 0;
-        receive_chunk_size=10; // SPAD期望每次接收20个单位数据
+        receive_chunk_size=10; // SPAD期望每次接收10个单位数据
+        compute_loop_target = 202;
+        ended_compute_loop=false;
+        
     } else if (local_id == 2) {
         role = ROLE_COMPUTE;
         is_computing = false;
         is_stalled_waiting_for_data = false;
         compute_cycles_left = 0;
-        required_data_per_compute = 5;
+        required_data_per_delta=5; // ComputePE每次需要5个单位数据来进行计算
+        required_data_per_fill= 10; // ComputePE每次需要10个单位数据来进行冷启动
         current_data_size = 0; // compute pe的本地buffer
         max_capacity = 20;
         receive_chunk_size=5; // ComputePE期望每次接收5个单位数据
+
+        compute_loop_target = 100;
+        compute_loop_current = 0;
+        current_stage = STAGE_FILL; // 初始阶段是FILL
     }
 
     // 重置后，所有PE的发送状态都应该是干净的
@@ -103,7 +112,7 @@ void ProcessingElement::rxProcess() {
 
             // 步骤 3: 根据角色执行不同的操作
             switch (role) {
-                case ROLE_SPAD:
+                case ROLE_SPAD: {
                     // SPAD接收到来自上游(GLB)的数据
                     current_data_size.write(receive_chunk_size+current_data_size.read()); // 假设flit.size就是我们约定的块大小
 
@@ -111,8 +120,9 @@ void ProcessingElement::rxProcess() {
                     cout << sc_time_stamp() << ": SPAD[" << local_id << "] RX data. New size: " 
                          << current_data_size << "/" << max_capacity << endl;
                     break;
+                }
 
-                case ROLE_COMPUTE:
+                case ROLE_COMPUTE: {
                     // ComputePE接收到来自SPAD的数据
                     current_data_size.write(receive_chunk_size+current_data_size.read());
                     assert(current_data_size <= max_capacity); 
@@ -121,17 +131,21 @@ void ProcessingElement::rxProcess() {
                          << current_data_size << "/" << max_capacity<<endl;
 
                     // ** 事件响应: 检查是否可以解除停机状态 **
+                    int required_data_per_compute = (current_stage == STAGE_FILL) ? required_data_per_fill : required_data_per_delta;
+
                     if (is_stalled_waiting_for_data && current_data_size >= required_data_per_compute) {
                         is_stalled_waiting_for_data = false;
                         cout << sc_time_stamp() << ": COMPUTE[" << local_id << "] Data arrived, UNSTALLING." << endl;
                     }
                     break;
+                }
                 
-                case ROLE_GLB:
+                case ROLE_GLB: {
                     // GLB 在我们的模型中是顶级生产者，它只发送不接收。
                     // 但为了完整性，可以加个日志。
                     cout << sc_time_stamp() << ": WARNING - GLB[" << local_id << "] received a packet unexpectedly." << endl;
                     break;
+                }
             }
         }
         // ------------------- 我们注入的新逻辑 [结束] -------------------
@@ -203,6 +217,18 @@ void ProcessingElement::txProcess()
             // 注意：你需要知道这个包的原始大小是多少。
             // 假设 transfer_chunk_size 是固定的
             current_data_size.write(current_data_size.read() - transfer_chunk_size);
+                if (role == ROLE_SPAD) {
+            compute_loop_current++;
+                    } 
+                if(role == ROLE_SPAD&&compute_loop_current>=compute_loop_target) 
+                {
+                    ended_compute_loop = true; // 不再生成包
+                    cout << sc_time_stamp() << ": SPAD[" << local_id << "] All supply tasks finished. Halting new packet generation." << endl;
+                }
+                    // **3. 在这里打印最终的成功日志**
+            cout << sc_time_stamp() << ": " << role_to_str(role) << "[" << local_id 
+         << "] SUCCESSFULLY sent packet. Loop count: " 
+         << ((role == ROLE_SPAD) ? to_string(compute_loop_current) : "N/A") << endl;
         }
 
     } 
@@ -210,13 +236,35 @@ void ProcessingElement::txProcess()
 }
 // 这是 run_compute_logic() 函数，它在 txProcess() 中被调用
 void ProcessingElement::run_compute_logic() {
-    // 状态1: 如果正在计算，就倒计时
+    // 决定本次计算需要多少数据 (基于当前stage)
+    int required_data_per_compute = (current_stage == STAGE_FILL) ? required_data_per_fill : required_data_per_delta;
+    
+    // --- 计算过程 ---
     if (is_computing) {
         compute_cycles_left--;
         if (compute_cycles_left == 0) {
             is_computing = false;
-            current_data_size.write(current_data_size.read()-required_data_per_compute) ; // 消耗数据
-            cout << sc_time_stamp() << ": COMPUTE[" << local_id << "] Finished compute task." << endl;
+            // ** 1. 在计算完成后，立即消耗数据 **
+            current_data_size.write(current_data_size.read() - required_data_per_compute);
+            
+            cout << sc_time_stamp() << ": COMPUTE[" << local_id << "] Finished a " 
+                 << ((current_stage == STAGE_FILL) ? "FILL" : "DELTA") << " task." << endl;
+
+            // ** 2. 更新 Stage 和 Loop Counter **
+            if (current_stage == STAGE_FILL) {
+                // 如果刚刚完成的是FILL, 那么下一阶段就是DELTA
+                current_stage = STAGE_DELTA;
+            }
+
+            // 增加循环计数器
+            compute_loop_current++;
+
+            // ** 3. 检查是否一个大周期完成 **
+            if (compute_loop_current >= compute_loop_target) {
+                cout << sc_time_stamp() << ": COMPUTE[" << local_id << "] Major loop finished. Resetting..." << endl;
+                compute_loop_current = 0;   // 重置计数器
+                current_stage = STAGE_FILL; // 下一个大周期的开始是FILL
+            }
         }
         return;
     }
@@ -253,11 +301,11 @@ std::string ProcessingElement::role_to_str(const PE_Role& role) {
 void ProcessingElement::run_storage_logic()
 {
     // 检查是否有足够的数据来生产一个包
-    if (current_data_size.read() >= transfer_chunk_size) {
+    if (current_data_size.read() >= transfer_chunk_size&& !ended_compute_loop) {
         // ---- 这是两个函数完全相同的核心逻辑 ----
         int bytes_per_flit = GlobalParams::flit_size / 8;
         const int num_flits = (transfer_chunk_size + bytes_per_flit - 1) / bytes_per_flit;
-        
+
         Packet pkt;
         pkt.src_id = local_id;
         pkt.dst_id = downstream_node_ids[0]; // 假设只有一个下游
@@ -266,12 +314,11 @@ void ProcessingElement::run_storage_logic()
         pkt.vc_id = randInt(0, GlobalParams::n_virtual_channels - 1);
         
         packet_queue.push(pkt);
-        // ----------------------------------------
 
         // 使用传入的参数来打印定制化的日志
         PE_Role next_role = static_cast<PE_Role>(role + 1);
         cout << sc_time_stamp() << ": " << role_to_str(role) << "[" << local_id 
-             << "] PUSHED a packet to queue for " << role_to_str(next_role)<< "[" 
+             << "] INTENDS to push a packet to queue for " << role_to_str(next_role)<< "[" 
              << pkt.dst_id << "]." << endl;
     }
 
