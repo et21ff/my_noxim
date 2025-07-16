@@ -47,6 +47,8 @@ struct Packet {
     int flit_left;		// Number of remaining flits inside the packet
     bool use_low_voltage_path;
 
+    int payload_data_size; //用来表示整个Packet的真实数据大小（以字节为单位）
+
     // Constructors
     Packet() { }
 
@@ -117,6 +119,8 @@ struct TBufferFullStatus {
 
 // Flit -- Flit definition
 struct Flit {
+    int payload_data_size; 
+    // 只在HEAD flit中有意义，用来携带整个Packet的真实数据大小（以字节为单位）
     int src_id;
     int dst_id;
     int vc_id; // Virtual Channel

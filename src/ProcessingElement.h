@@ -81,40 +81,86 @@ SC_MODULE(ProcessingElement)
     int findRandomDestination(int local_id,int hops);
     unsigned int getQueueSize() const;
 public:
-    // --- 角色定义 ---
-    enum PE_Role { ROLE_UNUSED,ROLE_GLB, ROLE_SPAD, ROLE_COMPUTE };
+    //========================================================================
+    // I. 核心身份与物理属性 (Core Identity & Physical Attributes)
+    //========================================================================
+    
+    enum PE_Role { ROLE_UNUSED, ROLE_DRAM, ROLE_GLB, ROLE_BUFFER };
     PE_Role role;
 
-    int max_capacity;
+    int max_capacity;     // 单位: Bytes
+    sc_signal<int> current_data_size; // 单位: Bytes
+    
+    //========================================================================
+    // II. 网络接口与通信 (Network Interface & Communication)
+    //========================================================================
 
-    // --- 生产者状态 (GLB and SPAD) ---
-    int transfer_chunk_size;
-    int current_downstream_target_index;
+    // --- 与下游的连接 ---
     std::vector<int> downstream_node_ids;
+    int current_downstream_target_index; // 用于多播或轮询
 
+    //========================================================================
+    // III. 任务与循环控制 (Task & Loop Control) - 通用机制
+    //========================================================================
+    
+    struct LoopTask {
+        int iterations;
+    };
 
-    // --- 消费者状态 (ComputePE) ---
-    bool is_computing;
-    int compute_cycles_left;
-    bool is_stalled_waiting_for_data;
-    int required_data_per_fill;
-    int required_data_per_delta;
-    int  receive_chunk_size;; // 期望从上级获取的数据量
+    // --- 接收/消耗任务队列 ---
+    std::vector<int> receive_task_queue;
+    std::vector<int>      receive_loop_counters;
+    int                   current_receive_loop_level;
+    bool                  all_receive_tasks_finished;
 
-    int compute_loop_target;
-    int compute_loop_current; // 当前计算循环计数器
+    // --- 发送/生产任务队列 ---
+    std::vector<LoopTask> transfer_task_queue;
+    std::vector<int>      transfer_loop_counters;
+    int                   current_transfer_loop_level;
+    bool                  all_transfer_tasks_finished;
 
-    bool ended_compute_loop; // 是否结束了计算循环
+    // --- 通用阶段控制 ---
     enum DataStage { STAGE_FILL, STAGE_DELTA };
-    DataStage current_stage; // 当前数据阶段
-    sc_signal<int> current_data_size;
+    DataStage current_stage;
+
+    //========================================================================
+    // IV. 特定角色的行为属性 (Role-Specific Behavioral Attributes)
+    //========================================================================
+    
+    // --- 专属于“生产者” (DRAM, GLB) ---
+    int transfer_fill_size;   // 发送FILL包的大小 (Bytes)
+    int transfer_delta_size;  // 发送DELTA包的大小 (Bytes)
+    int total_bytes_sent; // 总发送量 (Bytes)
+
+    // --- 专属于“最终消费者” (Buffer_PE) ---
+    bool is_consuming;         // 是否正在进行抽象消耗
+    int  consume_cycles_left;  // 抽象消耗剩余周期
+    bool is_stalled_waiting_for_data;  // 是否因数据不足而停顿
+    int  required_data_on_fill;  // 消耗一个FILL任务所需数据 (Bytes)
+    int  required_data_on_delta; // 消耗一个DELTA任务所需数据 (Bytes)
+    int data_to_consume_on_finish; // 本次消耗的实际数据量 (Bytes)
+    int total_bytes_consumed; // 总消耗量 (Bytes)
+    int total_bytes_received; // 总接收量 (Bytes)
+    int bytes_received_this_cycle; // 本周期接收量 (Bytes)
+    
+public: // 建议将内部状态变量设为私有
+    //========================================================================
+    // V. 内部状态与辅助变量 (Internal State & Helper Variables)
+    //========================================================================
+    
+    int  incoming_packet_size;   // 用于暂存从HEAD flit读到的包大小
+    int  previous_ready_signal;  // 用于减少ready信号的日志打印
+
     sc_signal<bool> is_receiving_packet;
     std::string role_to_str(const PE_Role& role); // 用于将角色转换为字符串
      void update_ready_signal(); // 一个新的SC_METHOD,用于向上级存储器更新当前空闲状态
     void pe_init();
     void run_storage_logic();
     void run_compute_logic();
+    void update_transfer_loop_counters();
+    void update_receive_loop_counters();
     // Constructor
+
     SC_CTOR(ProcessingElement) {
     SC_METHOD(pe_init);
     sensitive << reset;
@@ -122,7 +168,7 @@ public:
 
 	SC_METHOD(rxProcess);
 	sensitive << reset;
-	sensitive << clock.pos();
+	sensitive << clock.neg();
 
 	SC_METHOD(txProcess);
 	sensitive << reset;
