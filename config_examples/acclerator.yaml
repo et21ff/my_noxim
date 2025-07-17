@@ -1,0 +1,60 @@
+# ------------------- DEBUG CONFIGURATION FOR 1x3 LINEAR NETWORK -------------------
+#
+# NOC & WIRED CONFIGURATION
+#
+# topology: MESH  <-- 保持不变
+# X and Y mesh sizes
+mesh_dim_x: 3 # <--- [关键修改] 从 4 改为 3
+mesh_dim_y: 2 # <--- [关键修改] 从 4 改为 1
+# number of flits for each router buffer
+buffer_depth: 8 # <--- [建议修改] 稍微调大一点，避免初始调试时因缓冲区太小而产生干扰
+# size of flits, in bits
+flit_size: 32
+# lenght in mm of router to hub connection
+r2h_link_length: 2.0
+# lenght in mm of router to router connection
+r2r_link_length: 1.0
+n_virtual_channels: 1
+# Routing algorithms:
+routing_algorithm: XY # <--- 在1x1的网络里，路由算法不重要，XY即可
+routing_table_filename: ""
+dyad_threshold: 0.6
+# ... (selection_strategy 等保持不变) ...
+selection_strategy: RANDOM
+# ------------------- [重要] 禁用所有不相关的特性 -------------------
+
+# WIRELESS CONFIGURATION (禁用)
+use_winoc: false
+use_wirxsleep: false
+# ------------------- SIMULATION PARAMETERS -------------------
+#
+clock_period_ps: 1000
+reset_time: 10 # <--- [建议修改] 缩短reset时间，让我们的逻辑更快开始
+simulation_time: 10000 # <--- [关键修改] 增加模拟时间，确保我们能看到完整的交互链
+stats_warm_up_time: 0 # <--- [建议修改] 禁用warm up，我们想从一开始就看log
+# power breakdown, nodes communication details
+detailed: false
+# stop after a given amount of load has been processed
+max_volume_to_be_drained: 0
+show_buffer_stats: false
+# ... (detailed, max_volume_to_be_drained 等保持不变) ...
+
+# Verbosity level:
+verbose_mode: VERBOSE_OFF # <--- [关键修改] 设置为LOW，可以看到一些基本的网络活动日志
+
+# Trace (可选，但推荐)
+trace_mode: false # 如果需要详细的flit追踪，可以设为true，但日志会非常多
+trace_filename: "debug_trace.log"
+
+# ------------------- [重要] 禁用Noxim自带的流量注入 -------------------
+# 我们现在用自己的逻辑生成流量，所以要把Noxim自带的流量注入率设为0
+
+min_packet_size: 8
+max_packet_size: 8
+packet_injection_rate: 0.1 # <--- [关键修改] 设为0！
+probability_of_retransmission: 0.1 # <--- [关键修改] 设为0！
+
+# Traffic distribution:
+# 将其设置为TABLE_BASED，但提供一个空文件，确保它不会产生任何随机流量。
+traffic_distribution: TRAFFIC_TABLE_BASED # <--- [关键修改]
+traffic_table_filename: "empty_traffic.txt" # <--- 创建一个空的txt文件
