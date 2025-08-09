@@ -17,6 +17,8 @@
 #include "DataStructs.h"
 #include "GlobalTrafficTable.h"
 #include "Utils.h"
+#include "BufferManager.h" 
+#include <memory> 
 
 using namespace std;
 
@@ -90,6 +92,9 @@ public:
 
     int max_capacity;     // 单位: Bytes
     sc_signal<int> current_data_size; // 单位: Bytes
+
+    // --- 新增：LivenessAwareBuffer 现在是缓冲区管理的核心 ---
+    std::unique_ptr<BufferManager> buffer_manager_; // <--- 3. 添加 BufferManager 实例
     
     //========================================================================
     // II. 网络接口与通信 (Network Interface & Communication)
@@ -150,6 +155,10 @@ public: // 建议将内部状态变量设为私有
     
     int  incoming_packet_size;   // 用于暂存从HEAD flit读到的包大小
     int  previous_ready_signal;  // 用于减少ready信号的日志打印
+    int incoming_payload_sizes[3]; // 用于暂存从HEAD flit读到的包大小
+    int logical_timestamp; 
+    // +++ 新增：一个专门用于通知缓冲区状态改变的事件 +++
+    sc_event buffer_state_changed_event;
 
     sc_signal<bool> is_receiving_packet;
     std::string role_to_str(const PE_Role& role); // 用于将角色转换为字符串

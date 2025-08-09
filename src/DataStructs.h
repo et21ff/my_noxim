@@ -47,7 +47,9 @@ struct Packet {
     int flit_left;		// Number of remaining flits inside the packet
     bool use_low_voltage_path;
 
+
     int payload_data_size; //用来表示整个Packet的真实数据大小（以字节为单位）
+    int payload_sizes[3]; // 索引0: INPUT, 1: WEIGHT, 2: OUTPUT
 
     // Constructors
     Packet() { }
@@ -64,6 +66,11 @@ struct Packet {
 	size = sz;
 	flit_left = sz;
 	use_low_voltage_path = false;
+    }
+
+    int total_size()
+    {
+            return payload_sizes[0] + payload_sizes[1] + payload_sizes[2];
     }
 };
 
@@ -121,6 +128,7 @@ struct TBufferFullStatus {
 struct Flit {
     int payload_data_size; 
     // 只在HEAD flit中有意义，用来携带整个Packet的真实数据大小（以字节为单位）
+    int payload_sizes[3]; // 索引0: INPUT, 1: WEIGHT, 2: OUTPUT
     int src_id;
     int dst_id;
     int vc_id; // Virtual Channel
@@ -145,6 +153,11 @@ struct Flit {
 		&& flit.use_low_voltage_path == use_low_voltage_path);
 }};
 
+enum PayloadIndex {
+    INPUT_IDX = 0,
+    WEIGHT_IDX = 1,
+    OUTPUT_IDX = 2
+};
 
 typedef struct 
 {

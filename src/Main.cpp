@@ -95,8 +95,8 @@ int sc_main(int arg_num, char *arg_vet[])
 	}
     }
     sc_trace(tf, n->t[2][0]->pe->downstream_ready_out,"pe2_ready_out");
-    sc_trace(tf, n->t[2][0]->pe->current_data_size,"pe2_current_data_size");
-    sc_trace(tf, n->t[2][0]->pe->is_receiving_packet,"pe2_is_receiving_packet");
+    // sc_trace(tf, n->t[2][0]->pe->current_data_size,"pe2_current_data_size");
+    // sc_trace(tf, n->t[2][0]->pe->is_receiving_packet,"pe2_is_receiving_packet");
     // Reset the chip and run the simulation
     reset.write(1);
     cout << "Reset for " << (int)(GlobalParams::reset_time) << " cycles... ";

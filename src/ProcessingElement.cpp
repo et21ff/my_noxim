@@ -10,18 +10,74 @@
 
 #include "ProcessingElement.h"
 #include "dbg.h"
+#include <numeric>
 int ProcessingElement::randInt(int min, int max)
 {
     return min +
 	(int) ((double) (max - min + 1) * rand() / (RAND_MAX + 1.0));
 }
 
+// +++ (辅助函数) 为ROLE_BUFFER生成精确的驱逐计划
+// +++ 我们可以把它放在pe_init之前，或者作为一个静态辅助方法。
+EvictionSchedule create_buffer_pe_schedule() {
+    EvictionSchedule schedule;
+    int timestep = 0; // 用一个简单的计数器来模拟时间步
+    const int K2_LOOPS = 16;
+    const int P1_LOOPS = 16;
+    
+    for (int k2 = 0; k2 < K2_LOOPS; ++k2) {
+        for (int p1 = 0; p1 < P1_LOOPS; ++p1) {
+            timestep++; // 假设每次计算消耗一个时间步
+            
+            // 在每次计算完成后，都可以驱逐本次使用的输入数据
+            if (p1 == P1_LOOPS-1) { // FILL 阶段
+                schedule[timestep][DataType::INPUT] = 3; // 驱逐FILL的3字节输入
+            } else { // DELTA 阶段
+                schedule[timestep][DataType::INPUT] = 1; // 驱逐DELTA的1字节输入
+            }
+        }
+        // 在内层P1循环结束后，K2循环复用的权重可以被驱逐了
+        schedule[timestep][DataType::WEIGHT] = 6;
+    }
+    return schedule;
+}
+
+EvictionSchedule create_glb_eviction_schedule() {
+    EvictionSchedule schedule;
+    int logical_timestamp = 0;
+    const int K2_LOOPS = 16;
+    const int P1_LOOPS = 16;
+    
+    for (int k2 = 0; k2 < K2_LOOPS; ++k2) {
+        // 在每个宏观循环（K2）开始时，GLB会发送一个包含新权重的FILL包。
+        // 我们需要记录这个FILL包的发送时间点，以便计算权重的驱逐时间。
+        int fill_timestamp = 0;
+
+        for (int p1 = 0; p1 < P1_LOOPS; ++p1) {
+            // GLB每执行一次发送任务（无论是FILL还是DELTA），逻辑时间戳+1
+            logical_timestamp++; 
+            
+            if (p1 == 0) { // 这是发送FILL包的任务
+                fill_timestamp = logical_timestamp; // 记录FILL的发送时间
+                
+                // 发送的6字节WEIGHT，在本步完成后即可驱逐。
+                schedule[logical_timestamp][DataType::WEIGHT] = 6;
+
+            } else { // 这是发送DELTA包的任务
+                // 发送的0字节WEIGHT，在本步完成后即可驱逐。
+                schedule[logical_timestamp][DataType::WEIGHT] = 0;
+            }
+        }
+    }
+    schedule[logical_timestamp][DataType::INPUT] = 18;
+    return schedule;
+}
 void ProcessingElement::pe_init() {
     //========================================================================
     // I. 黄金参数定义 (Golden Parameters)
     //    - 源自Timeloop的逻辑分析和Accelergy的物理定义
     //========================================================================
-    
+     logical_timestamp = 0;
     // ---- 逻辑循环结构 (from Timeloop) ----
     const int K2_LOOPS = 16;
     const int P1_LOOPS = 16;
@@ -53,7 +109,11 @@ void ProcessingElement::pe_init() {
     if (local_id == 0) {
         // --- ROLE_DRAM: 理想化的、一次性任务的生产者 ---
         role = ROLE_DRAM;
-        current_data_size.write(10000);
+        max_capacity = 20000; // 假设DRAM容量为64KB
+        EvictionSchedule dram_schedule; // 空计划
+        buffer_manager_.reset(new BufferManager(max_capacity, dram_schedule));
+        buffer_manager_->OnDataReceived(DataType::WEIGHT, 10000);
+        buffer_manager_->OnDataReceived(DataType::INPUT, 10000);
         max_capacity = -1;
         downstream_node_ids.push_back(1); // 下游是GLB
         
@@ -65,15 +125,19 @@ void ProcessingElement::pe_init() {
         current_transfer_loop_level = 0;
         
         // DRAM的发送块大小
-        transfer_fill_size = 96 + 18*16; // 一次性发送所有需要的数据
+        transfer_fill_size = 96 + 18; // 一次性发送所有需要的数据
         
     } else if (local_id == 1) {
         // --- ROLE_GLB: 智能的、任务驱动的中间商 ---
-        current_data_size.write(0); // 初始为空
+        // current_data_size.write(0); // 初始为空
         role = ROLE_GLB;
         max_capacity = GLB_CAPACITY;
         downstream_node_ids.push_back(2); // 下游是Buffer
-        
+
+        EvictionSchedule glb_schedule; // 空的驱逐计划
+        glb_schedule=create_glb_eviction_schedule();
+        buffer_manager_.reset(new BufferManager(max_capacity, glb_schedule));
+        current_data_size.write(buffer_manager_->GetCurrentSize()); // 用manager的状态初始化信号
         // GLB的接收任务：从DRAM接收1次大的数据块
          transfer_task_queue.clear();
         receive_task_queue.push_back({1});
@@ -94,11 +158,18 @@ void ProcessingElement::pe_init() {
         // GLB的阶段控制 (由其发送任务驱动)
         current_stage = STAGE_FILL;
 
+        required_data_on_fill =  18; // FILL阶段需要的输入数据大小
+        required_data_on_delta = 18; // DELTA阶段需要的输入数据大小
+
     } else if (local_id == 2) {
         // --- ROLE_BUFFER: 带抽象消耗的最终目的地 ---
-        current_data_size.write(0); // 初始为空
+        // current_data_size.write(0); // 初始为空
+
         role = ROLE_BUFFER;
         max_capacity = BUFFER_CAPACITY;
+        EvictionSchedule buffer_schedule = create_buffer_pe_schedule();
+        buffer_manager_.reset(new BufferManager(max_capacity, buffer_schedule));
+        current_data_size.write(buffer_manager_->GetCurrentSize()); // 用manager的状态初始
         downstream_node_ids.clear(); // 是终点
         
         receive_task_queue.clear();
@@ -134,8 +205,14 @@ void ProcessingElement::update_ready_signal() {
             dbg(sc_time_stamp(), name(), "RESET active. Writing FALSE");
         return;
     }
+    // +++ 如果PE没有缓冲区功能，则不执行此逻辑 +++
+    if (!buffer_manager_) {  // <--- 我们在这里加了检查
+        downstream_ready_out.write(0);
+        return;
+    }
+
     int ready_value = 0;
-    int available_space = max_capacity - current_data_size.read();
+    int available_space = buffer_manager_->GetCapacity() - buffer_manager_->GetCurrentSize();
 
     // ** 2. 根据剩余空间，分级判断接收能力 **
     if (available_space >= required_data_on_fill) {
@@ -152,7 +229,7 @@ void ProcessingElement::update_ready_signal() {
         if (role == ROLE_GLB || role == ROLE_BUFFER) { // 只打印我们关心的PE
              cout << sc_time_stamp() << ": " << name() << " [READY_SIG] Updating ready_out from " 
                   << previous_ready_signal << " to " << ready_value 
-                  << " (AvailableSpace: " << (max_capacity - current_data_size.read()) << ")" << endl;
+                  << " (AvailableSpace: " << available_space<< endl;
         }
         previous_ready_signal = ready_value;
     }
@@ -176,68 +253,46 @@ void ProcessingElement::rxProcess() {
         Flit flit = flit_rx.read();
         // ------------------- 我们注入的新逻辑 [开始] -------------------
         if (flit.flit_type == FLIT_TYPE_HEAD) {
-            incoming_packet_size = flit.payload_data_size; // 记录接收包的大小
-            cout << sc_time_stamp() << ": " << name() << " RX <<< HEAD. Real data size: " 
-                 << incoming_packet_size << " bytes. Network flits: " << flit.sequence_length << endl;
-            
-            is_receiving_packet = true; // 包开始了，进入“接收中”状态
-            update_ready_signal();
+            std::copy(std::begin(flit.payload_sizes),std::end(flit.payload_sizes), incoming_payload_sizes);
+            // 读取包大小
+            int total_size = std::accumulate(incoming_payload_sizes, incoming_payload_sizes + 3, 0);
+             cout << sc_time_stamp() << ": " << name() << " RX <<< HEAD. Payload Mix (I/W/O): " 
+                 << incoming_payload_sizes[0] << "/" << incoming_payload_sizes[1] << "/" << incoming_payload_sizes[2]
+                 << ". Total Size: " << total_size << " bytes." << endl;
 
         }
         // 步骤 2: 只在接收到包尾(TAIL)时，才触发我们的上层逻辑
         if (flit.flit_type == FLIT_TYPE_TAIL) {
-            int receive_size = incoming_packet_size;
-            is_receiving_packet = false; // 包结束了，退出“接收中”状态
-            update_ready_signal();
-            cout << sc_time_stamp() << ": " << name() << " RX <<< TAIL from " 
-                 << flit.src_id << ", packet size: " << flit.sequence_length << endl;
+            cout << sc_time_stamp() << ": " << name() << " RX <<< TAIL from " << flit.src_id << endl;
 
-            // 步骤 3: 根据角色执行不同的操作
-            switch (role) {
-                case ROLE_GLB: {
-                    // SPAD接收到来自上游(GLB)的数据
-                    current_data_size.write(receive_size+current_data_size.read()); // 假设flit.size就是我们约定的块大小
-
-                    assert(current_data_size <= max_capacity); 
-                    cout << sc_time_stamp() << ": SPAD[" << local_id << "] RX data. New size: " 
-                         << current_data_size << "/" << max_capacity << endl;
-                    break;
+            if (buffer_manager_) {
+                // +++ 核心逻辑: 遍历元数据数组，逐一添加数据 +++
+                bool success = true;
+                if (incoming_payload_sizes[INPUT_IDX] > 0) {
+                    success &= buffer_manager_->OnDataReceived(DataType::INPUT, incoming_payload_sizes[INPUT_IDX]);
                 }
-
-                case ROLE_BUFFER: {
-                    // ComputePE接收到来自SPAD的数据
-                    current_data_size.write(receive_size+current_data_size.read());
-                    total_bytes_received+=receive_size;
-                    assert(current_data_size <= max_capacity); 
-
-                    cout << sc_time_stamp() << ": COMPUTE[" << local_id << "] RX data. New size: " 
-                         << current_data_size << "/" << max_capacity<<endl;
-
-                    // ** 事件响应: 检查是否可以解除停机状态 **
-                    int required_data_per_compute = (current_stage == STAGE_FILL) ? required_data_on_fill : required_data_on_delta;
-
-                    if (is_stalled_waiting_for_data && current_data_size >= required_data_per_compute) {
-                        is_stalled_waiting_for_data = false;
-                        cout << sc_time_stamp() << ": COMPUTE[" << local_id << "] Data arrived, UNSTALLING." << endl;
-                    }
-                    break;
+                if (incoming_payload_sizes[WEIGHT_IDX] > 0) {
+                    success &= buffer_manager_->OnDataReceived(DataType::WEIGHT, incoming_payload_sizes[WEIGHT_IDX]);
                 }
+                if (incoming_payload_sizes[OUTPUT_IDX] > 0) {
+                    success &= buffer_manager_->OnDataReceived(DataType::OUTPUT, incoming_payload_sizes[OUTPUT_IDX]);
+                }
+                assert(success && "FATAL: Buffer overflow. Ready/Ack logic is flawed.");
+                buffer_state_changed_event.notify(); // 立即在当前delta周期触发
                 
-                case ROLE_DRAM: {
-                    // GLB 在我们的模型中是顶级生产者，它只发送不接收。
-                    // 但为了完整性，可以加个日志。
-                    cout << sc_time_stamp() << ": WARNING - GLB[" << local_id << "] received a packet unexpectedly." << endl;
-                    break;
-                }
-            }
-        }
-        // ------------------- 我们注入的新逻辑 [结束] -------------------
+                int total_received_this_packet = std::accumulate(incoming_payload_sizes, incoming_payload_sizes + 3, 0);
+                total_bytes_received += total_received_this_packet;
+                update_ready_signal(); // 更新ready信号
+                cout << sc_time_stamp() << ": " << name() << " RX data. New size: " 
+                     << buffer_manager_->GetCurrentSize() << "/" << buffer_manager_->GetCapacity() << endl;
 
 
-        // 步骤 4: 翻转握手信号 (核心结构保持不变)
-        current_level_rx = 1 - current_level_rx;
+
+                                        }
+                                }
+     // 步骤 4: 翻转握手信号 (核心结构保持不变)
+    current_level_rx = 1 - current_level_rx;
     }
-
     // 步骤 5: 将新的ack level写回端口 (核心结构保持不变)
     ack_rx.write(current_level_rx);
 }
@@ -299,15 +354,20 @@ void ProcessingElement::txProcess() {
                 cout << sc_time_stamp() << ": " << name() << " txProcess() - GO: Sending HEAD of " 
                      << packet_type_str << " packet to " << flit.dst_id << endl;
             }
-            else if(flit.flit_type == FLIT_TYPE_TAIL)
-            {
-                current_data_size.write(current_data_size.read() - payload_data_size);
-                total_bytes_sent += payload_data_size;
+        if (flit.flit_type == FLIT_TYPE_TAIL) {
+            // ... (更新 total_bytes_sent) ...
 
+            if (buffer_manager_ && (role == ROLE_GLB || role == ROLE_DRAM)) {
+                // +++ 推进逻辑时间戳，并用它来调用 OnComputeFinished +++
+                logical_timestamp++;
+                buffer_manager_->OnComputeFinished(logical_timestamp);
+                buffer_state_changed_event.notify(); 
+                cout << sc_time_stamp() << ": " << name() 
+                     << " [LIFECYCLE] Data service finished at logical step " << logical_timestamp 
+                     << ". Buffer state is now: " << buffer_manager_->GetCurrentSize() << endl;
             }
-            // 真正的硬件行为：通过端口发送flit
-            flit_tx.write(flit);
-
+        }
+             flit_tx.write(flit);
             // 更新Noxim的握手协议状态
             current_level_tx = 1 - current_level_tx;
             req_tx.write(current_level_tx);
@@ -317,87 +377,178 @@ void ProcessingElement::txProcess() {
 }
 // in PE.cpp
 
-// 为了在计算完成后正确消耗数据，我们需要一个新的成员变量来“记住”要消耗多少
-// 请在 PE.h 中添加: int data_to_consume_on_finish;
+#include <vector>
+#include <string>
+#include <iostream>
+
+// 假设这些头文件已包含，并且 PE 类定义了所有必需的成员变量
+// #include "ProcessingElement.h"
+// #include "BufferManager.h"
+// #include "DataStructs.h"
 
 void ProcessingElement::run_compute_logic() {
-    // 如果所有接收/消耗任务都已完成，则直接返回
+    // 防御性检查：如果所有接收/消耗任务都已完成，则直接返回
     if (all_receive_tasks_finished) {
         return;
     }
 
-// --- 阶段 1: 处理正在进行的计算 ---
-if (is_consuming) {
-    consume_cycles_left--;
-    if (consume_cycles_left == 0) {
-        is_consuming = false;
-        
-        // ==========================================================
-        //         ** 这是唯一的、正确的消耗逻辑 **
-        // ==========================================================
-        
-        // 1. 从缓冲区消耗“之前已暂存”的数据量。
-        //    data_to_consume_on_finish 是在上一次启动计算时，
-        //    根据当时的循环状态，被精确设置好的唯一真相。
-        current_data_size.write(current_data_size.read() - data_to_consume_on_finish);
-        
-        // 2. 将同样精确的数值，累加到总消耗量中。
-        total_bytes_consumed += data_to_consume_on_finish;
+    // ==========================================================
+    // 阶段 1: 处理正在进行的计算
+    // ==========================================================
+    if (is_consuming) {
+        consume_cycles_left--;
+        if (consume_cycles_left == 0) {
+            is_consuming = false;
+            
+            // 推进逻辑时间戳，这是与驱逐计划同步的关键
+            logical_timestamp++;
+            
+            // 调用 BufferManager 的核心方法来执行驱逐，
+            // 并直接获取本次操作实际消耗/驱逐的字节数。
+            // 这是唯一的、权威的真相来源。
+            size_t bytes_consumed_this_task = buffer_manager_->OnComputeFinished(logical_timestamp);
+            // +++ 通知：缓冲区因为驱逐了数据而状态改变！ +++
+            buffer_state_changed_event.notify();
+            // 将这个权威的数值，累加到总消耗量中
+            total_bytes_consumed += bytes_consumed_this_task;
 
-        // 3. 打印清晰的日志
-        //    为了知道这次消耗的是FILL还是DELTA，我们可以比较暂存值。
-        string task_type = (data_to_consume_on_finish == required_data_on_fill) ? "FILL" : "DELTA";
-        cout << sc_time_stamp() << ": COMPUTE[" << local_id 
-             << "] Finished consuming a '" << task_type << "' task (" << data_to_consume_on_finish << " bytes). "
-             << "Buffer now has " << current_data_size.read() << " bytes." << endl;
-        
-        // 4. 更新嵌套循环计数器，为下一次消耗做准备。
-        update_receive_loop_counters();
+            // 打印包含丰富上下文的、准确的日志
+            cout << sc_time_stamp() << ": " << name() 
+                 << " [LIFECYCLE] Computation finished at logical step " << logical_timestamp 
+                 << ". Evicted " << bytes_consumed_this_task << " bytes. "
+                 << "Buffer size is now: " << buffer_manager_->GetCurrentSize() 
+                 << ", Total consumed: " << total_bytes_consumed << endl;
+            
+            // 更新嵌套循环计数器，为下一次决策做准备
+            update_receive_loop_counters();
+        }
+        // 如果计算仍在进行中 (consume_cycles_left > 0)，则直接返回，等待下一个周期
+        return; 
     }
-    return; // 正在计算中，本周期无需做其他决策
-}
 
-    // --- 阶段 2: 如果当前空闲，则决策是否开始下一次计算 ---
+    // ==========================================================
+    // 阶段 2: 如果当前空闲，则决策是否开始下一次计算
+    // ==========================================================
     
-    // 1. 根据嵌套循环状态，确定下一次期望消耗的数据类型和大小
-    // 关键：我们只关心最内层循环的迭代次数
+    // 1. 根据嵌套循环状态，定义下一次计算所需的数据类型集合
     int innermost_loop_level = receive_task_queue.size() - 1;
-    bool is_first_iteration_of_innermost_loop = (receive_loop_counters[innermost_loop_level] == 0);
+    bool is_first_iteration = (receive_loop_counters[innermost_loop_level] == 0);
 
-    int required_data_for_next_compute;
+    std::vector<DataType> required_data_types;
     string required_type_str;
 
-    if (is_first_iteration_of_innermost_loop) {
-        // 最内层循环的第一次迭代，需要一个FILL块
-        required_data_for_next_compute = required_data_on_fill;
+    if (is_first_iteration) {
         required_type_str = "FILL";
+        required_data_types.push_back(DataType::WEIGHT);
+        required_data_types.push_back(DataType::INPUT);
     } else {
-        // 后续迭代，需要一个DELTA块
-        required_data_for_next_compute = required_data_on_delta;
         required_type_str = "DELTA";
+        required_data_types.push_back(DataType::INPUT);
     }
 
-    // 2. 检查缓冲区中是否有足够的数据来执行这次计算
-    if (current_data_size.read() >= required_data_for_next_compute) {
-        // 数据充足，可以开始计算！
-        cout << sc_time_stamp() << ": COMPUTE[" << local_id 
-             << "] Starting a '" << required_type_str << "' task. "
-             << "Requires " << required_data_for_next_compute << " bytes, has " << current_data_size.read() << "." << endl;
+    // 2. 询问 BufferManager，检查所需的所有数据类型是否都已就绪
+    if (buffer_manager_->AreDataTypesReady(required_data_types)) {
+        // 数据充足，可以开始新的计算任务
+        cout << sc_time_stamp() << ": " << name() 
+             << " Starting a '" << required_type_str << "' task. "
+             << "Required data is ready in buffer." << endl;
 
         is_consuming = true;
-        consume_cycles_left = 6; // 假设有一个计算周期的变量
+        consume_cycles_left = 6; // 假设有一个代表计算延迟的常量或变量
         
-        // **重要**: 暂存下本次将要消耗的数据量
-        data_to_consume_on_finish = required_data_for_next_compute;
+        // 注意：我们不再需要 data_to_consume_on_finish 这个成员变量。
+        // 启动逻辑和完成逻辑已经通过 BufferManager 完全解耦。
     }
     else {
-        // 数据不足，等待。
-        // 可以添加日志来观察“数据饥饿”状态
-        // cout << sc_time_stamp() << ": COMPUTE[" << local_id << "] Data starved. Needs " 
-        //      << required_data_for_next_compute << " bytes, but only has " 
-        //      << current_data_size.read() << ". Waiting." << endl;
+        // 数据未就绪，保持空闲状态，等待数据到达。
+        // 可以在这里添加调试日志来观察“数据饥饿”状态。
+        // cout << sc_time_stamp() << ": " << name() << " Data starved for '" 
+        //      << required_type_str << "' task. Waiting." << endl;
     }
 }
+
+// 为了在计算完成后正确消耗数据，我们需要一个新的成员变量来“记住”要消耗多少
+// 请在 PE.h 中添加: int data_to_consume_on_finish;
+
+// void ProcessingElement::run_compute_logic() {
+//     // 如果所有接收/消耗任务都已完成，则直接返回
+//     if (all_receive_tasks_finished) {
+//         return;
+//     }
+
+// // --- 阶段 1: 处理正在进行的计算 ---
+// if (is_consuming) {
+//     consume_cycles_left--;
+//     if (consume_cycles_left == 0) {
+//         is_consuming = false;
+        
+//         // ==========================================================
+//         //         ** 这是唯一的、正确的消耗逻辑 **
+//         // ==========================================================
+        
+//         // 1. 从缓冲区消耗“之前已暂存”的数据量。
+//         //    data_to_consume_on_finish 是在上一次启动计算时，
+//         //    根据当时的循环状态，被精确设置好的唯一真相。
+//         current_data_size.write(current_data_size.read() - data_to_consume_on_finish);
+        
+//         // 2. 将同样精确的数值，累加到总消耗量中。
+//         total_bytes_consumed += data_to_consume_on_finish;
+
+//         // 3. 打印清晰的日志
+//         //    为了知道这次消耗的是FILL还是DELTA，我们可以比较暂存值。
+//         string task_type = (data_to_consume_on_finish == required_data_on_fill) ? "FILL" : "DELTA";
+//         cout << sc_time_stamp() << ": COMPUTE[" << local_id 
+//              << "] Finished consuming a '" << task_type << "' task (" << data_to_consume_on_finish << " bytes). "
+//              << "Buffer now has " << current_data_size.read() << " bytes." << endl;
+        
+//         // 4. 更新嵌套循环计数器，为下一次消耗做准备。
+//         update_receive_loop_counters();
+//     }
+//     return; // 正在计算中，本周期无需做其他决策
+// }
+
+//     // --- 阶段 2: 如果当前空闲，则决策是否开始下一次计算 ---
+    
+//     // 1. 根据嵌套循环状态，确定下一次期望消耗的数据类型和大小
+//     // 关键：我们只关心最内层循环的迭代次数
+//     int innermost_loop_level = receive_task_queue.size() - 1;
+//     bool is_first_iteration_of_innermost_loop = (receive_loop_counters[innermost_loop_level] == 0);
+
+//     int required_data_for_next_compute;
+//     string required_type_str;
+
+//     if (is_first_iteration_of_innermost_loop) {
+//         // 最内层循环的第一次迭代，需要一个FILL块
+//         required_data_for_next_compute = required_data_on_fill;
+//         required_type_str = "FILL";
+//     } else {
+//         // 后续迭代，需要一个DELTA块
+//         required_data_for_next_compute = required_data_on_delta;
+//         required_type_str = "DELTA";
+//     }
+
+//     // 2. 检查缓冲区中是否有足够的数据来执行这次计算
+//     if (current_data_size.read() >= required_data_for_next_compute) {
+//         // 数据充足，可以开始计算！
+//         cout << sc_time_stamp() << ": COMPUTE[" << local_id 
+//              << "] Starting a '" << required_type_str << "' task. "
+//              << "Requires " << required_data_for_next_compute << " bytes, has " << current_data_size.read() << "." << endl;
+
+//         is_consuming = true;
+//         consume_cycles_left = 6; // 假设有一个计算周期的变量
+        
+//         // **重要**: 暂存下本次将要消耗的数据量
+//         data_to_consume_on_finish = required_data_for_next_compute;
+//     }
+//     else {
+//         // 数据不足，等待。
+//         // 可以添加日志来观察“数据饥饿”状态
+//         // cout << sc_time_stamp() << ": COMPUTE[" << local_id << "] Data starved. Needs " 
+//         //      << required_data_for_next_compute << " bytes, but only has " 
+//         //      << current_data_size.read() << ". Waiting." << endl;
+//     }
+// }
+
 
 void ProcessingElement::update_receive_loop_counters() {
     if (all_receive_tasks_finished) {
@@ -455,95 +606,145 @@ void ProcessingElement::run_storage_logic() {
     bool is_first_iteration = (transfer_loop_counters[current_transfer_loop_level] == 0);
     
     int required_capability;
-    int payload_size_to_send;
+    std::vector<DataType> required_data_types;
+    int payload_sizes[3] = {0, 0, 0}; // 用于填充Packet的元数据
     string intent_str; // 用于日志
-
-    if (is_first_iteration) {
-        // 意图：发送一个FILL包
+    if(role==ROLE_DRAM)
+    {
         intent_str = "FILL";
-        required_capability = 2; // 发送FILL，要求下游能力必须为2
-        payload_size_to_send = transfer_fill_size;
-    } else {
-        // 意图：发送一个DELTA包
-        intent_str = "DELTA";
-        required_capability = 1; // 发送DELTA，要求下游能力至少为1
-        payload_size_to_send = transfer_delta_size;
+        required_data_types.push_back(DataType::WEIGHT);
+        required_data_types.push_back(DataType::INPUT);
+        // 这是DRAM唯一一次生成数据包
+        payload_sizes[WEIGHT_IDX] = 96;
+        payload_sizes[INPUT_IDX] = 18;
+
     }
+    else if(role == ROLE_GLB) {
+        if (is_first_iteration) {
+            // 意图：发送一个FILL包
+            intent_str = "FILL";
+            // 定义FILL的需求：需要WEIGHT和INPUT
+            required_data_types.push_back(DataType::WEIGHT);
+            required_data_types.push_back(DataType::INPUT);
+            // 定义FILL的元数据
+            payload_sizes[WEIGHT_IDX] = 6; // 来自pe_init的定义
+            payload_sizes[INPUT_IDX] = 3;  // 来自pe_init的定义
+        } else {
+            // 意图：发送一个DELTA包
+            intent_str = "DELTA";
+            required_data_types.push_back(DataType::INPUT);
+            payload_sizes[INPUT_IDX] = 1; // 来自pe_init的定义
+            
+        }
+    }    
+    // ==========================================================
+    // +++ 步骤 2: 核心决策：检查数据是否就绪 +++
+    // ==========================================================
+    // 检查这个PE是否有缓冲区，并且缓冲区中的数据是否满足我们的需求
+    if (buffer_manager_ && buffer_manager_->AreDataTypesReady(required_data_types)) {
+        
+        // 数据就绪！现在才需要检查下游能力，因为没数据时检查下游是无意义的
+        int required_capability = (intent_str == "FILL") ? 2 : 1;
+        int downstream_capability = downstream_ready_in.read();
 
-    // --- 步骤 2: 读取下游的接收能力 ---
-    int downstream_capability = downstream_ready_in.read();
+        if (downstream_capability >= required_capability) {
+            // 所有条件都满足！可以生成并发送Packet
+            cout << sc_time_stamp() << ": " << name() 
+                 << " run_storage_logic() - MATCH: Data ready for " << intent_str 
+                 << " and downstream capability is sufficient (" << downstream_capability 
+                 << "). Generating packet." << endl;
 
-    // --- 步骤 3: 核心决策：当且仅当“意图”与“能力”匹配时，才生成Packet ---
-    if (downstream_capability >= required_capability&& current_data_size.read() >= payload_size_to_send) {
-        // 匹配成功！可以生成并发送Packet
-        cout << sc_time_stamp() << ": " << name() 
-             << " run_storage_logic() - MATCH: Intent to send " << intent_str 
-             << ", Downstream capability is " << downstream_capability 
-             << ". Generating packet." << endl;
+            Packet pkt;
+            pkt.src_id = local_id;
+            pkt.dst_id = downstream_node_ids[0];
+            // ... (其他pkt字段的填充逻辑，如timestamp, vc_id等保持不变) ...
 
-        // 创建Packet
-        Packet pkt;
-        pkt.src_id = local_id;
+            // +++ 为Packet填充精确的元数据 +++
+            std::copy(std::begin(payload_sizes), std::end(payload_sizes), pkt.payload_sizes);
+            // pkt的总大小现在可以从元数据中计算
+            int total_payload_size = pkt.total_size(); // 假设Packet有total_size()方法
+            pkt.payload_data_size = total_payload_size; // 兼容旧字段
+            
         // 注意: 您需要根据您的任务逻辑来确定目标ID (dst_id)
         // 这里只是一个示例，假设发送给相邻的PE
-        pkt.dst_id = downstream_node_ids[0]; // 请确保 'target_id' 是一个有效的成员变量或已定义
         pkt.timestamp = sc_time_stamp().to_double() / GlobalParams::clock_period_ps;
         int bytes_per_flit = GlobalParams::flit_size / 8; // 每个Flit的字节数
         // 1. 先计算承载payload需要多少flit
-    int payload_flits = (payload_size_to_send + bytes_per_flit - 1) / bytes_per_flit;
-    if (payload_size_to_send == 0) payload_flits = 0; // 处理0字节payload的特殊情况
+        int payload_flits = (total_payload_size + bytes_per_flit - 1) / bytes_per_flit;
+        if (total_payload_size == 0) payload_flits = 0; // 处理0字节payload的特殊情况
 
-    // 2. 根据payload_flits决定总的flit数
-    int num_flits;
-    if (payload_flits == 0) {
-    // 纯信令包，没有数据。强制为 HEAD + TAIL
-    num_flits = 2; 
-    } else if (payload_flits == 1) {
-    // 数据可以放在一个flit里。强制为 HEAD + BODY (含数据) + TAIL
-    num_flits = 3; 
-    } else {
-        // 数据需要多个flit。
-        // HEAD + (payload_flits个BODY) + TAIL
-        num_flits = 1 + payload_flits + 1;
-    }
+        // 2. 根据payload_flits决定总的flit数
+        int num_flits;
+        if (payload_flits == 0) {
+        // 纯信令包，没有数据。强制为 HEAD + TAIL
+        num_flits = 2; 
+        } else if (payload_flits == 1) {
+        // 数据可以放在一个flit里。强制为 HEAD + BODY (含数据) + TAIL
+        num_flits = 3; 
+        } else {
+            // 数据需要多个flit。
+            // HEAD + (payload_flits个BODY) + TAIL
+            num_flits = 1 + payload_flits + 1;
+        }
         pkt.flit_left = pkt.size= num_flits; // 设置包的总Flit数
-        pkt.payload_data_size = payload_size_to_send; // 携带真实的字节大小！
+        pkt.payload_data_size = total_payload_size; // 携带真实的字节大小！
         pkt.vc_id = randInt(0, GlobalParams::n_virtual_channels - 1);
         // 将Packet放入发送队列
         packet_queue.push(pkt);
-
-        // **重要**: 生成Packet后，必须更新循环计数器状态，为下一次决策做准备
-        // 您需要调用您实现的循环更新函数，例如:
-        update_transfer_loop_counters(); 
+        update_transfer_loop_counters();
+        }
     }
 }
+    // 如果数据未就绪，或者下游未准备好，则此函数不做任何事，等待下一个周期
 
-// void ProcessingElement::run_storage_logic()
-// {
-//     // 检查是否有足够的数据来生产一个包
-//     if (current_data_size.read() >= transfer_chunk_size&& !ended_compute_loop) {
-//         // ---- 这是两个函数完全相同的核心逻辑 ----
-//         int bytes_per_flit = GlobalParams::flit_size / 8;
-//         const int num_flits = (transfer_chunk_size + bytes_per_flit - 1) / bytes_per_flit;
+    // // --- 步骤 2: 读取下游的接收能力 ---
+    // int downstream_capability = downstream_ready_in.read();
 
-//         Packet pkt;
-//         pkt.src_id = local_id;
-//         pkt.dst_id = downstream_node_ids[0]; // 假设只有一个下游
-//         pkt.timestamp = sc_time_stamp().to_double() / GlobalParams::clock_period_ps;
-//         pkt.size = pkt.flit_left = num_flits;
-//         pkt.vc_id = randInt(0, GlobalParams::n_virtual_channels - 1);
-//         pkt.payload_data_size = transfer_chunk_size; //单位是字节
-//         packet_queue.push(pkt);
+    // // --- 步骤 3: 核心决策：当且仅当“意图”与“能力”匹配时，才生成Packet ---
+    // if (downstream_capability >= required_capability&& current_data_size.read() >= payload_size_to_send) {
+    //     // 匹配成功！可以生成并发送Packet
+    //     cout << sc_time_stamp() << ": " << name() 
+    //          << " run_storage_logic() - MATCH: Intent to send " << intent_str 
+    //          << ", Downstream capability is " << downstream_capability 
+    //          << ". Generating packet." << endl;
 
-//         // 使用传入的参数来打印定制化的日志
-//         PE_Role next_role = static_cast<PE_Role>(role + 1);
-//         cout << sc_time_stamp() << ": " << role_to_str(role) << "[" << local_id 
-//              << "] INTENDS to push a packet to queue for " << role_to_str(next_role)<< "[" 
-//              << pkt.dst_id << "]." << endl;
-//     }
+    //     // 创建Packet
+    //     Packet pkt;
+    //     pkt.src_id = local_id;
+    //     // 注意: 您需要根据您的任务逻辑来确定目标ID (dst_id)
+    //     // 这里只是一个示例，假设发送给相邻的PE
+    //     pkt.dst_id = downstream_node_ids[0]; // 请确保 'target_id' 是一个有效的成员变量或已定义
+    //     pkt.timestamp = sc_time_stamp().to_double() / GlobalParams::clock_period_ps;
+    //     int bytes_per_flit = GlobalParams::flit_size / 8; // 每个Flit的字节数
+    //     // 1. 先计算承载payload需要多少flit
+    // int payload_flits = (payload_size_to_send + bytes_per_flit - 1) / bytes_per_flit;
+    // if (payload_size_to_send == 0) payload_flits = 0; // 处理0字节payload的特殊情况
 
-// }
-// in PE.cpp
+    // // 2. 根据payload_flits决定总的flit数
+    // int num_flits;
+    // if (payload_flits == 0) {
+    // // 纯信令包，没有数据。强制为 HEAD + TAIL
+    // num_flits = 2; 
+    // } else if (payload_flits == 1) {
+    // // 数据可以放在一个flit里。强制为 HEAD + BODY (含数据) + TAIL
+    // num_flits = 3; 
+    // } else {
+    //     // 数据需要多个flit。
+    //     // HEAD + (payload_flits个BODY) + TAIL
+    //     num_flits = 1 + payload_flits + 1;
+    // }
+    //     pkt.flit_left = pkt.size= num_flits; // 设置包的总Flit数
+    //     pkt.payload_data_size = payload_size_to_send; // 携带真实的字节大小！
+    //     pkt.vc_id = randInt(0, GlobalParams::n_virtual_channels - 1);
+    //     // 将Packet放入发送队列
+    //     packet_queue.push(pkt);
+
+    //     // **重要**: 生成Packet后，必须更新循环计数器状态，为下一次决策做准备
+    //     // 您需要调用您实现的循环更新函数，例如:
+    //     update_transfer_loop_counters(); 
+    // }
+
+
 
 void ProcessingElement::update_transfer_loop_counters() {
     // 如果所有任务已完成，直接返回
@@ -599,7 +800,10 @@ Flit ProcessingElement::nextFlit()
     flit.hub_relay_node = NOT_VALID;
 
     if (packet.size == packet.flit_left)
-	flit.flit_type = FLIT_TYPE_HEAD;
+    {
+	    flit.flit_type = FLIT_TYPE_HEAD;
+        std::copy(std::begin(packet.payload_sizes),std::end(packet.payload_sizes), flit.payload_sizes);
+    }
     else if (packet.flit_left == 1)
 	flit.flit_type = FLIT_TYPE_TAIL;
     else
