@@ -24,11 +24,11 @@ CXX      := g++
 OPT      := -O3
 # to enable logs with LOG macro, uncomment "-g DDEBUG" in the line below
 # and recompile everythin (make clean)
-#DEBUG    :=  -g -DDEBUG
+DEBUG    :=  -g -DDEBUG
 OTHER    := -Wall -DSC_NO_WRITE_CHECK --std=c++11 # -Wno-deprecated
 CXXFLAGS := $(OPT) $(OTHER) $(DEBUG)
 
-INCDIR := -I$(SRCDIR) -isystem $(SYSTEMC)/include -I$(YAML)/include
+INCDIR := -I$(SRCDIR) -I$(SRCDIR)/smartbuffer -isystem $(SYSTEMC)/include -I$(YAML)/include
 LIBDIR := -L$(SRCDIR) -L$(SYSTEMC_LIBS) -L$(YAML)/lib
 
 LIBS := -lsystemc -lm -lyaml-cpp 
