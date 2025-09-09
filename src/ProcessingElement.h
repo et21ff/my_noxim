@@ -56,32 +56,36 @@ SC_MODULE(ProcessingElement)
     // Functions
     void rxProcess();		// The receiving process
     void txProcess();		// The transmitting process
-    bool canShot(Packet & packet);	// True when the packet must be shot
     Flit nextFlit();	// Take the next flit of the current packet
-    Packet trafficTest();	// used for testing traffic
-    Packet trafficRandom();	// Random destination distribution
-    Packet trafficTranspose1();	// Transpose 1 destination distribution
-    Packet trafficTranspose2();	// Transpose 2 destination distribution
-    Packet trafficBitReversal();	// Bit-reversal destination distribution
-    Packet trafficShuffle();	// Shuffle destination distribution
-    Packet trafficButterfly();	// Butterfly destination distribution
-    Packet trafficLocal();	// Random with locality
-    Packet trafficULocal();	// Random with locality
+    
+    // Traffic-related functions removed (not used in current implementation)
+    // bool canShot(Packet & packet);
+    // Packet trafficTest();
+    // Packet trafficRandom();
+    // Packet trafficTranspose1();
+    // Packet trafficTranspose2();
+    // Packet trafficBitReversal();
+    // Packet trafficShuffle();
+    // Packet trafficButterfly();
+    // Packet trafficLocal();
+    // Packet trafficULocal();
 
     GlobalTrafficTable *traffic_table;	// Reference to the Global traffic Table
     bool never_transmit;	// true if the PE does not transmit any packet 
     //  (valid only for the table based traffic)
 
-    void fixRanges(const Coord, Coord &);	// Fix the ranges of the destination
+    // Utility functions - only keeping used ones
     int randInt(int min, int max);	// Extracts a random integer number between min and max
-    int getRandomSize();	// Returns a random size in flits for the packet
-    void setBit(int &x, int w, int v);
-    int getBit(int x, int w);
-    double log2ceil(double x);
-
-    int roulett();
-    int findRandomDestination(int local_id,int hops);
-    unsigned int getQueueSize() const;
+    
+    // Unused utility functions removed
+    // void fixRanges(const Coord, Coord &);
+    // int getRandomSize();
+    // void setBit(int &x, int w, int v);
+    // int getBit(int x, int w);
+    // double log2ceil(double x);
+    // int roulett();
+    // int findRandomDestination(int local_id,int hops);
+    // unsigned int getQueueSize() const;
 public:
     //========================================================================
     // I. 核心身份与物理属性 (Core Identity & Physical Attributes)
@@ -170,6 +174,9 @@ public: // 建议将内部状态变量设为私有
     void run_compute_logic();
     void update_transfer_loop_counters();
     void update_receive_loop_counters();
+    
+    
+    unsigned int getQueueSize() const; 
     // Constructor
 
     SC_CTOR(ProcessingElement) {
