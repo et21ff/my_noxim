@@ -95,6 +95,7 @@ public:
 
     // --- 新增：LivenessAwareBuffer 现在是缓冲区管理的核心 ---
     std::unique_ptr<BufferManager> buffer_manager_; // <--- 3. 添加 BufferManager 实例
+    std::unique_ptr<BufferManager> output_buffer_manager_; // <--- 新增：output smartbuffer
     
     //========================================================================
     // II. 网络接口与通信 (Network Interface & Communication)
@@ -102,6 +103,7 @@ public:
 
     // --- 与下游的连接 ---
     std::vector<int> downstream_node_ids;
+    std::vector<int> upstream_node_ids; 
     int current_downstream_target_index; // 用于多播或轮询
 
     //========================================================================

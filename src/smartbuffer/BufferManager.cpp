@@ -5,9 +5,10 @@ BufferManager::BufferManager(size_t capacity, const EvictionSchedule& schedule)
     // 使用成员初始化列表来初始化成员变量
     // 这对于 const 成员 (eviction_schedule_) 和引用成员是必需的，
     // 对其他成员也是一种高效且推荐的做法。
+    // 注意：初始化顺序必须与头文件中成员变量的声明顺序一致
     : capacity_(capacity),
-      eviction_schedule_(schedule),
-      current_size_(0) 
+      current_size_(0),
+      eviction_schedule_(schedule) 
 {
     // 在构造函数体中，我们确保所有数据类型的初始大小都被设置为0。
     // 这可以防止在第一次查询一个从未存过数据的类型时出现问题。

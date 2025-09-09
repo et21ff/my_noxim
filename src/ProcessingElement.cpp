@@ -17,61 +17,8 @@ int ProcessingElement::randInt(int min, int max)
 	(int) ((double) (max - min + 1) * rand() / (RAND_MAX + 1.0));
 }
 
-// +++ (辅助函数) 为ROLE_BUFFER生成精确的驱逐计划
-// +++ 我们可以把它放在pe_init之前，或者作为一个静态辅助方法。
-EvictionSchedule create_buffer_pe_schedule() {
-    EvictionSchedule schedule;
-    int timestep = 0; // 用一个简单的计数器来模拟时间步
-    const int K2_LOOPS = 16;
-    const int P1_LOOPS = 16;
-    
-    for (int k2 = 0; k2 < K2_LOOPS; ++k2) {
-        for (int p1 = 0; p1 < P1_LOOPS; ++p1) {
-            timestep++; // 假设每次计算消耗一个时间步
-            
-            // 在每次计算完成后，都可以驱逐本次使用的输入数据
-            if (p1 == P1_LOOPS-1) { // FILL 阶段
-                schedule[timestep][DataType::INPUT] = 3; // 驱逐FILL的3字节输入
-            } else { // DELTA 阶段
-                schedule[timestep][DataType::INPUT] = 1; // 驱逐DELTA的1字节输入
-            }
-        }
-        // 在内层P1循环结束后，K2循环复用的权重可以被驱逐了
-        schedule[timestep][DataType::WEIGHT] = 6;
-    }
-    return schedule;
-}
-
-EvictionSchedule create_glb_eviction_schedule() {
-    EvictionSchedule schedule;
-    int logical_timestamp = 0;
-    const int K2_LOOPS = 16;
-    const int P1_LOOPS = 16;
-    
-    for (int k2 = 0; k2 < K2_LOOPS; ++k2) {
-        // 在每个宏观循环（K2）开始时，GLB会发送一个包含新权重的FILL包。
-        // 我们需要记录这个FILL包的发送时间点，以便计算权重的驱逐时间。
-        int fill_timestamp = 0;
-
-        for (int p1 = 0; p1 < P1_LOOPS; ++p1) {
-            // GLB每执行一次发送任务（无论是FILL还是DELTA），逻辑时间戳+1
-            logical_timestamp++; 
-            
-            if (p1 == 0) { // 这是发送FILL包的任务
-                fill_timestamp = logical_timestamp; // 记录FILL的发送时间
-                
-                // 发送的6字节WEIGHT，在本步完成后即可驱逐。
-                schedule[logical_timestamp][DataType::WEIGHT] = 6;
-
-            } else { // 这是发送DELTA包的任务
-                // 发送的0字节WEIGHT，在本步完成后即可驱逐。
-                schedule[logical_timestamp][DataType::WEIGHT] = 0;
-            }
-        }
-    }
-    schedule[logical_timestamp][DataType::INPUT] = 18;
-    return schedule;
-}
+// 引入ScheduleFactory来创建驱逐计划
+#include "smartbuffer/ScheduleFactory.h"
 void ProcessingElement::pe_init() {
     //========================================================================
     // I. 黄金参数定义 (Golden Parameters)
@@ -110,12 +57,17 @@ void ProcessingElement::pe_init() {
         // --- ROLE_DRAM: 理想化的、一次性任务的生产者 ---
         role = ROLE_DRAM;
         max_capacity = 20000; // 假设DRAM容量为64KB
-        EvictionSchedule dram_schedule; // 空计划
+        EvictionSchedule dram_schedule = ScheduleFactory::createDRAMEvictionSchedule();
         buffer_manager_.reset(new BufferManager(max_capacity, dram_schedule));
         buffer_manager_->OnDataReceived(DataType::WEIGHT, 10000);
         buffer_manager_->OnDataReceived(DataType::INPUT, 10000);
+        
+        // 初始化output buffer manager
+        EvictionSchedule dram_output_schedule = ScheduleFactory::createDRAMEvictionSchedule();
+        output_buffer_manager_.reset(new BufferManager(max_capacity, dram_output_schedule));
         max_capacity = -1;
         downstream_node_ids.push_back(1); // 下游是GLB
+        upstream_node_ids.clear(); // DRAM没有上游
         
         // DRAM的发送任务: 响应GLB的一次性总加载请求
         // 假设GLB一次性请求所有数据 (W:96 + I:18 = 114 Bytes)
@@ -134,10 +86,13 @@ void ProcessingElement::pe_init() {
         max_capacity = GLB_CAPACITY;
         downstream_node_ids.push_back(2); // 下游是Buffer
 
-        EvictionSchedule glb_schedule; // 空的驱逐计划
-        glb_schedule=create_glb_eviction_schedule();
+        EvictionSchedule glb_schedule = ScheduleFactory::createGLBEvictionSchedule();
         buffer_manager_.reset(new BufferManager(max_capacity, glb_schedule));
         current_data_size.write(buffer_manager_->GetCurrentSize()); // 用manager的状态初始化信号
+        
+        // 初始化output buffer manager
+        EvictionSchedule glb_output_schedule = ScheduleFactory::createGLBEvictionSchedule();
+        output_buffer_manager_.reset(new BufferManager(max_capacity, glb_output_schedule));
         // GLB的接收任务：从DRAM接收1次大的数据块
          transfer_task_queue.clear();
         receive_task_queue.push_back({1});
@@ -167,10 +122,15 @@ void ProcessingElement::pe_init() {
 
         role = ROLE_BUFFER;
         max_capacity = BUFFER_CAPACITY;
-        EvictionSchedule buffer_schedule = create_buffer_pe_schedule();
+        EvictionSchedule buffer_schedule = ScheduleFactory::createBufferPESchedule();
         buffer_manager_.reset(new BufferManager(max_capacity, buffer_schedule));
         current_data_size.write(buffer_manager_->GetCurrentSize()); // 用manager的状态初始
+        
+        // 初始化output buffer manager
+        EvictionSchedule buffer_output_schedule = ScheduleFactory::createOutputBufferSchedule();
+        output_buffer_manager_.reset(new BufferManager(max_capacity, buffer_output_schedule));
         downstream_node_ids.clear(); // 是终点
+        upstream_node_ids.push_back(1); // 上游是GLB
         
         receive_task_queue.clear();
         receive_task_queue.push_back(K2_LOOPS);
@@ -286,8 +246,17 @@ void ProcessingElement::rxProcess() {
                 cout << sc_time_stamp() << ": " << name() << " RX data. New size: " 
                      << buffer_manager_->GetCurrentSize() << "/" << buffer_manager_->GetCapacity() << endl;
 
-
-
+                // +++ 新增：为Buffer PE添加output数据到output buffer +++
+                if (role == ROLE_BUFFER && output_buffer_manager_) {
+                    // 模拟计算产生output数据，这里假设计算产生1字节的output
+                    int output_size = 1; // 可以根据实际计算需求调整
+                    bool output_success = output_buffer_manager_->OnDataReceived(DataType::OUTPUT, output_size);
+                    if (output_success) {
+                        cout << sc_time_stamp() << ": " << name() << " OUTPUT: Added " << output_size 
+                             << " bytes to output buffer. Size: " << output_buffer_manager_->GetCurrentSize() 
+                             << "/" << output_buffer_manager_->GetCapacity() << endl;
+                    }
+                }
                                         }
                                 }
      // 步骤 4: 翻转握手信号 (核心结构保持不变)
@@ -365,6 +334,16 @@ void ProcessingElement::txProcess() {
                 cout << sc_time_stamp() << ": " << name() 
                      << " [LIFECYCLE] Data service finished at logical step " << logical_timestamp 
                      << ". Buffer state is now: " << buffer_manager_->GetCurrentSize() << endl;
+            }
+            
+            // +++ 新增：Buffer PE发送output数据后的处理 +++
+            if (output_buffer_manager_ && role == ROLE_BUFFER && pkt_to_send.payload_sizes[OUTPUT_IDX] > 0) {
+                logical_timestamp++;
+                size_t evicted_size = output_buffer_manager_->OnComputeFinished(logical_timestamp);
+                cout << sc_time_stamp() << ": " << name() 
+                     << " [OUTPUT_LIFECYCLE] Output data sent at logical step " << logical_timestamp 
+                     << ". Evicted " << evicted_size << " bytes from output buffer. "
+                     << "Output buffer size: " << output_buffer_manager_->GetCurrentSize() << endl;
             }
         }
              flit_tx.write(flit);
@@ -636,12 +615,30 @@ void ProcessingElement::run_storage_logic() {
             payload_sizes[INPUT_IDX] = 1; // 来自pe_init的定义
             
         }
+    }
+    else if(role == ROLE_BUFFER) {
+        // Buffer PE可以发送output数据
+        if (output_buffer_manager_ && output_buffer_manager_->GetDataSize(DataType::OUTPUT) > 0) {
+            intent_str = "OUTPUT";
+            required_data_types.push_back(DataType::OUTPUT);
+            // 定义OUTPUT的元数据：发送当前output buffer中的所有output数据
+            payload_sizes[OUTPUT_IDX] = output_buffer_manager_->GetDataSize(DataType::OUTPUT);
+        }
     }    
     // ==========================================================
     // +++ 步骤 2: 核心决策：检查数据是否就绪 +++
     // ==========================================================
     // 检查这个PE是否有缓冲区，并且缓冲区中的数据是否满足我们的需求
-    if (buffer_manager_ && buffer_manager_->AreDataTypesReady(required_data_types)) {
+    bool data_ready = false;
+    if (role == ROLE_BUFFER && intent_str == "OUTPUT") {
+        // 对于OUTPUT数据，检查output_buffer_manager_
+        data_ready = output_buffer_manager_ && output_buffer_manager_->AreDataTypesReady(required_data_types);
+    } else {
+        // 对于其他数据，检查buffer_manager_
+        data_ready = buffer_manager_ && buffer_manager_->AreDataTypesReady(required_data_types);
+    }
+    
+    if (data_ready) {
         
         // 数据就绪！现在才需要检查下游能力，因为没数据时检查下游是无意义的
         int required_capability = (intent_str == "FILL") ? 2 : 1;
