@@ -30,6 +30,7 @@ using namespace std;
 #define DIRECTION_WEST          3
 #define DIRECTION_LOCAL         4
 #define DIRECTION_HUB           5
+#define DIRECTION_LOCAL_2       6
 #define DIRECTION_HUB_RELAY     5000
 #define DIRECTION_WIRELESS    747
 

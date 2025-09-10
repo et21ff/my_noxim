@@ -55,10 +55,13 @@ SC_MODULE(Tile)
     sc_out < NoP_data > NoP_data_out[DIRECTIONS];
     sc_in < NoP_data > NoP_data_in[DIRECTIONS];
 
-    sc_signal <int> free_slots_local;
-    sc_signal <int> free_slots_neighbor_local;
+	sc_signal <int> free_slots_local;
+	sc_signal <int> free_slots_neighbor_local;
+	sc_signal <int> free_slots_local_2;
+	sc_signal <int> free_slots_neighbor_local_2;
+	sc_signal <int> dummy_signal;  // Dummy signal for HUB direction
 
-    // Signals required for Router-PE connection
+    // Signals required for Router-PE connection (Primary - LOCAL)
     sc_signal <Flit> flit_rx_local;	
     sc_signal <bool> req_rx_local;     
     sc_signal <bool> ack_rx_local;
@@ -68,6 +71,20 @@ SC_MODULE(Tile)
     sc_signal <bool> req_tx_local;
     sc_signal <bool> ack_tx_local;
     sc_signal <TBufferFullStatus> buffer_full_status_tx_local;
+
+    // Signals required for Router-PE connection (Secondary - LOCAL_2)
+    sc_signal <Flit> flit_rx_local_2;	
+    sc_signal <bool> req_rx_local_2;     
+    sc_signal <bool> ack_rx_local_2;
+    sc_signal <TBufferFullStatus> buffer_full_status_rx_local_2;
+
+    sc_signal <Flit> flit_tx_local_2;
+    sc_signal <bool> req_tx_local_2;
+    sc_signal <bool> ack_tx_local_2;
+    sc_signal <TBufferFullStatus> buffer_full_status_tx_local_2;
+
+
+
 
 
     // Instances
@@ -113,6 +130,16 @@ SC_MODULE(Tile)
 	r->ack_tx[DIRECTION_LOCAL] (ack_rx_local);
 	r->buffer_full_status_tx[DIRECTION_LOCAL] (buffer_full_status_rx_local);
 
+	// local_2 (secondary connection)
+	r->flit_rx[DIRECTION_LOCAL_2] (flit_tx_local_2);
+	r->req_rx[DIRECTION_LOCAL_2] (req_tx_local_2);
+	r->ack_rx[DIRECTION_LOCAL_2] (ack_tx_local_2);
+	r->buffer_full_status_rx[DIRECTION_LOCAL_2] (buffer_full_status_tx_local_2);
+
+	r->flit_tx[DIRECTION_LOCAL_2] (flit_rx_local_2);
+	r->req_tx[DIRECTION_LOCAL_2] (req_rx_local_2);
+	r->ack_tx[DIRECTION_LOCAL_2] (ack_rx_local_2);
+	r->buffer_full_status_tx[DIRECTION_LOCAL_2] (buffer_full_status_rx_local_2);
 
 	// hub related
 	r->flit_rx[DIRECTION_HUB] (hub_flit_rx);
@@ -124,6 +151,10 @@ SC_MODULE(Tile)
 	r->req_tx[DIRECTION_HUB] (hub_req_tx);
 	r->ack_tx[DIRECTION_HUB] (hub_ack_tx);
 	r->buffer_full_status_tx[DIRECTION_HUB] (hub_buffer_full_status_tx);
+	r->free_slots[DIRECTION_HUB] (dummy_signal);  // Dummy value for HUB
+	r->free_slots_neighbor[DIRECTION_HUB] (dummy_signal); // Dummy value for HUB
+	// Can't change the logic of HUB, making this piece of shit code to avoid errors
+
 
 
 
@@ -143,11 +174,26 @@ SC_MODULE(Tile)
 	pe->ack_tx(ack_tx_local);
 	pe->buffer_full_status_tx(buffer_full_status_tx_local);
 
+	// Secondary connection (LOCAL_2)
+	pe->flit_rx_2(flit_rx_local_2);
+	pe->req_rx_2(req_rx_local_2);
+	pe->ack_rx_2(ack_rx_local_2);
+	pe->buffer_full_status_rx_2(buffer_full_status_rx_local_2);
+	
+	pe->flit_tx_2(flit_tx_local_2);
+	pe->req_tx_2(req_tx_local_2);
+	pe->ack_tx_2(ack_tx_local_2);
+	pe->buffer_full_status_tx_2(buffer_full_status_tx_local_2);
+
 	// NoP
 	//
 	r->free_slots[DIRECTION_LOCAL] (free_slots_local);
 	r->free_slots_neighbor[DIRECTION_LOCAL] (free_slots_neighbor_local);
 	pe->free_slots_neighbor(free_slots_neighbor_local);
+	
+	// LOCAL_2 free_slots connections
+	r->free_slots[DIRECTION_LOCAL_2] (free_slots_local_2);
+	r->free_slots_neighbor[DIRECTION_LOCAL_2] (free_slots_neighbor_local_2);
 
     }
 

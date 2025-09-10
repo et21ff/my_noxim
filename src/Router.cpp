@@ -27,7 +27,7 @@ void Router::rxProcess()
     if (reset.read()) {
 	TBufferFullStatus bfs;
 	// Clear outputs and indexes of receiving protocol
-	for (int i = 0; i < DIRECTIONS + 2; i++) {
+	for (int i = 0; i < DIRECTIONS + 3; i++) {
 	    ack_rx[i].write(0);
 	    current_level_rx[i] = 0;
 	    buffer_full_status_rx[i].write(bfs);
@@ -40,7 +40,7 @@ void Router::rxProcess()
 	// This process simply sees a flow of incoming flits. All arbitration
 	// and wormhole related issues are addressed in the txProcess()
 	//assert(false);
-	for (int i = 0; i < DIRECTIONS + 2; i++) {
+	for (int i = 0; i < DIRECTIONS + 3; i++) {
 	    // To accept a new flit, the following conditions must match:
 	    // 1) there is an incoming request
 	    // 2) there is a free slot in the input buffer of direction i
@@ -96,7 +96,7 @@ void Router::txProcess()
   if (reset.read()) 
     {
       // Clear outputs and indexes of transmitting protocol
-      for (int i = 0; i < DIRECTIONS + 2; i++) 
+      for (int i = 0; i < DIRECTIONS + 3; i++) 
 	{
 	  req_tx[i].write(0);
 	  current_level_tx[i] = 0;
@@ -105,9 +105,9 @@ void Router::txProcess()
   else 
     { 
       // 1st phase: Reservation
-      for (int j = 0; j < DIRECTIONS + 2; j++) 
+      for (int j = 0; j < DIRECTIONS + 3; j++) 
 	{
-	  int i = (start_from_port + j) % (DIRECTIONS + 2);
+	  int i = (start_from_port + j) % (DIRECTIONS + 3);
 
 	  for (int k = 0;k < GlobalParams::n_virtual_channels; k++)
 	  {
@@ -177,11 +177,11 @@ void Router::txProcess()
 	    start_from_vc[i] = (start_from_vc[i]+1)%GlobalParams::n_virtual_channels;
 	}
 
-      start_from_port = (start_from_port + 1) % (DIRECTIONS + 2);
+      start_from_port = (start_from_port + 1) % (DIRECTIONS + 3);
 
       // 2nd phase: Forwarding
       //if (local_id==6) LOG<<"*TX*****local_id="<<local_id<<"__ack_tx[0]= "<<ack_tx[0].read()<<endl;
-      for (int i = 0; i < DIRECTIONS + 2; i++) 
+      for (int i = 0; i < DIRECTIONS + 3; i++) 
       { 
 	  vector<pair<int,int> > reservations = reservation_table.getReservations(i);
 	  
@@ -526,9 +526,9 @@ void Router::configure(const int _id,
     if (grt.isValid())
 	routing_table.configure(grt, _id);
 
-    reservation_table.setSize(DIRECTIONS+2);
+    reservation_table.setSize(DIRECTIONS+3);
 
-    for (int i = 0; i < DIRECTIONS + 2; i++)
+    for (int i = 0; i < DIRECTIONS + 3; i++)
     {
 	for (int vc = 0; vc < GlobalParams::n_virtual_channels; vc++)
 	{
@@ -555,6 +555,10 @@ void Router::configure(const int _id,
 	    if (col == GlobalParams::mesh_dim_x-1)
 	      buffer[DIRECTION_EAST][vc].Disable();
 	}
+	
+	// // Ensure LOCAL and LOCAL_2 ports are always enabled in mesh topology
+	// buffer[DIRECTION_LOCAL][vc].Enable();
+	// buffer[DIRECTION_LOCAL_2][vc].Enable();
     }
 
 }
@@ -634,7 +638,7 @@ bool Router::inCongestion()
 
 void Router::ShowBuffersStats(std::ostream & out)
 {
-  for (int i=0; i<DIRECTIONS+2; i++)
+  for (int i=0; i<DIRECTIONS+3; i++)
       for (int vc=0; vc<GlobalParams::n_virtual_channels;vc++)
 	    buffer[i][vc].ShowStats(out);
 }

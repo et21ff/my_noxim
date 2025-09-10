@@ -392,6 +392,8 @@ void ProcessingElement::run_compute_logic() {
             // 将这个权威的数值，累加到总消耗量中
             total_bytes_consumed += bytes_consumed_this_task;
 
+            output_buffer_manager_->OnDataReceived(DataType::OUTPUT, 1);
+
             // 打印包含丰富上下文的、准确的日志
             cout << sc_time_stamp() << ": " << name() 
                  << " [LIFECYCLE] Computation finished at logical step " << logical_timestamp 
