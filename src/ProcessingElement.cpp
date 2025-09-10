@@ -246,18 +246,6 @@ void ProcessingElement::rxProcess() {
                 update_ready_signal(); // 更新ready信号
                 cout << sc_time_stamp() << ": " << name() << " RX data. New size: " 
                      << buffer_manager_->GetCurrentSize() << "/" << buffer_manager_->GetCapacity() << endl;
-
-                // +++ 新增：为Buffer PE添加output数据到output buffer +++
-                if (role == ROLE_BUFFER && output_buffer_manager_) {
-                    // 模拟计算产生output数据，这里假设计算产生1字节的output
-                    int output_size = 1; // 可以根据实际计算需求调整
-                    bool output_success = output_buffer_manager_->OnDataReceived(DataType::OUTPUT, output_size);
-                    if (output_success) {
-                        cout << sc_time_stamp() << ": " << name() << " OUTPUT: Added " << output_size 
-                             << " bytes to output buffer. Size: " << output_buffer_manager_->GetCurrentSize() 
-                             << "/" << output_buffer_manager_->GetCapacity() << endl;
-                    }
-                }
                                         }
                                 }
      // 步骤 4: 翻转握手信号 (核心结构保持不变)
@@ -337,15 +325,6 @@ void ProcessingElement::txProcess() {
                      << ". Buffer state is now: " << buffer_manager_->GetCurrentSize() << endl;
             }
             
-            // +++ 新增：Buffer PE发送output数据后的处理 +++
-            if (output_buffer_manager_ && role == ROLE_BUFFER && pkt_to_send.payload_sizes[OUTPUT_IDX] > 0) {
-                logical_timestamp++;
-                size_t evicted_size = output_buffer_manager_->OnComputeFinished(logical_timestamp);
-                cout << sc_time_stamp() << ": " << name() 
-                     << " [OUTPUT_LIFECYCLE] Output data sent at logical step " << logical_timestamp 
-                     << ". Evicted " << evicted_size << " bytes from output buffer. "
-                     << "Output buffer size: " << output_buffer_manager_->GetCurrentSize() << endl;
-            }
         }
              flit_tx.write(flit);
             // 更新Noxim的握手协议状态
@@ -355,7 +334,170 @@ void ProcessingElement::txProcess() {
         } 
     }
 }
-// in PE.cpp
+
+void ProcessingElement::output_txprocess() {
+    // 复位逻辑保持不变
+    if (reset.read()) {
+        req_tx_2.write(0);
+        current_level_tx_2 = 0;
+        while (!packet_queue_2.empty()) packet_queue_2.pop();
+        return;
+    }
+
+    // +++ 调试：为DRAM添加特殊处理 +++
+    if (role == ROLE_DRAM) {
+        // DRAM作为最终接收端，不需要再转发output数据
+        // 但可以记录接收到的output数据总量
+        static int dram_total_output_received = 0;
+        if (output_buffer_manager_ && output_buffer_manager_->GetCurrentSize() > dram_total_output_received) {
+            int new_data = output_buffer_manager_->GetCurrentSize() - dram_total_output_received;
+            dram_total_output_received = output_buffer_manager_->GetCurrentSize();
+            cout << sc_time_stamp() << ": " << name() 
+                 << " [DRAM_OUTPUT_FINAL] Accumulated " << new_data 
+                 << " bytes of output. Total: " << dram_total_output_received << endl;
+        }
+        return;
+    }
+
+    // 步骤 A: 生成Output包的逻辑保持不变...
+    if (packet_queue_2.empty()) {
+        if (output_buffer_manager_ && output_buffer_manager_->GetCurrentSize() >= 4) {
+            // +++ 增强调试：记录发送意图 +++
+            cout << sc_time_stamp() << ": " << name() 
+                 << " [OUTPUT_TX_INTENT] Planning to send 4-byte OUTPUT packet. Buffer: " 
+                 << output_buffer_manager_->GetCurrentSize() 
+                 << " → Target: " << (role == ROLE_BUFFER ? "GLB(1)" : "DRAM(0)") << endl;
+
+            Packet pkt;
+            pkt.src_id = local_id;
+            
+            if (role == ROLE_BUFFER) {
+                pkt.dst_id = 1; // Buffer PE发送回GLB
+            } else if (role == ROLE_GLB) {
+                pkt.dst_id = 0; // GLB发送回DRAM
+            }
+            
+            int payload_sizes[3] = {0, 0, 4};
+            std::copy(std::begin(payload_sizes), std::end(payload_sizes), pkt.payload_sizes);
+            
+            pkt.payload_data_size = 4;
+            pkt.timestamp = sc_time_stamp().to_double() / GlobalParams::clock_period_ps;
+            
+            // 计算flit数量的逻辑...
+            int bytes_per_flit = GlobalParams::flit_size / 8;
+            int payload_flits = (4 + bytes_per_flit - 1) / bytes_per_flit;
+            int num_flits = (payload_flits <= 1) ? 3 : (1 + payload_flits + 1);
+            
+            pkt.flit_left = pkt.size = num_flits;
+            pkt.vc_id = randInt(0, GlobalParams::n_virtual_channels - 1);
+            
+            packet_queue_2.push(pkt);
+            
+            // +++ 调试：确认包已生成 +++
+            cout << sc_time_stamp() << ": " << name() 
+                 << " [OUTPUT_TX_GENERATED] Created output packet: "
+                 << local_id << "→" << pkt.dst_id 
+                 << ", " << num_flits << " flits, vc=" << pkt.vc_id << endl;
+        }
+    }
+
+    // 步骤 B: 发送逻辑
+    if (!packet_queue_2.empty()) {
+        if (ack_tx_2.read() == current_level_tx_2) {
+            Flit flit = nextOutputFlit();
+            
+            if (flit.flit_type == FLIT_TYPE_HEAD) {
+                cout << sc_time_stamp() << ": " << name() 
+                     << " [OUTPUT_TX_HEAD] Sending OUTPUT HEAD: " 
+                     << flit.src_id << "→" << flit.dst_id 
+                     << ", seq=" << flit.sequence_no << "/" << flit.sequence_length << endl;
+            }
+            
+            if (flit.flit_type == FLIT_TYPE_TAIL) {
+                if (output_buffer_manager_) {
+                    size_t bytes_to_remove = 4;
+                    size_t old_size = output_buffer_manager_->GetCurrentSize();
+                    
+                    bool success = output_buffer_manager_->RemoveData(DataType::OUTPUT, bytes_to_remove);
+                    
+                    if (success) {
+                        size_t new_size = output_buffer_manager_->GetCurrentSize();
+                        cout << sc_time_stamp() << ": " << name() 
+                             << " [OUTPUT_TX_COMPLETE] Sent OUTPUT packet: " 
+                             << flit.src_id << "→" << flit.dst_id 
+                             << ". Buffer: " << old_size << "→" << new_size 
+                             << " (-" << bytes_to_remove << ")" << endl;
+                    } else {
+                        cout << sc_time_stamp() << ": " << name() 
+                             << " [OUTPUT_TX_ERROR] Failed to remove data from output buffer!" << endl;
+                    }
+                }
+            }
+            
+            flit_tx_2.write(flit);
+            current_level_tx_2 = 1 - current_level_tx_2;
+            req_tx_2.write(current_level_tx_2);
+        }
+    }
+}
+
+void ProcessingElement::output_rxProcess() {
+    if (reset.read()) {
+        ack_rx_2.write(0);
+        current_level_rx_2 = 0;
+        return;
+    }
+
+    if (req_rx_2.read() == 1 - current_level_rx_2) {
+        Flit flit = flit_rx_2.read();
+        
+        if (flit.flit_type == FLIT_TYPE_HEAD) {
+            std::copy(std::begin(flit.payload_sizes), std::end(flit.payload_sizes), incoming_output_payload_sizes);
+            int total_size = std::accumulate(incoming_output_payload_sizes, incoming_output_payload_sizes + 3, 0);
+            
+            // +++ 增强调试：完整的HEAD信息 +++
+            cout << sc_time_stamp() << ": " << name() 
+                 << " [OUTPUT_RX_HEAD] Receiving OUTPUT HEAD: " 
+                 << flit.src_id << "→" << flit.dst_id 
+                 << ", seq=" << flit.sequence_no << "/" << flit.sequence_length
+                 << ", payload=" << total_size << "B" << endl;
+        }
+        
+        if (flit.flit_type == FLIT_TYPE_TAIL) {
+            // +++ 增强调试：完整的TAIL处理信息 +++
+            cout << sc_time_stamp() << ": " << name() 
+                 << " [OUTPUT_RX_TAIL] Received OUTPUT TAIL: " 
+                 << flit.src_id << "→" << flit.dst_id << endl;
+
+            if (output_buffer_manager_) {
+                bool success = true;
+                size_t old_size = output_buffer_manager_->GetCurrentSize();
+                
+                if (incoming_output_payload_sizes[OUTPUT_IDX] > 0) {
+                    success = output_buffer_manager_->OnDataReceived(DataType::OUTPUT, incoming_output_payload_sizes[OUTPUT_IDX]);
+                }
+                
+                if (success) {
+                    size_t new_size = output_buffer_manager_->GetCurrentSize();
+                    int received_bytes = incoming_output_payload_sizes[OUTPUT_IDX];
+                    
+                    cout << sc_time_stamp() << ": " << name() 
+                         << " [OUTPUT_RX_COMPLETE] Processed OUTPUT packet: " 
+                         << flit.src_id << "→" << flit.dst_id 
+                         << ". Buffer: " << old_size << "→" << new_size 
+                         << " (+" << received_bytes << ")" << endl;
+                } else {
+                    cout << sc_time_stamp() << ": " << name() 
+                         << " [OUTPUT_RX_ERROR] Failed to receive output data - buffer full!" << endl;
+                }
+            }
+        }
+        
+        current_level_rx_2 = 1 - current_level_rx_2;
+    }
+    
+    ack_rx_2.write(current_level_rx_2);
+}
 
 #include <vector>
 #include <string>
@@ -387,12 +529,12 @@ void ProcessingElement::run_compute_logic() {
             // 并直接获取本次操作实际消耗/驱逐的字节数。
             // 这是唯一的、权威的真相来源。
             size_t bytes_consumed_this_task = buffer_manager_->OnComputeFinished(logical_timestamp);
+            output_buffer_manager_->OnDataReceived(DataType::OUTPUT, 2);
+            
             // +++ 通知：缓冲区因为驱逐了数据而状态改变！ +++
             buffer_state_changed_event.notify();
             // 将这个权威的数值，累加到总消耗量中
             total_bytes_consumed += bytes_consumed_this_task;
-
-            output_buffer_manager_->OnDataReceived(DataType::OUTPUT, 1);
 
             // 打印包含丰富上下文的、准确的日志
             cout << sc_time_stamp() << ": " << name() 
@@ -536,15 +678,6 @@ void ProcessingElement::run_storage_logic() {
             
         }
     }
-    else if(role == ROLE_BUFFER) {
-        // Buffer PE可以发送output数据
-        if (output_buffer_manager_ && output_buffer_manager_->GetDataSize(DataType::OUTPUT) > 0) {
-            intent_str = "OUTPUT";
-            required_data_types.push_back(DataType::OUTPUT);
-            // 定义OUTPUT的元数据：发送当前output buffer中的所有output数据
-            payload_sizes[OUTPUT_IDX] = output_buffer_manager_->GetDataSize(DataType::OUTPUT);
-        }
-    }    
     // ==========================================================
     // +++ 步骤 2: 核心决策：检查数据是否就绪 +++
     // ==========================================================
@@ -662,6 +795,7 @@ Flit ProcessingElement::nextFlit()
     flit.sequence_length = packet.size;
     flit.hop_no = 0;
     flit.payload_data_size = packet.payload_data_size;
+    flit.is_output = false; // 标记为非output flit
     //  flit.payload     = DEFAULT_PAYLOAD;
 
     flit.hub_relay_node = NOT_VALID;
@@ -683,6 +817,38 @@ Flit ProcessingElement::nextFlit()
     return flit;
 }
 
+Flit ProcessingElement::nextOutputFlit()
+{
+    Flit flit;
+    Packet packet = packet_queue_2.front();
+
+    flit.src_id = packet.src_id;
+    flit.dst_id = packet.dst_id;
+    flit.vc_id = packet.vc_id;
+    flit.timestamp = packet.timestamp;
+    flit.sequence_no = packet.size - packet.flit_left;
+    flit.sequence_length = packet.size;
+    flit.hop_no = 0;
+    flit.payload_data_size = packet.payload_data_size;
+    flit.hub_relay_node = NOT_VALID;
+    flit.is_output = true; // 标记为output flit
+
+    if (packet.size == packet.flit_left)
+    {
+        flit.flit_type = FLIT_TYPE_HEAD;
+        std::copy(std::begin(packet.payload_sizes), std::end(packet.payload_sizes), flit.payload_sizes);
+    }
+    else if (packet.flit_left == 1)
+        flit.flit_type = FLIT_TYPE_TAIL;
+    else
+        flit.flit_type = FLIT_TYPE_BODY;
+
+    packet_queue_2.front().flit_left--;
+    if (packet_queue_2.front().flit_left == 0)
+        packet_queue_2.pop();
+
+    return flit;
+}
 unsigned int ProcessingElement::getQueueSize() const
 {
     return packet_queue.size();

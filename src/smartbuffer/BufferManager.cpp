@@ -141,3 +141,15 @@ bool BufferManager::AreDataTypesReady(const std::vector<DataType>& required_type
     // 如果循环正常结束，说明所有需要的数据类型都已就位
     return true;
 }
+
+bool BufferManager::RemoveData(DataType type, size_t size) {
+    // 检查是否有足够的数据可以移除
+    if (current_size_ < size) {
+        return false;
+    }
+    
+    // 简单地减少当前大小，不涉及复杂的驱逐逻辑
+    current_size_ -= size;
+    
+    return true;
+}

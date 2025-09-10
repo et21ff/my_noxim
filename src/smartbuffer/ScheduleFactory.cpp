@@ -61,7 +61,7 @@ EvictionSchedule ScheduleFactory::createOutputBufferSchedule() {
     // Output Buffer的驱逐策略：每4个时间步驱逐一次OUTPUT数据
     // 这样可以积累一些output数据后再发送，而不是立即驱逐
     for (int i = 0; i < K2_LOOPS * P1_LOOPS; ++i) {
-        if (i % 4 == 0 && i > 0) { // 每4步驱逐一次
+        if (i % 2 == 0 && i > 0) { // 每2步驱逐一次
             timestep++;
             schedule[timestep][DataType::OUTPUT] = 4; // 驱逐积累的4字节output数据
         }
@@ -69,7 +69,7 @@ EvictionSchedule ScheduleFactory::createOutputBufferSchedule() {
     
     printScheduleInfo(schedule, "Output Buffer");
     return schedule;
-}
+} 
 
 void ScheduleFactory::printScheduleInfo(const EvictionSchedule& schedule, const std::string& schedule_name) {
     std::cout << "Created " << schedule_name << " eviction schedule with " 

@@ -81,6 +81,7 @@ struct RouteData {
     int dst_id;
     int dir_in;			// direction from which the packet comes from
     int vc_id;
+    bool is_output;        // true if the packet is an output packet
 };
 
 struct ChannelStatus {
@@ -139,6 +140,7 @@ struct Flit {
     double timestamp;		// Unix timestamp at packet generation
     int hop_no;			// Current number of hops from source to destination
     bool use_low_voltage_path;
+    bool is_output; // true if the flit belongs to an output packet
 
     int hub_relay_node;
 

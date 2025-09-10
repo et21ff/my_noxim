@@ -63,11 +63,15 @@ SC_MODULE(ProcessingElement)
     bool current_level_tx;	// Current level for Alternating Bit Protocol (ABP)
     queue < Packet > packet_queue;	// Local queue of packets
     bool transmittedAtPreviousCycle;	// Used for distributions with memory
+    bool current_level_rx_2;	// Current level for Alternating Bit Protocol (ABP)
+    bool current_level_tx_2;	// Current level for Alternating Bit Protocol (ABP)
+    queue < Packet > packet_queue_2;
 
     // Functions
     void rxProcess();		// The receiving process
     void txProcess();		// The transmitting process
     Flit nextFlit();	// Take the next flit of the current packet
+    Flit nextOutputFlit();
     
     // Traffic-related functions removed (not used in current implementation)
     // bool canShot(Packet & packet);
@@ -176,6 +180,9 @@ public: // 建议将内部状态变量设为私有
     int logical_timestamp; 
     // +++ 新增：一个专门用于通知缓冲区状态改变的事件 +++
     sc_event buffer_state_changed_event;
+    sc_event output_buffer_state_changed_event; // 新增：output buffer状态改变事件
+    int incoming_output_payload_sizes[3]; // 用于存储接收到的output payload信息
+
 
     sc_signal<bool> is_receiving_packet;
     std::string role_to_str(const PE_Role& role); // 用于将角色转换为字符串
@@ -185,6 +192,9 @@ public: // 建议将内部状态变量设为私有
     void run_compute_logic();
     void update_transfer_loop_counters();
     void update_receive_loop_counters();
+
+    void output_txprocess(); // 用于输出txprocess的日志
+    void output_rxProcess();
     
     
     unsigned int getQueueSize() const; 
@@ -202,6 +212,14 @@ public: // 建议将内部状态变量设为私有
 	SC_METHOD(txProcess);
 	sensitive << reset;
 	sensitive << clock.pos();
+
+    SC_METHOD(output_txprocess);
+    sensitive << clock.pos();
+    sensitive << reset; 
+
+    SC_METHOD(output_rxProcess);
+    sensitive << clock.neg();
+    sensitive << reset;
 
     SC_METHOD(update_ready_signal);
     sensitive << reset;

@@ -76,7 +76,7 @@ void Router::rxProcess()
 		    // should not happen with the new TBufferFullStatus control signals    
 		    // except for flit coming from local PE, which don't use it 
 		    LOG << " Flit " << received_flit << " buffer full Input[" << i << "][" << vc <<"]" << endl;
-		    assert(i== DIRECTION_LOCAL);
+		    assert(i== DIRECTION_LOCAL || i== DIRECTION_LOCAL_2);
 		}
 
 	    }
@@ -132,6 +132,7 @@ void Router::txProcess()
 		      route_data.dst_id = flit.dst_id;
 		      route_data.dir_in = i;
 		      route_data.vc_id = flit.vc_id;
+			  route_data.is_output = flit.is_output; // 新增：标记是否为output包
 
 		      // TODO: see PER POSTERI (adaptive routing should not recompute route if already reserved)
 		      int o = route(route_data);
@@ -244,7 +245,7 @@ void Router::txProcess()
 			      }
 			  }
 		      } 
-		      else if (i != DIRECTION_LOCAL) // not generated locally
+		      else if (i != DIRECTION_LOCAL && i!= DIRECTION_LOCAL_2) // not generated locally
 			  routed_flits++;
 		      /* End Power & Stats ------------------------------------------------- */
 			 //LOG<<"END_OK_cl_tx="<<current_level_tx[o]<<"_req_tx="<<req_tx[o].read()<<" _ack= "<<ack_tx[o].read()<< endl;
@@ -455,6 +456,8 @@ vector < int > Router::routingFunction(const RouteData & route_data)
 
 int Router::route(const RouteData & route_data)
 {
+	if(route_data.dst_id == local_id && route_data.is_output) 
+	return DIRECTION_LOCAL_2; // 新增：如果是发往本地的output包，选择LOCAL_2端口
 
     if (route_data.dst_id == local_id)
 	return DIRECTION_LOCAL;

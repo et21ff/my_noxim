@@ -51,6 +51,8 @@ public:
      */
     bool AreDataTypesReady(const std::vector<DataType>& required_types) const;
 
+    bool RemoveData(DataType type, size_t size);
+
 
 
     /**
