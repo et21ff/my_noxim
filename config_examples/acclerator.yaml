@@ -6,6 +6,9 @@
 # X and Y mesh sizes
 mesh_dim_x: 3 # <--- [关键修改] 从 4 改为 3
 mesh_dim_y: 2 # <--- [关键修改] 从 4 改为 1
+topology: HIERARCHICAL 
+num_levels: 3
+nodes_per_level: [1, 4, 16]
 # number of flits for each router buffer
 buffer_depth: 8 # <--- [建议修改] 稍微调大一点，避免初始调试时因缓冲区太小而产生干扰
 # size of flits, in bits

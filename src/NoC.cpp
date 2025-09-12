@@ -2140,6 +2140,253 @@ void NoC::buildOmega()
 
 }
 
+//======================================================================
+// 方法: buildHierarchical()
+// 描述: 构建层次化NoC拓扑结构
+// 结构: 树状层次结构，适用于加速器模拟
+//
+// 层次化设计:
+//   Level 0: Root节点 (1个) - 系统根节点
+//   Level 1: Intermediate节点 (4个) - 中间层节点  
+//   Level 2: Leaf节点 (16个) - 叶子计算节点
+//
+// 连接方式:
+//   - Root: 4个DOWN端口连接到Intermediate节点
+//   - Intermediate: 1个UP端口连接到Root, 4个DOWN端口连接到Leaf节点
+//   - Leaf: 1个UP端口连接到Intermediate节点
+//
+// 节点ID分配:
+//   - Level 0: ID 0
+//   - Level 1: ID 1-4 
+//   - Level 2: ID 5-20
+//======================================================================
+void NoC::buildHierarchical()
+{
+    cout << "=== 构建层次化NoC拓扑结构 ===" << endl;
+    
+    // 调用通用构建方法
+    buildCommon();
+    
+    //==================================================================
+    // 1. 初始化层次化拓扑参数
+    //==================================================================
+    num_levels = 3;  // 3层结构
+    nodes_per_level = new int[num_levels];
+    nodes_per_level[0] = 1;   // Level 0: 1个根节点
+    nodes_per_level[1] = 4;   // Level 1: 4个中间节点
+    nodes_per_level[2] = 16;  // Level 2: 16个叶子节点
+    
+    // 计算总节点数
+    total_nodes = 0;
+    for (int i = 0; i < num_levels; i++) {
+        total_nodes += nodes_per_level[i];
+    }
+    
+    cout << "层次化结构: " << num_levels << "层" << endl;
+    cout << "节点分布: ";
+    for (int i = 0; i < num_levels; i++) {
+        cout << "L" << i << "(" << nodes_per_level[i] << ") ";
+    }
+    cout << "= 总计 " << total_nodes << " 个节点" << endl;
+    
+    //==================================================================
+    // 2. 创建层次化映射关系
+    //==================================================================
+    setupHierarchicalTopology();
+    
+    //==================================================================
+    // 3. 分配层次化信号
+    //    使用1D数组，按节点ID索引
+    //==================================================================
+    hierarchical_req = new sc_signal_Hierarchical<bool>*[total_nodes];
+    hierarchical_ack = new sc_signal_Hierarchical<bool>*[total_nodes];
+    hierarchical_buffer_full_status = new sc_signal_Hierarchical<TBufferFullStatus>*[total_nodes];
+    hierarchical_flit = new sc_signal_Hierarchical<Flit>*[total_nodes];
+    
+    for (int i = 0; i < total_nodes; i++) {
+        hierarchical_req[i] = new sc_signal_Hierarchical<bool>();
+        hierarchical_ack[i] = new sc_signal_Hierarchical<bool>();
+        hierarchical_buffer_full_status[i] = new sc_signal_Hierarchical<TBufferFullStatus>();
+        hierarchical_flit[i] = new sc_signal_Hierarchical<Flit>();
+    }
+    
+    //==================================================================
+    // 4. 创建Tile数组 (1D结构，适合层次化拓扑)
+    //==================================================================
+    t_h = new Tile*[total_nodes];
+    
+    //==================================================================
+    // 5. 创建和配置所有节点
+    //==================================================================
+    for (int node_id = 0; node_id < total_nodes; node_id++) {
+        char tile_name[64];
+        sprintf(tile_name, "HNode_%d", node_id);
+        
+        // 创建Tile
+        t_h[node_id] = new Tile(tile_name, node_id);
+        
+        // 配置Router
+        t_h[node_id]->r->configure(node_id,
+                                 GlobalParams::stats_warm_up_time,
+                                 GlobalParams::buffer_depth,
+                                 grtable);
+        t_h[node_id]->r->power.configureRouter(GlobalParams::flit_size,
+                                              GlobalParams::buffer_depth,
+                                              GlobalParams::flit_size,
+                                              string(GlobalParams::routing_algorithm),
+                                              "default");
+        
+        // 配置ProcessingElement
+        t_h[node_id]->pe->local_id = node_id;
+        t_h[node_id]->pe->traffic_table = &gttable;
+        t_h[node_id]->pe->never_transmit = true;
+        
+        // 连接时钟和复位
+        t_h[node_id]->clock(clock);
+        t_h[node_id]->reset(reset);
+
+        int level = getLevelOfNode(node_id);
+        cout << "创建节点 " << node_id << " (Level " << level << ")" << endl;
+    }
+    
+    //==================================================================
+    // 6. 建立层次化连接
+    //==================================================================
+    // 建立层次化连接关系
+    setupHierarchicalConnections();
+    
+    cout << "=== 层次化NoC拓扑构建完成 ===" << endl;
+    cout << "注意: 需要修改Router类支持层次化路由" << endl;
+}
+
+//======================================================================
+// 方法: setupHierarchicalTopology()
+// 描述: 根据num_levels和nodes_per_level建立层次化映射关系
+//======================================================================
+void NoC::setupHierarchicalTopology()
+{
+    cout << "建立层次化映射关系..." << endl;
+    
+    // 分配映射数组
+    node_level_map = new int[total_nodes];
+    parent_map = new int[total_nodes];
+    child_map = new int*[total_nodes];
+    
+    // 初始化
+    for (int i = 0; i < total_nodes; i++) {
+        node_level_map[i] = -1;
+        parent_map[i] = -1;
+        child_map[i] = NULL;
+    }
+    
+    // 使用num_levels和nodes_per_level动态构建
+    int node_id = 0;
+    
+    for (int level = 0; level < num_levels; level++) {
+        int level_start = node_id;
+        int level_end = node_id + nodes_per_level[level];
+        
+        // 设置节点层级
+        for (int i = level_start; i < level_end; i++) {
+            node_level_map[i] = level;
+        }
+        
+        // 非根节点设置父节点
+        if (level > 0) {
+            int parent_level_start = 0;
+            for (int p = 0; p < level - 1; p++) {
+                parent_level_start += nodes_per_level[p];
+            }
+            
+            for (int i = 0; i < nodes_per_level[level]; i++) {
+                int current_node = level_start + i;
+                int parent_id = parent_level_start + (i % nodes_per_level[level - 1]);
+                parent_map[current_node] = parent_id;
+                int node_num = nodes_per_level[level]/nodes_per_level[level - 1];
+                // 为父节点分配子节点数组
+                if (child_map[parent_id] == NULL) {
+                    child_map[parent_id] = new int[node_num];
+                    for (int j = 0; j < node_num; j++) {
+                        child_map[parent_id][j] = -1;
+                    }
+                }
+                
+                // 添加子节点
+                for (int j = 0; j < node_num; j++) {
+                    if (child_map[parent_id][j] == -1) {
+                        child_map[parent_id][j] = current_node;
+                        break;
+                    }
+                }
+            }
+        }
+        
+        node_id += nodes_per_level[level];
+    }
+    
+    // 根节点无父节点
+    parent_map[0] = -1;
+    
+    cout << "层次化映射建立完成" << endl;
+}
+
+//======================================================================
+// 方法: setupHierarchicalConnections()
+// 描述: 建立层次化节点间的连接
+//======================================================================
+void NoC::setupHierarchicalConnections()
+{
+    cout << "建立层次化连接..." << endl;
+    
+    for (int i = 0; i < total_nodes; i++) {
+        int level = node_level_map[i];
+        int parent = parent_map[i];
+        
+        cout << "节点" << i << "(L" << level << ")";
+        if (parent != -1) cout << " <- " << parent;
+        
+        if (child_map[i] != NULL) {
+            cout << " -> [";
+            for (int j = 0; j < 4; j++) {
+                if (child_map[i][j] != -1) {
+                    cout << child_map[i][j];
+                    if (j < 3) cout << ",";
+                }
+            }
+            cout << "]";
+        }
+        cout << endl;
+    }
+}
+
+//======================================================================
+// 层次化拓扑辅助方法实现
+//======================================================================
+
+int NoC::getParentNode(int node_id)
+{
+    if (node_id >= 0 && node_id < total_nodes) {
+        return parent_map[node_id];
+    }
+    return -1;
+}
+
+const int* NoC::getChildNodes(int node_id)
+{
+    if (node_id >= 0 && node_id < total_nodes) {
+        return child_map[node_id];
+    }
+    return NULL;
+}
+
+int NoC::getLevelOfNode(int node_id)
+{
+    if (node_id >= 0 && node_id < total_nodes) {
+        return node_level_map[node_id];
+    }
+    return -1;
+}
+
 void NoC::buildMesh()
 {
 	// **** 1. 初始化我们的vector ****

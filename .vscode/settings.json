@@ -1,3 +1,11 @@
 {
-    "cmake.sourceDirectory": "/home/arch/my_noxim/other/setup"
+    "cmake.sourceDirectory": "/home/arch/my_noxim/other/setup",
+    "makefile.makefilePath": "/root/my_noxim/bin/Makefile",
+    "makefile.launchConfigurations": [
+        {
+            "cwd": "/root/my_noxim",
+            "binaryPath": "/root/my_noxim/noxim",
+            "binaryArgs": []
+        }
+    ]
 }

@@ -64,37 +64,37 @@ int sc_main(int arg_num, char *arg_vet[])
 
 
 
-    sc_trace_file *tf = NULL;
-    if (GlobalParams::trace_mode) {
-	tf = sc_create_vcd_trace_file(GlobalParams::trace_filename.c_str());
-	sc_trace(tf, reset, "reset");
-	sc_trace(tf, clock, "clock");
+    // sc_trace_file *tf = NULL;
+    // if (GlobalParams::trace_mode) {
+	// tf = sc_create_vcd_trace_file(GlobalParams::trace_filename.c_str());
+	// sc_trace(tf, reset, "reset");
+	// sc_trace(tf, clock, "clock");
 
-	for (int i = 0; i < GlobalParams::mesh_dim_x; i++) {
-	    for (int j = 0; j < GlobalParams::mesh_dim_y; j++) {
-		char label[64];
+	// for (int i = 0; i < GlobalParams::mesh_dim_x; i++) {
+	//     for (int j = 0; j < GlobalParams::mesh_dim_y; j++) {
+	// 	char label[64];
 
-		sprintf(label, "req(%02d)(%02d).east", i, j);
-		sc_trace(tf, n->req[i][j].east, label);
-		sprintf(label, "req(%02d)(%02d).west", i, j);
-		sc_trace(tf, n->req[i][j].west, label);
-		sprintf(label, "req(%02d)(%02d).south", i, j);
-		sc_trace(tf, n->req[i][j].south, label);
-		sprintf(label, "req(%02d)(%02d).north", i, j);
-		sc_trace(tf, n->req[i][j].north, label);
+	// 	sprintf(label, "req(%02d)(%02d).east", i, j);
+	// 	sc_trace(tf, n->req[i][j].east, label);
+	// 	sprintf(label, "req(%02d)(%02d).west", i, j);
+	// 	sc_trace(tf, n->req[i][j].west, label);
+	// 	sprintf(label, "req(%02d)(%02d).south", i, j);
+	// 	sc_trace(tf, n->req[i][j].south, label);
+	// 	sprintf(label, "req(%02d)(%02d).north", i, j);
+	// 	sc_trace(tf, n->req[i][j].north, label);
 
-		sprintf(label, "ack(%02d)(%02d).east", i, j);
-		sc_trace(tf, n->ack[i][j].east, label);
-		sprintf(label, "ack(%02d)(%02d).west", i, j);
-		sc_trace(tf, n->ack[i][j].west, label);
-		sprintf(label, "ack(%02d)(%02d).south", i, j);
-		sc_trace(tf, n->ack[i][j].south, label);
-		sprintf(label, "ack(%02d)(%02d).north", i, j);
-		sc_trace(tf, n->ack[i][j].north, label);
-	    }
-	}
-    }
-    sc_trace(tf, n->t[2][0]->pe->downstream_ready_out,"pe2_ready_out");
+	// 	sprintf(label, "ack(%02d)(%02d).east", i, j);
+	// 	sc_trace(tf, n->ack[i][j].east, label);
+	// 	sprintf(label, "ack(%02d)(%02d).west", i, j);
+	// 	sc_trace(tf, n->ack[i][j].west, label);
+	// 	sprintf(label, "ack(%02d)(%02d).south", i, j);
+	// 	sc_trace(tf, n->ack[i][j].south, label);
+	// 	sprintf(label, "ack(%02d)(%02d).north", i, j);
+	// 	sc_trace(tf, n->ack[i][j].north, label);
+	//     }
+	// }
+    // }
+    // sc_trace(tf, n->t[2][0]->pe->downstream_ready_out,"pe2_ready_out");
     // sc_trace(tf, n->t[2][0]->pe->current_data_size,"pe2_current_data_size");
     // sc_trace(tf, n->t[2][0]->pe->is_receiving_packet,"pe2_is_receiving_packet");
     // Reset the chip and run the simulation
@@ -115,10 +115,10 @@ int sc_main(int arg_num, char *arg_vet[])
 
 
     // Close the simulation
-    if (GlobalParams::trace_mode) sc_close_vcd_trace_file(tf);
-    cout << "Noxim simulation completed.";
-    cout << " (" << sc_time_stamp().to_double() / GlobalParams::clock_period_ps << " cycles executed)" << endl;
-    cout << endl;
+    // if (GlobalParams::trace_mode) sc_close_vcd_trace_file(tf);
+    // cout << "Noxim simulation completed.";
+    // cout << " (" << sc_time_stamp().to_double() / GlobalParams::clock_period_ps << " cycles executed)" << endl;
+    // cout << endl;
 //assert(false);
     // Show statistics
     GlobalStats gs(n);

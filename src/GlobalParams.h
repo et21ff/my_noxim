@@ -54,6 +54,8 @@ using namespace std;
 #define TOPOLOGY_BASELINE      "BASELINE"
 #define TOPOLOGY_BUTTERFLY     "BUTTERFLY"
 #define TOPOLOGY_OMEGA         "OMEGA"
+//Hierarchical Topology
+#define TOPOLOGY_HIERARCHICAL  "HIERARCHICAL"
 
 // Routing algorithms
 #define ROUTING_DYAD           "DYAD"
@@ -90,6 +92,7 @@ using namespace std;
 #define TOKEN_HOLD             "TOKEN_HOLD"
 #define TOKEN_MAX_HOLD         "TOKEN_MAX_HOLD"
 #define TOKEN_PACKET           "TOKEN_PACKET"
+
 
 typedef struct {
     pair<double, double> ber;
@@ -186,6 +189,10 @@ struct GlobalParams {
     // out of yaml configuration
     static bool ascii_monitor;
     static int channel_selection;
+
+    static int num_levels;
+    static int* nodes_per_level;
+
 };
 
 #endif

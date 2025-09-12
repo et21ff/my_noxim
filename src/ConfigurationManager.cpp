@@ -10,6 +10,7 @@
 
 #include "ConfigurationManager.h"
 #include <systemc.h> //Included for the function time() 
+#include <dbg.h>
 
 YAML::Node config;
 YAML::Node power_config;
@@ -64,6 +65,22 @@ void loadConfiguration() {
         //GlobalParams::mesh_dim_y = readParam<int>(config, "mesh_dim_y");
         GlobalParams::n_delta_tiles = readParam<int>(config, "n_delta_tiles");
     }
+
+if (GlobalParams::topology == TOPOLOGY_HIERARCHICAL){
+    YAML::Node hierarchical_config = config["hierarchical_config"];
+    
+    GlobalParams::num_levels = hierarchical_config["num_levels"].as<int>();
+    // GlobalParams::hierarchical_connection_mode = hierarchical_config["connection_mode"].as<string>();
+    
+    // 读取每层配置
+    YAML::Node level_configs = hierarchical_config["level_configs"];
+    GlobalParams::nodes_per_level = new int[GlobalParams::num_levels];
+    
+    for (int i = 0; i < GlobalParams::num_levels; i++) {
+        GlobalParams::nodes_per_level[i] = level_configs[i]["nodes"].as<int>();
+    }
+    
+}
 
     GlobalParams::r2r_link_length = readParam<double>(config, "r2r_link_length");
     GlobalParams::r2h_link_length = readParam<double>(config, "r2h_link_length");
@@ -296,6 +313,11 @@ void checkConfiguration()
 			exit(1);
 		}
 	}
+    else if(GlobalParams::topology == TOPOLOGY_HIERARCHICAL)
+    {
+        cout<<"Hierarchical topology selected"<<endl;
+        dbg(GlobalParams::num_levels,GlobalParams::nodes_per_level[0],GlobalParams::nodes_per_level[1],GlobalParams::nodes_per_level[2]);
+    }
 	else // other delta topologies
 	{
 		int x = GlobalParams::n_delta_tiles;

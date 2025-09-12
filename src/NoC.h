@@ -18,6 +18,8 @@
 #include "Hub.h"
 #include "Channel.h"
 #include "TokenRing.h"
+#include "GlobalParams.h"
+#
 
 using namespace std;
 
@@ -39,6 +41,26 @@ struct sc_signal_NSWEH
     sc_signal<T> north;
     sc_signal<T> to_hub;
     sc_signal<T> from_hub;
+};
+
+// New hierarchical signal structure
+template <typename T>
+struct sc_signal_Hierarchical
+{
+    sc_signal<T> up;        // 向上级连接
+    sc_signal<T> down_0;    // 向下级连接0
+    sc_signal<T> down_1;    // 向下级连接1
+    sc_signal<T> down_2;    // 向下级连接2
+    sc_signal<T> down_3;    // 向下级连接3
+};
+
+enum HierarchicalDirection {
+    DIR_UP = 0,        // 向上级连接
+    DIR_DOWN_0 = 1,   // 向下级连接0
+    DIR_DOWN_1 = 2,   // 向下级连接1
+    DIR_DOWN_2 = 3,   // 向下级连接2
+    DIR_DOWN_3 = 4,   // 向下级连接3
+    DIR_HIERARCHICAL_COUNT = 5
 };
 
 SC_MODULE(NoC)
@@ -75,9 +97,31 @@ public:
     sc_signal<TBufferFullStatus> *buffer_full_status_from_hub;
     sc_signal<TBufferFullStatus> *buffer_full_status_to_hub;
 
-    // Matrix of tiles
-    Tile ***t;
-    Tile **core;
+    // Hierarchical structure signals - redesigned for tree topology
+    sc_signal_Hierarchical<bool> **hierarchical_req;        // 层次化请求信号
+    sc_signal_Hierarchical<bool> **hierarchical_ack;        // 层次化应答信号
+    sc_signal_Hierarchical<TBufferFullStatus> **hierarchical_buffer_full_status;  // 层次化缓冲区状态
+    sc_signal_Hierarchical<Flit> **hierarchical_flit;        // 层次化数据流信号
+    
+    // Hierarchical topology parameters
+    int num_levels;                          // 层次化层级数
+    int* nodes_per_level;                    // 每层的节点数数组
+    int total_nodes;                         // 总节点数
+    int* node_level_map;                     // 节点->层级映射 (1D数组)
+    int* parent_map;                         // 节点->父节点映射 (1D数组)
+    int** child_map;                         // 节点->子节点映射 (2D数组)
+
+    // Tile storage for hierarchical topology
+    Tile ***t;                                 // 2D数组存储所有Tile，按ID索引
+    Tile **t_h;                                // 1D数组存储所有Tile，按层级和ID索引
+    Tile **core;                              // 核心Tile数组
+    
+    // Hierarchical connection management
+    void setupHierarchicalTopology();         // 设置层次化拓扑
+    void setupHierarchicalConnections();      // 建立层次化连接
+    int getParentNode(int node_id);           // 获取节点的父节点
+    const int* getChildNodes(int node_id);    // 获取节点的子节点数组
+    int getLevelOfNode(int node_id);          // 获取节点所在的层级
 
     map<int, Hub *> hub;
     map<int, Channel *> channel;
@@ -92,6 +136,7 @@ public:
 
     SC_CTOR(NoC)
     {
+        cout<<"NOC is Initializing"<<endl;
 
         dummy_signal = sc_signal<bool>("dummy_signal");
 
@@ -104,6 +149,8 @@ public:
             buildBaseline();
         else if (GlobalParams::topology == TOPOLOGY_OMEGA)
             buildOmega();
+        else if (GlobalParams::topology == TOPOLOGY_HIERARCHICAL)
+            buildHierarchical();
         else
         {
             cerr << "ERROR: Topology " << GlobalParams::topology << " is not yet supported." << endl;
@@ -128,6 +175,7 @@ private:
     void buildButterfly();
     void buildBaseline();
     void buildOmega();
+    void buildHierarchical();
     void buildCommon();
     void asciiMonitor();
     int *hub_connected_ports;
