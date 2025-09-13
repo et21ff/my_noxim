@@ -9,6 +9,7 @@
  */
 
 #include "NoC.h"
+#include <dbg.h>
 
 using namespace std;
 
@@ -2170,14 +2171,29 @@ void NoC::buildHierarchical()
     //==================================================================
     // 1. 初始化层次化拓扑参数
     //==================================================================
-    num_levels = 3;  // 3层结构
+    if (GlobalParams::num_levels <= 0 || GlobalParams::fanouts_per_level == nullptr) {
+        // 使用 cerr 输出错误信息，这是标准错误流
+        std::cerr << "错误: 全局配置 (GlobalParams) 无效或未初始化。" << std::endl;
+        std::cerr << "  - GlobalParams::num_levels: " << GlobalParams::num_levels << std::endl;
+        std::cerr << "  - GlobalParams::nodes_per_level is " 
+                  << (GlobalParams::fanouts_per_level == nullptr ? "nullptr" : "not null") << std::endl;
+        
+        // 验证失败，终止当前函数的执行
+        return;
+    }
+
+    num_levels = GlobalParams::num_levels;
     nodes_per_level = new int[num_levels];
-    nodes_per_level[0] = 1;   // Level 0: 1个根节点
-    nodes_per_level[1] = 4;   // Level 1: 4个中间节点
-    nodes_per_level[2] = 16;  // Level 2: 16个叶子节点
+	for (int i = 0; i < num_levels; i++) {
+		if(i==0)
+			nodes_per_level[i] = 1; // 根节点
+		else
+			nodes_per_level[i] = nodes_per_level[i-1]* GlobalParams::fanouts_per_level[i-1];
+		dbg(i,GlobalParams::fanouts_per_level[i-1],nodes_per_level[i]);
+	}
     
     // 计算总节点数
-    total_nodes = 0;
+    total_nodes = 1;
     for (int i = 0; i < num_levels; i++) {
         total_nodes += nodes_per_level[i];
     }
@@ -2341,13 +2357,23 @@ void NoC::setupHierarchicalConnections()
     for (int i = 0; i < total_nodes; i++) {
         int level = node_level_map[i];
         int parent = parent_map[i];
-        
+
+		int child_num=0;
+
+        if (level == num_levels){
+			child_num=1;
+		}
+		else{
+			child_num = nodes_per_level[level+1]/nodes_per_level[level];
+
+		}
         cout << "节点" << i << "(L" << level << ")";
         if (parent != -1) cout << " <- " << parent;
         
         if (child_map[i] != NULL) {
             cout << " -> [";
-            for (int j = 0; j < 4; j++) {
+
+            for (int j = 0; j < child_num; j++) {
                 if (child_map[i][j] != -1) {
                     cout << child_map[i][j];
                     if (j < 3) cout << ",";

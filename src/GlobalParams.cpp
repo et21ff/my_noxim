@@ -62,4 +62,4 @@ bool GlobalParams::ascii_monitor;
 int GlobalParams::channel_selection;
 
 int GlobalParams::num_levels;
-int* GlobalParams::nodes_per_level;
+int* GlobalParams::fanouts_per_level;

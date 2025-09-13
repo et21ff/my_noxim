@@ -74,10 +74,10 @@ if (GlobalParams::topology == TOPOLOGY_HIERARCHICAL){
     
     // 读取每层配置
     YAML::Node level_configs = hierarchical_config["level_configs"];
-    GlobalParams::nodes_per_level = new int[GlobalParams::num_levels];
+    GlobalParams::fanouts_per_level = new int[GlobalParams::num_levels];
     
     for (int i = 0; i < GlobalParams::num_levels; i++) {
-        GlobalParams::nodes_per_level[i] = level_configs[i]["nodes"].as<int>();
+        GlobalParams::fanouts_per_level[i] = level_configs[i]["fanouts"].as<int>();
     }
     
 }
@@ -316,7 +316,6 @@ void checkConfiguration()
     else if(GlobalParams::topology == TOPOLOGY_HIERARCHICAL)
     {
         cout<<"Hierarchical topology selected"<<endl;
-        dbg(GlobalParams::num_levels,GlobalParams::nodes_per_level[0],GlobalParams::nodes_per_level[1],GlobalParams::nodes_per_level[2]);
     }
 	else // other delta topologies
 	{

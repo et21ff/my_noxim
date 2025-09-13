@@ -8,22 +8,22 @@ hierarchical_config:
   # 每层的详细配置
   level_configs:
     - level: 0
-      nodes: 1
       node_type: "DRAM"
       buffer_size: 64
       roles: ["ROLE_DRAM"]
+      fanouts: 1  # 该层每个节点连接到下一层的节点数
       
     - level: 1  
-      nodes: 4
       node_type: "GLB" 
       buffer_size: 32
       roles: ["ROLE_GLB"]
+      fanouts: 1  # 该层每个节点连接到下一层的节点数
       
     - level: 2
-      nodes: 16
       node_type: "COMPUTE"
       buffer_size: 16  
       roles: ["ROLE_BUFFER"]
+      fanouts: 0
       
 
 buffer_depth: 8 # <--- [建议修改] 稍微调大一点，避免初始调试时因缓冲区太小而产生干扰
