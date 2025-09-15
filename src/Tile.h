@@ -27,6 +27,7 @@ SC_MODULE(Tile)
     sc_in <bool> reset;	                        // The reset signal for the tile
 
     int local_id; // Unique ID
+	int local_level; // Level in the hierarchy
     sc_in <Flit> flit_rx[DIRECTIONS];	// The input channels
     sc_in <bool> req_rx[DIRECTIONS];	        // The requests associated with the input channels
     sc_out <bool> ack_rx[DIRECTIONS];	        // The outgoing ack signals associated with the input channels
@@ -46,8 +47,34 @@ SC_MODULE(Tile)
     sc_out <Flit> hub_flit_tx;	// The output channels
     sc_out <bool> hub_req_tx;	        // The requests associated with the output channels
     sc_in <bool> hub_ack_tx;	        // The outgoing ack signals associated with the output channels
-    sc_in <TBufferFullStatus> hub_buffer_full_status_tx;	
+    sc_in <TBufferFullStatus> hub_buffer_full_status_tx;
 
+    // Hierarchical ports for tree topology (dynamic vector-based)
+    // UP ports (connection to parent)
+    sc_in <Flit>* hierarchical_flit_up_rx;	        // UP方向输入 (from parent)
+    sc_in <bool>* hierarchical_req_up_rx;	        // UP方向请求输入
+    sc_out <bool>* hierarchical_ack_up_rx;	        // UP方向应答输出
+    sc_out <TBufferFullStatus>* hierarchical_buffer_full_status_up_rx;
+
+	sc_out <Flit>* hierarchical_flit_up_tx;	        // UP方向输出 (to parent)
+	sc_out <bool>* hierarchical_req_up_tx;	        // UP方向请求输出
+	sc_in <bool>* hierarchical_ack_up_tx;	        // UP方向应答输入
+	sc_in <TBufferFullStatus>* hierarchical_buffer_full_status_up_tx;
+
+    // DOWN ports (connection to children) - dynamic vectors
+    std::vector<sc_out<Flit>*> hierarchical_flit_down_tx;     // DOWN方向输出 (to children)
+    std::vector<sc_out<bool>*> hierarchical_req_down_tx;      // DOWN方向请求输出
+    std::vector<sc_in<bool>*> hierarchical_ack_down_tx;       // DOWN方向应答输入
+    std::vector<sc_in<TBufferFullStatus>*> hierarchical_buffer_full_status_down_tx;
+
+	std::vector<sc_in<Flit>*> hierarchical_flit_down_rx;      // DOWN方向输入 (from children)
+	std::vector<sc_in<bool>*> hierarchical_req_down_rx;       // DOWN方向请求输入
+	std::vector<sc_out<bool>*> hierarchical_ack_down_rx;      // DOWN方向应答输出
+	std::vector<sc_out<TBufferFullStatus>*> hierarchical_buffer_full_status_down_rx;
+
+    // Hierarchical port management
+    void initHierarchicalPorts(int level);  // 初始化层次化端口
+    void cleanupHierarchicalPorts();         // 清理层次化端口
 
     // NoP related I/O and signals
     sc_out <int> free_slots[DIRECTIONS];
@@ -93,9 +120,10 @@ SC_MODULE(Tile)
 
     // Constructor
 
-    Tile(sc_module_name nm, int id): sc_module(nm) {
+    Tile(sc_module_name nm, int id,int level): sc_module(nm) {
     local_id = id;
-	
+	local_level = level;
+
     // Router pin assignments
 	r = new Router("Router");
 	r->clock(clock);
@@ -195,7 +223,13 @@ SC_MODULE(Tile)
 	r->free_slots[DIRECTION_LOCAL_2] (free_slots_local_2);
 	r->free_slots_neighbor[DIRECTION_LOCAL_2] (free_slots_neighbor_local_2);
 
+	// Initialize hierarchical ports (will be called by NoC)
+	// Note: Actual initialization happens in initHierarchicalPorts() method
     }
+
+	void initHierarchicalPorts();
+
+
 
 };
 

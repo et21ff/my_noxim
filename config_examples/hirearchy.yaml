@@ -17,13 +17,13 @@ hierarchical_config:
       node_type: "GLB" 
       buffer_size: 32
       roles: ["ROLE_GLB"]
-      fanouts: 1  # 该层每个节点连接到下一层的节点数
+      fanouts: 4  # 该层每个节点连接到下一层的节点数
       
     - level: 2
       node_type: "COMPUTE"
       buffer_size: 16  
       roles: ["ROLE_BUFFER"]
-      fanouts: 0
+      fanouts: 16
       
 
 buffer_depth: 8 # <--- [建议修改] 稍微调大一点，避免初始调试时因缓冲区太小而产生干扰

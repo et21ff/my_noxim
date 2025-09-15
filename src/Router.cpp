@@ -27,10 +27,10 @@ void Router::rxProcess()
     if (reset.read()) {
 	TBufferFullStatus bfs;
 	// Clear outputs and indexes of receiving protocol
-	for (int i = 0; i < DIRECTIONS + 3; i++) {
-	    ack_rx[i].write(0);
+	for (int i = 0; i < all_flit_rx.size(); i++) {
+	    all_ack_rx[i]->write(0);
 	    current_level_rx[i] = 0;
-	    buffer_full_status_rx[i].write(bfs);
+	    all_buffer_full_status_rx[i]->write(bfs);
 	}
 	routed_flits = 0;
 	local_drained = 0;
@@ -40,24 +40,24 @@ void Router::rxProcess()
 	// This process simply sees a flow of incoming flits. All arbitration
 	// and wormhole related issues are addressed in the txProcess()
 	//assert(false);
-	for (int i = 0; i < DIRECTIONS + 3; i++) {
+	for (int i = 0; i < all_flit_rx.size(); i++) {
 	    // To accept a new flit, the following conditions must match:
 	    // 1) there is an incoming request
 	    // 2) there is a free slot in the input buffer of direction i
 	    //LOG<<"****RX****DIRECTION ="<<i<<  endl;
 
-	    if (req_rx[i].read() == 1 - current_level_rx[i])
-	    { 
-		Flit received_flit = flit_rx[i].read();
+	    if (all_req_rx[i]->read() == 1 - current_level_rx[i])
+	    {
+		Flit received_flit = all_flit_rx[i]->read();
 		//LOG<<"request opposite to the current_level, reading flit "<<received_flit<<endl;
 
 		int vc = received_flit.vc_id;
 
-		if (!buffer[i][vc].IsFull()) 
+		if (!(*buffers[i])[vc].IsFull())
 		{
 
 		    // Store the incoming flit in the circular buffer
-		    buffer[i][vc].Push(received_flit);
+		    (*buffers[i])[vc].Push(received_flit);
 		    LOG << " Flit " << received_flit << " collected from Input[" << i << "][" << vc <<"]" << endl;
 
 		    power.bufferRouterPush();
@@ -73,19 +73,19 @@ void Router::rxProcess()
 
 		else  // buffer full
 		{
-		    // should not happen with the new TBufferFullStatus control signals    
-		    // except for flit coming from local PE, which don't use it 
+		    // should not happen with the new TBufferFullStatus control signals
+		    // except for flit coming from local PE, which don't use it
 		    LOG << " Flit " << received_flit << " buffer full Input[" << i << "][" << vc <<"]" << endl;
-		    assert(i== DIRECTION_LOCAL || i== DIRECTION_LOCAL_2);
+		    assert(port_info_map[i].type == PORT_LOCAL);
 		}
 
 	    }
-	    ack_rx[i].write(current_level_rx[i]);
+	    all_ack_rx[i]->write(current_level_rx[i]);
 	    // updates the mask of VCs to prevent incoming data on full buffers
 	    TBufferFullStatus bfs;
 	    for (int vc=0;vc<GlobalParams::n_virtual_channels;vc++)
-		bfs.mask[vc] = buffer[i][vc].IsFull();
-	    buffer_full_status_rx[i].write(bfs);
+		bfs.mask[vc] = (*buffers[i])[vc].IsFull();
+	    all_buffer_full_status_rx[i]->write(bfs);
 	}
     }
 }
@@ -93,33 +93,33 @@ void Router::rxProcess()
 void Router::txProcess()
 {
 
-  if (reset.read()) 
+  if (reset.read())
     {
       // Clear outputs and indexes of transmitting protocol
-      for (int i = 0; i < DIRECTIONS + 3; i++) 
+      for (int i = 0; i < all_flit_tx.size(); i++)
 	{
-	  req_tx[i].write(0);
+	  all_req_tx[i]->write(0);
 	  current_level_tx[i] = 0;
 	}
     } 
   else 
     { 
       // 1st phase: Reservation
-      for (int j = 0; j < DIRECTIONS + 3; j++) 
+      for (int j = 0; j < all_flit_rx.size(); j++)
 	{
-	  int i = (start_from_port + j) % (DIRECTIONS + 3);
+	  int i = (start_from_port + j) % all_flit_rx.size();
 
 	  for (int k = 0;k < GlobalParams::n_virtual_channels; k++)
 	  {
 	      int vc = (start_from_vc[i]+k)%(GlobalParams::n_virtual_channels);
-	      
-	      // Uncomment to enable deadlock checking on buffers. 
-	      // Please also set the appropriate threshold.
-	      // buffer[i].deadlockCheck();
 
-	      if (!buffer[i][vc].IsEmpty()) 
+	      // Uncomment to enable deadlock checking on buffers.
+	      // Please also set the appropriate threshold.
+	      // (*buffers[i]).deadlockCheck();
+
+	      if (!(*buffers[i])[vc].IsEmpty()) 
 	      {
-		  Flit flit = buffer[i][vc].Front();
+		  Flit flit = (*buffers[i])[vc].Front();
 		  power.bufferRouterFront();
 
 		  if (flit.flit_type == FLIT_TYPE_HEAD) 
@@ -140,9 +140,9 @@ void Router::txProcess()
 		      // manage special case of target hub not directly connected to destination
 		      if (o>=DIRECTION_HUB_RELAY)
 			  {
-		      	Flit f = buffer[i][vc].Pop();
+		      	Flit f = (*buffers[i])[vc].Pop();
 		      	f.hub_relay_node = o-DIRECTION_HUB_RELAY;
-		      	buffer[i][vc].Push(f);
+		      	(*buffers[i])[vc].Push(f);
 		      	o = DIRECTION_HUB;
 			  }
 
@@ -178,11 +178,11 @@ void Router::txProcess()
 	    start_from_vc[i] = (start_from_vc[i]+1)%GlobalParams::n_virtual_channels;
 	}
 
-      start_from_port = (start_from_port + 1) % (DIRECTIONS + 3);
+      start_from_port = (start_from_port + 1) % all_flit_rx.size();
 
       // 2nd phase: Forwarding
       //if (local_id==6) LOG<<"*TX*****local_id="<<local_id<<"__ack_tx[0]= "<<ack_tx[0].read()<<endl;
-      for (int i = 0; i < DIRECTIONS + 3; i++) 
+      for (int i = 0; i < all_flit_rx.size(); i++) 
       { 
 	  vector<pair<int,int> > reservations = reservation_table.getReservations(i);
 	  
@@ -195,23 +195,23 @@ void Router::txProcess()
 	      int vc = reservations[rnd_idx].second;
 	     // LOG<< "found reservation from input= " << i << "_to output= "<<o<<endl;
 	      // can happen
-	      if (!buffer[i][vc].IsEmpty())  
+	      if (!(*buffers[i])[vc].IsEmpty())  
 	      {
 		  // power contribution already computed in 1st phase
-		  Flit flit = buffer[i][vc].Front();
+		  Flit flit = (*buffers[i])[vc].Front();
 		  //LOG<< "*****TX***Direction= "<<i<< "************"<<endl;
-		  //LOG<<"_cl_tx="<<current_level_tx[o]<<"req_tx="<<req_tx[o].read()<<" _ack= "<<ack_tx[o].read()<< endl;
+		  //LOG<<"_cl_tx="<<current_level_tx[o]<<"req_tx="<<req_tx[o].read()<<" _ack= "<<all_ack_tx[o]->read()<< endl;
 		  
-		  if ( (current_level_tx[o] == ack_tx[o].read()) &&
-		       (buffer_full_status_tx[o].read().mask[vc] == false) ) 
+		  if ( (current_level_tx[o] == all_ack_tx[o]->read()) &&
+		       (all_buffer_full_status_tx[o]->read().mask[vc] == false) ) 
 		  {
 		      //if (GlobalParams::verbose_mode > VERBOSE_OFF) 
 		      LOG << "Input[" << i << "][" << vc << "] forwarded to Output[" << o << "], flit: " << flit << endl;
 
-		      flit_tx[o].write(flit);
+		      all_flit_tx[o]->write(flit);
 		      current_level_tx[o] = 1 - current_level_tx[o];
-		      req_tx[o].write(current_level_tx[o]);
-		      buffer[i][vc].Pop();
+		      all_req_tx[o]->write(current_level_tx[o]);
+		      (*buffers[i])[vc].Pop();
 
 		      if (flit.flit_type == FLIT_TYPE_TAIL)
 		      {
@@ -248,15 +248,15 @@ void Router::txProcess()
 		      else if (i != DIRECTION_LOCAL && i!= DIRECTION_LOCAL_2) // not generated locally
 			  routed_flits++;
 		      /* End Power & Stats ------------------------------------------------- */
-			 //LOG<<"END_OK_cl_tx="<<current_level_tx[o]<<"_req_tx="<<req_tx[o].read()<<" _ack= "<<ack_tx[o].read()<< endl;
+			 //LOG<<"END_OK_cl_tx="<<current_level_tx[o]<<"_req_tx="<<req_tx[o].read()<<" _ack= "<<all_ack_tx[o]->read()<< endl;
 		  }
 		  else
 		  {
 		      LOG << " Cannot forward Input[" << i << "][" << vc << "] to Output[" << o << "], flit: " << flit << endl;
-		      //LOG << " **DEBUG APB: current_level_tx: " << current_level_tx[o] << " ack_tx: " << ack_tx[o].read() << endl;
-		      LOG << " **DEBUG buffer_full_status_tx " << buffer_full_status_tx[o].read().mask[vc] << endl;
+		      //LOG << " **DEBUG APB: current_level_tx: " << current_level_tx[o] << " ack_tx: " << all_ack_tx[o]->read() << endl;
+		      LOG << " **DEBUG buffer_full_status_tx " << all_buffer_full_status_tx[o]->read().mask[vc] << endl;
 
-		  	//LOG<<"END_NO_cl_tx="<<current_level_tx[o]<<"_req_tx="<<req_tx[o].read()<<" _ack= "<<ack_tx[o].read()<< endl;
+		  	//LOG<<"END_NO_cl_tx="<<current_level_tx[o]<<"_req_tx="<<req_tx[o].read()<<" _ack= "<<all_ack_tx[o]->read()<< endl;
 		      /*
 		      if (flit.flit_type == FLIT_TYPE_HEAD)
 			  reservation_table.release(i,flit.vc_id,o);
@@ -272,26 +272,26 @@ void Router::txProcess()
     }   
 }
 
-NoP_data Router::getCurrentNoPData()
-{
-    NoP_data NoP_data;
+// NoP_data Router::getCurrentNoPData()
+// {
+//     NoP_data NoP_data;
 
-    for (int j = 0; j < DIRECTIONS; j++) {
-	try {
-		NoP_data.channel_status_neighbor[j].free_slots = free_slots_neighbor[j].read();
-		NoP_data.channel_status_neighbor[j].available = (reservation_table.isNotReserved(j));
-	}
-	catch (int e)
-	{
-	    if (e!=NOT_VALID) assert(false);
-	    // Nothing to do if an NOT_VALID direction is caught
-	};
-    }
+//     for (int j = 0; j < DIRECTIONS; j++) {
+// 	try {
+// 		NoP_data.channel_status_neighbor[j].free_slots = free_slots_neighbor[j].read();
+// 		NoP_data.channel_status_neighbor[j].available = (reservation_table.isNotReserved(j));
+// 	}
+// 	catch (int e)
+// 	{
+// 	    if (e!=NOT_VALID) assert(false);
+// 	    // Nothing to do if an NOT_VALID direction is caught
+// 	};
+//     }
 
-    NoP_data.sender_id = local_id;
+//     NoP_data.sender_id = local_id;
 
-    return NoP_data;
-}
+//     return NoP_data;
+// }
 
 void Router::perCycleUpdate()
 {
@@ -456,8 +456,50 @@ vector < int > Router::routingFunction(const RouteData & route_data)
 
 int Router::route(const RouteData & route_data)
 {
-	if(route_data.dst_id == local_id && route_data.is_output) 
-	return DIRECTION_LOCAL_2; // 新增：如果是发往本地的output包，选择LOCAL_2端口
+    // Hierarchical routing logic
+    if (GlobalParams::topology == TOPOLOGY_HIERARCHICAL) {
+        // If destination is this node, route to LOCAL port
+        if (route_data.dst_id == local_id) {
+            if (route_data.is_output) {
+                return getLogicalPortIndex(PORT_LOCAL, 1); // LOCAL_1 for output
+            } else {
+                return getLogicalPortIndex(PORT_LOCAL, 0); // LOCAL_0 for input
+            }
+        }
+
+        // Get hierarchical information
+        int dst_level = GlobalParams::node_level_map[route_data.dst_id];
+        int dst_parent = GlobalParams::parent_map[route_data.dst_id];
+
+        // If destination is a child of this node
+        if (dst_parent == local_id) {
+            // Find which DOWN port leads to this child
+            for (int i = 0; i < h_flit_tx_down.size(); i++) {
+                // TODO: Need to map child ID to DOWN port index
+                // For now, assume sequential mapping
+                if (i < GlobalParams::fanouts_per_level[local_level]) {
+                    return getLogicalPortIndex(PORT_DOWN, i);
+                }
+            }
+        }
+
+        // If destination is parent of this node
+        if (dst_level < local_level && dst_parent == local_id) {
+            return getLogicalPortIndex(PORT_UP, -1);
+        }
+
+        // Default: route up towards root
+        if (local_level > 0) {
+            return getLogicalPortIndex(PORT_UP, -1);
+        }
+
+        // If we're root and destination is not direct child, this shouldn't happen
+        assert(false);
+    }
+
+    // Legacy routing for non-hierarchical topologies
+    if(route_data.dst_id == local_id && route_data.is_output)
+    return DIRECTION_LOCAL_2; // 新增：如果是发往本地的output包，选择LOCAL_2端口
 
     if (route_data.dst_id == local_id)
 	return DIRECTION_LOCAL;
@@ -483,27 +525,27 @@ void Router::NoP_report() const
 
 //---------------------------------------------------------------------------
 
-int Router::NoPScore(const NoP_data & nop_data,
-			  const vector < int >&nop_channels) const
-{
-    int score = 0;
+// int Router::NoPScore(const NoP_data & nop_data,
+// 			  const vector < int >&nop_channels) const
+// {
+//     int score = 0;
 
-    for (unsigned int i = 0; i < nop_channels.size(); i++) {
-	int available;
+//     for (unsigned int i = 0; i < nop_channels.size(); i++) {
+// 	int available;
 
-	if (nop_data.channel_status_neighbor[nop_channels[i]].available)
-	    available = 1;
-	else
-	    available = 0;
+// 	if (nop_data.channel_status_neighbor[nop_channels[i]].available)
+// 	    available = 1;
+// 	else
+// 	    available = 0;
 
-	int free_slots =
-	    nop_data.channel_status_neighbor[nop_channels[i]].free_slots;
+// 	int free_slots =
+// 	    nop_data.channel_status_neighbor[nop_channels[i]].free_slots;
 
-	score += available * free_slots;
-    }
+// 	score += available * free_slots;
+//     }
 
-    return score;
-}
+//     return score;
+// }
 
 int Router::selectionFunction(const vector < int >&directions,
 				   const RouteData & route_data)
@@ -529,35 +571,35 @@ void Router::configure(const int _id,
     if (grt.isValid())
 	routing_table.configure(grt, _id);
 
-    reservation_table.setSize(DIRECTIONS+3);
+    reservation_table.setSize(all_flit_rx.size());
 
-    for (int i = 0; i < DIRECTIONS + 3; i++)
+    for (int i = 0; i < all_flit_rx.size(); i++)
     {
 	for (int vc = 0; vc < GlobalParams::n_virtual_channels; vc++)
 	{
-	    buffer[i][vc].SetMaxBufferSize(_max_buffer_size);
-	    buffer[i][vc].setLabel(string(name())+"->buffer["+i_to_string(i)+"]");
+	    (*buffers[i])[vc].SetMaxBufferSize(_max_buffer_size);
+	    (*buffers[i])[vc].setLabel(string(name())+"->buffer["+i_to_string(i)+"]");
 	}
 	start_from_vc[i] = 0;
     }
 
 
-    if (GlobalParams::topology == TOPOLOGY_MESH)
-    {
-	int row = _id / GlobalParams::mesh_dim_x;
-	int col = _id % GlobalParams::mesh_dim_x;
+    // if (GlobalParams::topology == TOPOLOGY_MESH)
+    // {
+	// int row = _id / GlobalParams::mesh_dim_x;
+	// int col = _id % GlobalParams::mesh_dim_x;
 
-	for (int vc = 0; vc<GlobalParams::n_virtual_channels; vc++)
-	{
-	    if (row == 0)
-	      buffer[DIRECTION_NORTH][vc].Disable();
-	    if (row == GlobalParams::mesh_dim_y-1)
-	      buffer[DIRECTION_SOUTH][vc].Disable();
-	    if (col == 0)
-	      buffer[DIRECTION_WEST][vc].Disable();
-	    if (col == GlobalParams::mesh_dim_x-1)
-	      buffer[DIRECTION_EAST][vc].Disable();
-	}
+	// for (int vc = 0; vc<GlobalParams::n_virtual_channels; vc++)
+	// {
+	//     if (row == 0)
+	//       buffer[DIRECTION_NORTH][vc].Disable();
+	//     if (row == GlobalParams::mesh_dim_y-1)
+	//       buffer[DIRECTION_SOUTH][vc].Disable();
+	//     if (col == 0)
+	//       buffer[DIRECTION_WEST][vc].Disable();
+	//     if (col == GlobalParams::mesh_dim_x-1)
+	//       buffer[DIRECTION_EAST][vc].Disable();
+	// }
 	
 	// // Ensure LOCAL and LOCAL_2 ports are always enabled in mesh topology
 	// buffer[DIRECTION_LOCAL][vc].Enable();
@@ -625,25 +667,25 @@ int Router::getNeighborId(int _id, int direction) const
     return neighbor_id;
 }
 
-bool Router::inCongestion()
-{
-    for (int i = 0; i < DIRECTIONS; i++) {
+// bool Router::inCongestion()
+// {
+//     for (int i = 0; i < DIRECTIONS; i++) {
 
-	if (free_slots_neighbor[i]==NOT_VALID) continue;
+// 	if (free_slots_neighbor[i]==NOT_VALID) continue;
 
-	int flits = GlobalParams::buffer_depth - free_slots_neighbor[i];
-	if (flits > (int) (GlobalParams::buffer_depth * GlobalParams::dyad_threshold))
-	    return true;
-    }
+// 	int flits = GlobalParams::buffer_depth - free_slots_neighbor[i];
+// 	if (flits > (int) (GlobalParams::buffer_depth * GlobalParams::dyad_threshold))
+// 	    return true;
+//     }
 
-    return false;
-}
+//     return false;
+// }
 
 void Router::ShowBuffersStats(std::ostream & out)
 {
-  for (int i=0; i<DIRECTIONS+3; i++)
+  for (int i=0; i<all_flit_rx.size(); i++)
       for (int vc=0; vc<GlobalParams::n_virtual_channels;vc++)
-	    buffer[i][vc].ShowStats(out);
+	    (*buffers[i])[vc].ShowStats(out);
 }
 
 
@@ -664,4 +706,281 @@ bool Router::connectedHubs(int src_hub, int dst_hub) {
         return false;
     else
         return true;
+}
+
+// Constructor implementation
+Router::Router(sc_module_name nm) : sc_module(nm) {
+    SC_METHOD(process);
+    sensitive << reset;
+    sensitive << clock.pos();
+
+    SC_METHOD(perCycleUpdate);
+    sensitive << reset;
+    sensitive << clock.pos();
+
+    // Initialize dynamic ports
+    initPorts();
+    buildUnifiedInterface();
+
+    routingAlgorithm = RoutingAlgorithms::get(GlobalParams::routing_algorithm);
+
+    if (routingAlgorithm == 0)
+    {
+        cerr << " FATAL: invalid routing -routing " << GlobalParams::routing_algorithm << ", check with noxim -help" << endl;
+        exit(-1);
+    }
+
+    selectionStrategy = SelectionStrategies::get(GlobalParams::selection_strategy);
+
+    if (selectionStrategy == 0)
+    {
+        cerr << " FATAL: invalid selection strategy -sel " << GlobalParams::selection_strategy << ", check with noxim -help" << endl;
+        exit(-1);
+    }
+}
+
+// Destructor implementation
+Router::~Router() {
+    cleanupPorts();
+}
+
+// Initialize all dynamic ports based on hierarchical configuration
+void Router::initPorts() {
+    // Initialize all pointers to nullptr
+    h_flit_rx_up = nullptr;
+    h_req_rx_up = nullptr;
+    h_ack_rx_up = nullptr;
+    h_buffer_full_status_rx_up = nullptr;
+
+    h_flit_tx_up = nullptr;
+    h_req_tx_up = nullptr;
+    h_ack_tx_up = nullptr;
+    h_buffer_full_status_tx_up = nullptr;
+
+    for (int i = 0; i < NUM_LOCAL_PORTS; i++) {
+        h_flit_rx_local[i] = nullptr;
+        h_req_rx_local[i] = nullptr;
+        h_ack_rx_local[i] = nullptr;
+        h_buffer_full_status_rx_local[i] = nullptr;
+        
+        h_flit_tx_local[i] = nullptr;
+        h_req_tx_local[i] = nullptr;
+        h_ack_tx_local[i] = nullptr;
+        h_buffer_full_status_tx_local[i] = nullptr;
+    }
+
+    // Clear DOWN port vectors
+    h_flit_tx_down.clear();
+    h_req_tx_down.clear();
+    h_ack_tx_down.clear();
+    h_buffer_full_status_tx_down.clear();
+
+    h_flit_rx_down.clear();
+    h_req_rx_down.clear();
+    h_ack_rx_down.clear();
+    h_buffer_full_status_rx_down.clear();
+}
+
+// Build the unified interface adapter
+void Router::buildUnifiedInterface() {
+    // Clear all vectors
+    all_flit_rx.clear();
+    all_req_rx.clear();
+    all_ack_rx.clear();
+    all_buffer_full_status_rx.clear();
+
+    all_flit_tx.clear();
+    all_req_tx.clear();
+    all_ack_tx.clear();
+    all_buffer_full_status_tx.clear();
+
+    buffers.clear();
+    port_info_map.clear();
+    current_level_rx.clear();
+    current_level_tx.clear();
+    start_from_vc.clear();
+
+    // Define port order: UP -> LOCAL -> DOWN_0 -> DOWN_1 -> ...
+
+    // 1. Add UP port (if this node is not root)
+    if (local_level > 0) {
+        std::string up_name = "UP_" + std::to_string(local_id);
+
+        // Create UP ports
+        h_flit_rx_up = new sc_in<Flit>((up_name + "_flit_rx").c_str());
+        h_req_rx_up = new sc_in<bool>((up_name + "_req_rx").c_str());
+        h_ack_rx_up = new sc_out<bool>((up_name + "_ack_rx").c_str());
+        h_buffer_full_status_rx_up = new sc_out<TBufferFullStatus>((up_name + "_buffer_status_rx").c_str());
+
+        h_flit_tx_up = new sc_out<Flit>((up_name + "_flit_tx").c_str());
+        h_req_tx_up = new sc_out<bool>((up_name + "_req_tx").c_str());
+        h_ack_tx_up = new sc_in<bool>((up_name + "_ack_tx").c_str());
+        h_buffer_full_status_tx_up = new sc_in<TBufferFullStatus>((up_name + "_buffer_status_tx").c_str());
+
+        // Add to unified interface
+        all_flit_rx.push_back(h_flit_rx_up);
+        all_req_rx.push_back(h_req_rx_up);
+        all_ack_rx.push_back(h_ack_rx_up);
+        all_buffer_full_status_rx.push_back(h_buffer_full_status_rx_up);
+
+        all_flit_tx.push_back(h_flit_tx_up);
+        all_req_tx.push_back(h_req_tx_up);
+        all_ack_tx.push_back(h_ack_tx_up);
+        all_buffer_full_status_tx.push_back(h_buffer_full_status_tx_up);
+
+        // Add port info
+        PortInfo up_info = {PORT_UP, -1, up_name};
+        port_info_map.push_back(up_info);
+
+        // Add buffer and state
+		BufferBank my_bank;
+		buffers.push_back(&my_bank);
+        current_level_rx.push_back(false);
+        current_level_tx.push_back(false);
+        start_from_vc.push_back(0);
+    }
+
+    // 2. Add LOCAL ports (always present)
+for (int i = 0; i < NUM_LOCAL_PORTS; i++) {
+    std::string local_name = "LOCAL_" + std::to_string(local_id) + "_" + std::to_string(i);
+
+    // Create LOCAL ports
+    h_flit_rx_local[i] = new sc_in<Flit>((local_name + "_flit_rx").c_str());
+    h_req_rx_local[i] = new sc_in<bool>((local_name + "_req_rx").c_str());
+    h_ack_rx_local[i] = new sc_out<bool>((local_name + "_ack_rx").c_str());
+    h_buffer_full_status_rx_local[i] = new sc_out<TBufferFullStatus>((local_name + "_buffer_status_rx").c_str());
+
+    h_flit_tx_local[i] = new sc_out<Flit>((local_name + "_flit_tx").c_str());
+    h_req_tx_local[i] = new sc_out<bool>((local_name + "_req_tx").c_str());
+    h_ack_tx_local[i] = new sc_in<bool>((local_name + "_ack_tx").c_str());
+    h_buffer_full_status_tx_local[i] = new sc_in<TBufferFullStatus>((local_name + "_buffer_status_tx").c_str());
+
+    // Add to unified interface
+    all_flit_rx.push_back(h_flit_rx_local[i]);
+    all_req_rx.push_back(h_req_rx_local[i]);
+    all_ack_rx.push_back(h_ack_rx_local[i]);
+    all_buffer_full_status_rx.push_back(h_buffer_full_status_rx_local[i]);
+
+    all_flit_tx.push_back(h_flit_tx_local[i]);
+    all_req_tx.push_back(h_req_tx_local[i]);
+    all_ack_tx.push_back(h_ack_tx_local[i]);
+    all_buffer_full_status_tx.push_back(h_buffer_full_status_tx_local[i]);
+
+    // Add port info
+    PortInfo local_info = {PORT_LOCAL, -1, local_name};
+    port_info_map.push_back(local_info);
+
+    // Add buffer and state
+	BufferBank mybank;
+    buffers.push_back(&mybank);
+    current_level_rx.push_back(false);
+    current_level_tx.push_back(false);
+    start_from_vc.push_back(0);
+}
+
+    // 3. Add DOWN ports (based on fanout)
+    int fanout = 0;
+    if (local_level < GlobalParams::num_levels - 1) {
+        fanout = GlobalParams::fanouts_per_level[local_level];
+    }
+
+    for (int i = 0; i < fanout; i++) {
+        std::string down_name = "DOWN_" + std::to_string(local_id) + "_" + std::to_string(i);
+
+        // Create DOWN ports
+        sc_out<Flit>* flit_tx = new sc_out<Flit>((down_name + "_flit_tx").c_str());
+        sc_out<bool>* req_tx = new sc_out<bool>((down_name + "_req_tx").c_str());
+        sc_in<bool>* ack_tx = new sc_in<bool>((down_name + "_ack_tx").c_str());
+        sc_in<TBufferFullStatus>* buffer_status_tx = new sc_in<TBufferFullStatus>((down_name + "_buffer_status_tx").c_str());
+
+        h_flit_tx_down.push_back(flit_tx);
+        h_req_tx_down.push_back(req_tx);
+        h_ack_tx_down.push_back(ack_tx);
+        h_buffer_full_status_tx_down.push_back(buffer_status_tx);
+
+        sc_in<Flit>* flit_rx = new sc_in<Flit>((down_name + "_flit_rx").c_str());
+        sc_in<bool>* req_rx = new sc_in<bool>((down_name + "_req_rx").c_str());
+        sc_out<bool>* ack_rx = new sc_out<bool>((down_name + "_ack_rx").c_str());
+        sc_out<TBufferFullStatus>* buffer_status_rx = new sc_out<TBufferFullStatus>((down_name + "_buffer_status_rx").c_str());
+
+        h_flit_rx_down.push_back(flit_rx);
+        h_req_rx_down.push_back(req_rx);
+        h_ack_rx_down.push_back(ack_rx);
+        h_buffer_full_status_rx_down.push_back(buffer_status_rx);
+
+        // Add to unified interface
+        all_flit_rx.push_back(flit_rx);
+        all_req_rx.push_back(req_rx);
+        all_ack_rx.push_back(ack_rx);
+        all_buffer_full_status_rx.push_back(buffer_status_rx);
+
+        all_flit_tx.push_back(flit_tx);
+        all_req_tx.push_back(req_tx);
+        all_ack_tx.push_back(ack_tx);
+        all_buffer_full_status_tx.push_back(buffer_status_tx);
+
+        // Add port info
+        PortInfo down_info = {PORT_DOWN, i, down_name};
+        port_info_map.push_back(down_info);
+		BufferBank my_bank; 
+
+        buffers.push_back(&my_bank);
+        current_level_rx.push_back(false);
+        current_level_tx.push_back(false);
+        start_from_vc.push_back(0);
+    }
+}
+
+// Cleanup all dynamically allocated ports
+void Router::cleanupPorts() {
+    // Clean up UP ports
+    if (h_flit_rx_up) delete h_flit_rx_up;
+    if (h_req_rx_up) delete h_req_rx_up;
+    if (h_ack_rx_up) delete h_ack_rx_up;
+    if (h_buffer_full_status_rx_up) delete h_buffer_full_status_rx_up;
+    if (h_flit_tx_up) delete h_flit_tx_up;
+    if (h_req_tx_up) delete h_req_tx_up;
+    if (h_ack_tx_up) delete h_ack_tx_up;
+    if (h_buffer_full_status_tx_up) delete h_buffer_full_status_tx_up;
+
+    // Clean up LOCAL ports
+    if (h_flit_rx_local) delete h_flit_rx_local;
+    if (h_req_rx_local) delete h_req_rx_local;
+    if (h_ack_rx_local) delete h_ack_rx_local;
+    if (h_buffer_full_status_rx_local) delete h_buffer_full_status_rx_local;
+    if (h_flit_tx_local) delete h_flit_tx_local;
+    if (h_req_tx_local) delete h_req_tx_local;
+    if (h_ack_tx_local) delete h_ack_tx_local;
+    if (h_buffer_full_status_tx_local) delete h_buffer_full_status_tx_local;
+
+    // Clean up DOWN ports
+    for (auto port : h_flit_tx_down) delete port;
+    for (auto port : h_req_tx_down) delete port;
+    for (auto port : h_ack_tx_down) delete port;
+    for (auto port : h_buffer_full_status_tx_down) delete port;
+
+    for (auto port : h_flit_rx_down) delete port;
+    for (auto port : h_req_rx_down) delete port;
+    for (auto port : h_ack_rx_down) delete port;
+    for (auto port : h_buffer_full_status_rx_down) delete port;
+
+    // Clean up buffers
+    for (auto buffer : buffers) delete[] buffer;
+}
+
+
+int Router::getLogicalPortIndex(LogicalPortType type, int instance_index) const {
+    // 遍历整个 port_info_map
+    for (size_t i = 0; i < port_info_map.size(); i++) {
+        // 检查端口类型是否匹配
+        if (port_info_map[i].type == type) {
+            // 检查该类型的实例索引是否匹配
+            if (port_info_map[i].instance_index == instance_index) {
+                return static_cast<int>(i); // 找到了完全匹配的端口，返回其逻辑ID
+            }
+        }
+    }
+
+    // 如果遍历完整个 map 都没有找到
+    return -1; 
 }

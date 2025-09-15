@@ -301,7 +301,7 @@ void ProcessingElement::txProcess() {
         }
 
         // 3. 读取下游 *当前* 的接收能力
-        int downstream_capability = downstream_ready_in.read();
+        int downstream_capability = downstream_ready_in[0]->read(); // 目前只支持单一路径
 
         // 4. 终极守门员检查：检查ack，并进行精确的能力匹配
         if (ack_tx.read() == current_level_tx && downstream_capability >= required_capability) {
@@ -695,7 +695,7 @@ void ProcessingElement::run_storage_logic() {
         
         // 数据就绪！现在才需要检查下游能力，因为没数据时检查下游是无意义的
         int required_capability = (intent_str == "FILL") ? 2 : 1;
-        int downstream_capability = downstream_ready_in.read();
+        int downstream_capability = downstream_ready_in[0]->read();
 
         if (downstream_capability >= required_capability) {
             // 所有条件都满足！可以生成并发送Packet

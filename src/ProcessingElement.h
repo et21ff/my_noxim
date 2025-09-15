@@ -28,7 +28,7 @@ SC_MODULE(ProcessingElement)
     // I/O Ports
 
     // **** 我们新增的、用于握手的端口 ****
-    sc_in<int> downstream_ready_in; // 从下游PE接收的"ready"信号
+    vector<sc_in<int>*> downstream_ready_in; // 从下游PE接收的"ready"信号
     sc_out<int> downstream_ready_out; // 向上游PE发送的"ready"信号
 
     sc_in_clk clock;		// The input clock for the PE
