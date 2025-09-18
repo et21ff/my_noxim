@@ -125,6 +125,23 @@ struct TBufferFullStatus {
     bool mask[MAX_VIRTUAL_CHANNELS];
 };
 
+inline std::ostream& operator<<(std::ostream& os, const TBufferFullStatus& bfs) {
+    os << "[ ";
+    for (int i = 0; i < MAX_VIRTUAL_CHANNELS; ++i) {
+        os << (bfs.mask[i] ? "T" : "F") << " ";
+    }
+    os << "]";
+    return os;
+}
+
+inline void sc_trace(sc_core::sc_trace_file* tf, const TBufferFullStatus& bfs, const std::string& name) {
+    for (int i = 0; i < MAX_VIRTUAL_CHANNELS; ++i) {
+        // Creamos un nombre de señal único para cada booleano en el VCD, ej. "mi_señal_mask_0"
+        sc_trace(tf, bfs.mask[i], name + ".mask[" + std::to_string(i) + "]");
+    }
+}
+
+
 // Flit -- Flit definition
 struct Flit {
     int payload_data_size; 

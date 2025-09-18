@@ -9,6 +9,8 @@
  */
 
 #include "Router.h"
+#include <systemc.h>
+#include <dbg.h>
 
 
 inline int toggleKthBit(int n, int k)
@@ -27,7 +29,7 @@ void Router::rxProcess()
     if (reset.read()) {
 	TBufferFullStatus bfs;
 	// Clear outputs and indexes of receiving protocol
-	for (int i = 0; i < all_flit_rx.size(); i++) {
+	for (size_t i = 0; i < all_flit_rx.size(); i++) {
 	    all_ack_rx[i]->write(0);
 	    current_level_rx[i] = 0;
 	    all_buffer_full_status_rx[i]->write(bfs);
@@ -40,7 +42,7 @@ void Router::rxProcess()
 	// This process simply sees a flow of incoming flits. All arbitration
 	// and wormhole related issues are addressed in the txProcess()
 	//assert(false);
-	for (int i = 0; i < all_flit_rx.size(); i++) {
+	for (size_t i = 0; i < all_flit_rx.size(); i++) {
 	    // To accept a new flit, the following conditions must match:
 	    // 1) there is an incoming request
 	    // 2) there is a free slot in the input buffer of direction i
@@ -52,13 +54,13 @@ void Router::rxProcess()
 		//LOG<<"request opposite to the current_level, reading flit "<<received_flit<<endl;
 
 		int vc = received_flit.vc_id;
-
+        assert(buffers[i] != nullptr && "Pointer to BufferBank is null!");
 		if (!(*buffers[i])[vc].IsFull())
 		{
 
-		    // Store the incoming flit in the circular buffer
+            
 		    (*buffers[i])[vc].Push(received_flit);
-		    LOG << " Flit " << received_flit << " collected from Input[" << i << "][" << vc <<"]" << endl;
+		    LOG << " Flit " << received_flit <<" "<<received_flit.flit_type<< " collected from Input[" << i << "][" << vc <<"]" << endl;
 
 		    power.bufferRouterPush();
 
@@ -96,7 +98,7 @@ void Router::txProcess()
   if (reset.read())
     {
       // Clear outputs and indexes of transmitting protocol
-      for (int i = 0; i < all_flit_tx.size(); i++)
+      for (size_t i = 0; i < all_flit_tx.size(); i++)
 	{
 	  all_req_tx[i]->write(0);
 	  current_level_tx[i] = 0;
@@ -104,10 +106,10 @@ void Router::txProcess()
     } 
   else 
     { 
-      // 1st phase: Reservation
-      for (int j = 0; j < all_flit_rx.size(); j++)
+
+      for (size_t j = 0; j < all_flit_rx.size(); j++)
 	{
-	  int i = (start_from_port + j) % all_flit_rx.size();
+	  size_t i = (start_from_port + j) % all_flit_rx.size();
 
 	  for (int k = 0;k < GlobalParams::n_virtual_channels; k++)
 	  {
@@ -119,6 +121,7 @@ void Router::txProcess()
 
 	      if (!(*buffers[i])[vc].IsEmpty()) 
 	      {
+
 		  Flit flit = (*buffers[i])[vc].Front();
 		  power.bufferRouterFront();
 
@@ -136,6 +139,8 @@ void Router::txProcess()
 
 		      // TODO: see PER POSTERI (adaptive routing should not recompute route if already reserved)
 		      int o = route(route_data);
+
+              cout<<"Router "<<local_id<<" route from input "<<i<<" to output "<<o<<endl;
 
 		      // manage special case of target hub not directly connected to destination
 		      if (o>=DIRECTION_HUB_RELAY)
@@ -182,7 +187,7 @@ void Router::txProcess()
 
       // 2nd phase: Forwarding
       //if (local_id==6) LOG<<"*TX*****local_id="<<local_id<<"__ack_tx[0]= "<<ack_tx[0].read()<<endl;
-      for (int i = 0; i < all_flit_rx.size(); i++) 
+      for (size_t i = 0; i < all_flit_rx.size(); i++) 
       { 
 	  vector<pair<int,int> > reservations = reservation_table.getReservations(i);
 	  
@@ -253,8 +258,6 @@ void Router::txProcess()
 		  else
 		  {
 		      LOG << " Cannot forward Input[" << i << "][" << vc << "] to Output[" << o << "], flit: " << flit << endl;
-		      //LOG << " **DEBUG APB: current_level_tx: " << current_level_tx[o] << " ack_tx: " << all_ack_tx[o]->read() << endl;
-		      LOG << " **DEBUG buffer_full_status_tx " << all_buffer_full_status_tx[o]->read().mask[vc] << endl;
 
 		  	//LOG<<"END_NO_cl_tx="<<current_level_tx[o]<<"_req_tx="<<req_tx[o].read()<<" _ack= "<<all_ack_tx[o]->read()<< endl;
 		      /*
@@ -296,13 +299,12 @@ void Router::txProcess()
 void Router::perCycleUpdate()
 {
     if (reset.read()) {
-	for (int i = 0; i < DIRECTIONS + 1; i++)
-	    free_slots[i].write(buffer[i][DEFAULT_VC].GetMaxBufferSize());
+		return;
+
     } else {
-        selectionStrategy->perCycleUpdate(this);
 
 	power.leakageRouter();
-	for (int i = 0; i < DIRECTIONS + 1; i++)
+	for (size_t i = 0; i < all_flit_rx.size()-NUM_LOCAL_PORTS; i++)
 	{
 	    for (int vc=0;vc<GlobalParams::n_virtual_channels;vc++)
 	    {
@@ -315,137 +317,10 @@ void Router::perCycleUpdate()
     }
 }
 
-vector<int> Router::nextDeltaHops(RouteData rd) {
-
-	if (GlobalParams::topology == TOPOLOGY_MESH)
-	{
-		cout << "Mesh topologies are not supported for nextDeltaHops() ";
-		assert(false);
-	}
-	// annotate the initial nodes
-	int src = rd.src_id;
-	int dst = rd.dst_id;
-
-	int current_node = src;
-	vector<int> direction; // initially is empty
-	vector<int> next_hops;
-
-	int sw = GlobalParams::n_delta_tiles/2; //sw: switch number in each stage
-	int stg = log2(GlobalParams::n_delta_tiles);
-	int c;
-	//---From Source to stage 0 (return the sw attached to the source)---
-	//Topology omega 
-	if (GlobalParams::topology == TOPOLOGY_OMEGA) 	
-	{
-	if(current_node < (GlobalParams::n_delta_tiles/2))	
-		 c = current_node;
-	else if(current_node >= (GlobalParams::n_delta_tiles/2))	
-		 c = (current_node - (GlobalParams::n_delta_tiles/2));		
-	}
-	//Other delta topologies: Butterfly and baseline
-	else if ((GlobalParams::topology == TOPOLOGY_BUTTERFLY)||(GlobalParams::topology == TOPOLOGY_BASELINE))
-	{
-		 c =  (current_node >>1);
-	}
-
-		Coord temp_coord;
-		temp_coord.x = 0;
-		temp_coord.y = c;
-		int N = coord2Id(temp_coord);
-
-		next_hops.push_back(N);
-		current_node = N;
-	
-	
-   //---From stage 0 to Destination---
-	int current_stage = 0;
-
-	while (current_stage<stg-1)
-	{
-		Coord new_coord;
-		int y = id2Coord(current_node).y;
-
-		rd.current_id = current_node;
-		direction = routingAlgorithm->route(this, rd);
-
-		int bit_to_check = stg - current_stage - 1;
-
-		int bit_checked = (y & (1 << (bit_to_check - 1)))>0 ? 1:0;
-
-		// computes next node coords
-		new_coord.x = current_stage + 1;
-		if (bit_checked ^ direction[0])
-			new_coord.y = toggleKthBit(y, bit_to_check);
-		else
-			new_coord.y = y;
-
-		current_node = coord2Id(new_coord);
-		next_hops.push_back(current_node);
-		current_stage = id2Coord(current_node).x;
-	}
-
-	next_hops.push_back(dst);
-
-	return next_hops;
-
-}
 
 vector < int > Router::routingFunction(const RouteData & route_data)
 {
-	if (GlobalParams::use_winoc)
-	{
-		// - If the current node C and the destination D are connected to an radiohub, use wireless
-		// - If D is not directly connected to a radio hub, wireless
-		// communication can still  be used if some intermediate node "I" in the routing
-		// path is reachable from current node C.
-		// - Since further wired hops will be required from I -> D, a threshold "winoc_dst_hops"
-		// can be specified (via command line) to determine the max distance from the intermediate
-		// node I and the destination D.
-		// - NOTE: default threshold is 0, which means I=D, i.e., we explicitly ask the destination D to be connected to the
-		// target radio hub
-		if (hasRadioHub(local_id))
-		{
-			// Check if destination is directly connected to an hub
-			if ( hasRadioHub(route_data.dst_id) &&
-				 !sameRadioHub(local_id,route_data.dst_id) )
-			{
-                map<int, int>::iterator it1 = GlobalParams::hub_for_tile.find(route_data.dst_id);
-                map<int, int>::iterator it2 = GlobalParams::hub_for_tile.find(route_data.current_id);
 
-                if (connectedHubs(it1->second,it2->second))
-                {
-                    LOG << "Destination node " << route_data.dst_id << " is directly connected to a reachable RadioHub" << endl;
-                    vector<int> dirv;
-                    dirv.push_back(DIRECTION_HUB);
-                    return dirv;
-                }
-			}
-			// let's check whether some node in the route has an acceptable distance to the dst
-            if (GlobalParams::winoc_dst_hops>0)
-            {
-                // TODO: for the moment, just print the set of nexts hops to check everything is ok
-                LOG << "NEXT_DELTA_HOPS (from node " << route_data.src_id << " to " << route_data.dst_id << ") >>>> :";
-                vector<int> nexthops;
-                nexthops = nextDeltaHops(route_data);
-                //for (int i=0;i<nexthops.size();i++) cout << "(" << nexthops[i] <<")-->";
-                //cout << endl;
-                for (int i=1;i<=GlobalParams::winoc_dst_hops;i++)
-				{
-                	int dest_position = nexthops.size()-1;
-                	int candidate_hop = nexthops[dest_position-i];
-					if ( hasRadioHub(candidate_hop) && !sameRadioHub(local_id,candidate_hop) ) {
-						//LOG << "Checking candidate hop " << candidate_hop << " ... It's OK!" << endl;
-						LOG << "Relaying to hub-connected node " << candidate_hop << " to reach destination " << route_data.dst_id << endl;
-						vector<int> dirv;
-						dirv.push_back(DIRECTION_HUB_RELAY+candidate_hop);
-						return dirv;
-					}
-					//else
-					// LOG << "Checking candidate hop " << candidate_hop << " ... NOT OK" << endl;
-				}
-            }
-		}
-	}
 	// TODO: fix all the deprecated verbose mode logs
 	if (GlobalParams::verbose_mode > VERBOSE_OFF)
 		LOG << "Wired routing for dst = " << route_data.dst_id << endl;
@@ -454,74 +329,63 @@ vector < int > Router::routingFunction(const RouteData & route_data)
 	return routingAlgorithm->route(this, route_data);
 }
 
+
+
 int Router::route(const RouteData & route_data)
 {
-    // Hierarchical routing logic
     if (GlobalParams::topology == TOPOLOGY_HIERARCHICAL) {
-        // If destination is this node, route to LOCAL port
-        if (route_data.dst_id == local_id) {
-            if (route_data.is_output) {
-                return getLogicalPortIndex(PORT_LOCAL, 1); // LOCAL_1 for output
-            } else {
-                return getLogicalPortIndex(PORT_LOCAL, 0); // LOCAL_0 for input
-            }
+        
+        // 规则 1: 检查本地
+        if (this->local_id == route_data.dst_id) {
+            return getLogicalPortIndex(PORT_LOCAL, 0);
         }
-
-        // Get hierarchical information
-        int dst_level = GlobalParams::node_level_map[route_data.dst_id];
-        int dst_parent = GlobalParams::parent_map[route_data.dst_id];
-
-        // If destination is a child of this node
-        if (dst_parent == local_id) {
-            // Find which DOWN port leads to this child
-            for (int i = 0; i < h_flit_tx_down.size(); i++) {
-                // TODO: Need to map child ID to DOWN port index
-                // For now, assume sequential mapping
-                if (i < GlobalParams::fanouts_per_level[local_level]) {
+        
+        // 规则 2: 检查子孙 (向下路由)
+        if (isDescendant(route_data.dst_id)) {
+            int next_hop_child_id = getNextHopChild(route_data.dst_id);
+            
+            for(int i=0; i<GlobalParams::fanouts_per_level[GlobalParams::node_level_map[local_id]]; i++) {
+                if (GlobalParams::child_map[local_id][i] == next_hop_child_id) {
                     return getLogicalPortIndex(PORT_DOWN, i);
                 }
             }
-        }
 
-        // If destination is parent of this node
-        if (dst_level < local_level && dst_parent == local_id) {
-            return getLogicalPortIndex(PORT_UP, -1);
+            // 如果 for 循环结束还没返回，说明有严重逻辑错误！
+            // getNextHopChild() 的结果在 child_map 中找不到。
+            cout << "FATAL ERROR in Router " << local_id << ": Cannot find next hop child " 
+                 << next_hop_child_id << " for destination " << route_data.dst_id << endl;
+            assert(false);
+            return -1; // 或者其他错误码
         }
-
-        // Default: route up towards root
-        if (local_level > 0) {
-            return getLogicalPortIndex(PORT_UP, -1);
+        
+        // 规则 3: 向上路由 (如果不是本地也不是子孙)
+        else { // <--- 使用 else
+            if (local_level > 0) {
+                return getLogicalPortIndex(PORT_UP, -1);
+            } else {
+                // 这种情况现在只会在根节点发生
+                cout << "FATAL ERROR in Root Router " << local_id << ": Unroutable destination " 
+                     << route_data.dst_id << endl;
+                assert(false);
+                return -1;
+            }
         }
-
-        // If we're root and destination is not direct child, this shouldn't happen
-        assert(false);
     }
 
-    // Legacy routing for non-hierarchical topologies
-    if(route_data.dst_id == local_id && route_data.is_output)
-    return DIRECTION_LOCAL_2; // 新增：如果是发往本地的output包，选择LOCAL_2端口
-
-    if (route_data.dst_id == local_id)
-	return DIRECTION_LOCAL;
-
-    power.routing();
-    vector < int >candidate_channels = routingFunction(route_data);
-
-    power.selection();
-    return selectionFunction(candidate_channels, route_data);
+    return -2;
 }
 
-void Router::NoP_report() const
-{
-    NoP_data NoP_tmp;
-	LOG << "NoP report: " << endl;
+// void Router::NoP_report() const
+// {
+//     NoP_data NoP_tmp;
+// 	LOG << "NoP report: " << endl;
 
-    for (int i = 0; i < DIRECTIONS; i++) {
-	NoP_tmp = NoP_data_in[i].read();
-	if (NoP_tmp.sender_id != NOT_VALID)
-	    cout << NoP_tmp;
-    }
-}
+//     for (int i = 0; i < DIRECTIONS; i++) {
+// 	NoP_tmp = NoP_data_in[i].read();
+// 	if (NoP_tmp.sender_id != NOT_VALID)
+// 	    cout << NoP_tmp;
+//     }
+// }
 
 //---------------------------------------------------------------------------
 
@@ -550,30 +414,45 @@ void Router::NoP_report() const
 int Router::selectionFunction(const vector < int >&directions,
 				   const RouteData & route_data)
 {
-    // not so elegant but fast escape ;)
-    if (directions.size() == 1)
-	return directions[0];
+    // Hierarchical mode: simple selection
+    if (GlobalParams::topology == TOPOLOGY_HIERARCHICAL) {
+        // In hierarchical topology, routing function should return only one direction
+        // If multiple directions are returned (shouldn't happen), pick the first one
+        if (directions.size() > 0) {
+            return directions[0];
+        }
+        return NOT_VALID;
+    }
+    return -1; // always return the first direction
 
-    return selectionStrategy->apply(this, directions, route_data);
 }
 
-void Router::configure(const int _id,
+void Router::configure(const int _id, const int _level,
 			    const double _warm_up_time,
 			    const unsigned int _max_buffer_size,
 			    GlobalRoutingTable & grt)
 {
     local_id = _id;
+    local_level = _level;
     stats.configure(_id, _warm_up_time);
 
-    start_from_port = DIRECTION_LOCAL;
+    start_from_port = (all_flit_rx.size() > 0) ? getLogicalPortIndex(PORT_LOCAL, 0) : 0; // Start from LOCAL port
   
+    // initPorts();
+    // buildUnifiedInterface();
+    routingAlgorithm = RoutingAlgorithms::get(GlobalParams::routing_algorithm);
 
+    if (routingAlgorithm == 0)
+        {
+            cerr << " FATAL: invalid routing -routing " << GlobalParams::routing_algorithm << ", check with noxim -help" << endl;
+            exit(-1);
+        }
     if (grt.isValid())
 	routing_table.configure(grt, _id);
 
     reservation_table.setSize(all_flit_rx.size());
 
-    for (int i = 0; i < all_flit_rx.size(); i++)
+    for (size_t i = 0; i < all_flit_rx.size(); i++)
     {
 	for (int vc = 0; vc < GlobalParams::n_virtual_channels; vc++)
 	{
@@ -606,7 +485,6 @@ void Router::configure(const int _id,
 	// buffer[DIRECTION_LOCAL_2][vc].Enable();
     }
 
-}
 
 unsigned long Router::getRoutedFlits()
 {
@@ -683,7 +561,7 @@ int Router::getNeighborId(int _id, int direction) const
 
 void Router::ShowBuffersStats(std::ostream & out)
 {
-  for (int i=0; i<all_flit_rx.size(); i++)
+  for (size_t i=0; i<all_flit_rx.size(); i++)
       for (int vc=0; vc<GlobalParams::n_virtual_channels;vc++)
 	    (*buffers[i])[vc].ShowStats(out);
 }
@@ -707,36 +585,32 @@ bool Router::connectedHubs(int src_hub, int dst_hub) {
     else
         return true;
 }
-
 // Constructor implementation
-Router::Router(sc_module_name nm) : sc_module(nm) {
+Router::Router(sc_module_name nm) {
+
+    // Register SystemC methods
     SC_METHOD(process);
     sensitive << reset;
     sensitive << clock.pos();
 
+    // Use proper scope resolution for SystemC method registration
     SC_METHOD(perCycleUpdate);
     sensitive << reset;
     sensitive << clock.pos();
+    sensitive << clock.pos();
 
-    // Initialize dynamic ports
-    initPorts();
-    buildUnifiedInterface();
+    // // Initialize dynamic ports
+    // initPorts();
+    // cout<<"function!"<<endl;
+    // buildUnifiedInterface();
 
-    routingAlgorithm = RoutingAlgorithms::get(GlobalParams::routing_algorithm);
+    // routingAlgorithm = RoutingAlgorithms::get(GlobalParams::routing_algorithm);
 
-    if (routingAlgorithm == 0)
-    {
-        cerr << " FATAL: invalid routing -routing " << GlobalParams::routing_algorithm << ", check with noxim -help" << endl;
-        exit(-1);
-    }
-
-    selectionStrategy = SelectionStrategies::get(GlobalParams::selection_strategy);
-
-    if (selectionStrategy == 0)
-    {
-        cerr << " FATAL: invalid selection strategy -sel " << GlobalParams::selection_strategy << ", check with noxim -help" << endl;
-        exit(-1);
-    }
+    // if (routingAlgorithm == 0)
+    // {
+    //     cerr << " FATAL: invalid routing -routing " << GlobalParams::routing_algorithm << ", check with noxim -help" << endl;
+    //     exit(-1);
+    // }
 }
 
 // Destructor implementation
@@ -804,7 +678,8 @@ void Router::buildUnifiedInterface() {
 
     // 1. Add UP port (if this node is not root)
     if (local_level > 0) {
-        std::string up_name = "UP_" + std::to_string(local_id);
+        cout<<"function in "<<local_id<<endl;
+        std::string up_name = "ROUTER::UP_" + std::to_string(local_id);
 
         // Create UP ports
         h_flit_rx_up = new sc_in<Flit>((up_name + "_flit_rx").c_str());
@@ -833,8 +708,7 @@ void Router::buildUnifiedInterface() {
         port_info_map.push_back(up_info);
 
         // Add buffer and state
-		BufferBank my_bank;
-		buffers.push_back(&my_bank);
+		buffers.push_back(new BufferBank());
         current_level_rx.push_back(false);
         current_level_tx.push_back(false);
         start_from_vc.push_back(0);
@@ -842,7 +716,7 @@ void Router::buildUnifiedInterface() {
 
     // 2. Add LOCAL ports (always present)
 for (int i = 0; i < NUM_LOCAL_PORTS; i++) {
-    std::string local_name = "LOCAL_" + std::to_string(local_id) + "_" + std::to_string(i);
+    std::string local_name = "ROUTER::LOCAL_" + std::to_string(local_id) + "_" + std::to_string(i);
 
     // Create LOCAL ports
     h_flit_rx_local[i] = new sc_in<Flit>((local_name + "_flit_rx").c_str());
@@ -867,12 +741,11 @@ for (int i = 0; i < NUM_LOCAL_PORTS; i++) {
     all_buffer_full_status_tx.push_back(h_buffer_full_status_tx_local[i]);
 
     // Add port info
-    PortInfo local_info = {PORT_LOCAL, -1, local_name};
+    PortInfo local_info = {PORT_LOCAL, i, local_name};
     port_info_map.push_back(local_info);
 
     // Add buffer and state
-	BufferBank mybank;
-    buffers.push_back(&mybank);
+    buffers.push_back(new BufferBank());
     current_level_rx.push_back(false);
     current_level_tx.push_back(false);
     start_from_vc.push_back(0);
@@ -922,9 +795,8 @@ for (int i = 0; i < NUM_LOCAL_PORTS; i++) {
         // Add port info
         PortInfo down_info = {PORT_DOWN, i, down_name};
         port_info_map.push_back(down_info);
-		BufferBank my_bank; 
 
-        buffers.push_back(&my_bank);
+        buffers.push_back(new BufferBank());
         current_level_rx.push_back(false);
         current_level_tx.push_back(false);
         start_from_vc.push_back(0);
@@ -943,15 +815,16 @@ void Router::cleanupPorts() {
     if (h_ack_tx_up) delete h_ack_tx_up;
     if (h_buffer_full_status_tx_up) delete h_buffer_full_status_tx_up;
 
-    // Clean up LOCAL ports
-    if (h_flit_rx_local) delete h_flit_rx_local;
-    if (h_req_rx_local) delete h_req_rx_local;
-    if (h_ack_rx_local) delete h_ack_rx_local;
-    if (h_buffer_full_status_rx_local) delete h_buffer_full_status_rx_local;
-    if (h_flit_tx_local) delete h_flit_tx_local;
-    if (h_req_tx_local) delete h_req_tx_local;
-    if (h_ack_tx_local) delete h_ack_tx_local;
-    if (h_buffer_full_status_tx_local) delete h_buffer_full_status_tx_local;
+    for (int i = 0; i < NUM_LOCAL_PORTS; i++) {
+        delete h_flit_rx_local[i];
+        delete h_req_rx_local[i];
+        delete h_ack_rx_local[i];
+        delete h_buffer_full_status_rx_local[i];
+        delete h_flit_tx_local[i];
+        delete h_req_tx_local[i];
+        delete h_ack_tx_local[i];
+        delete h_buffer_full_status_tx_local[i];
+    }
 
     // Clean up DOWN ports
     for (auto port : h_flit_tx_down) delete port;
@@ -965,7 +838,7 @@ void Router::cleanupPorts() {
     for (auto port : h_buffer_full_status_rx_down) delete port;
 
     // Clean up buffers
-    for (auto buffer : buffers) delete[] buffer;
+    for (auto buffer : buffers) delete buffer;
 }
 
 
@@ -983,4 +856,60 @@ int Router::getLogicalPortIndex(LogicalPortType type, int instance_index) const 
 
     // 如果遍历完整个 map 都没有找到
     return -1; 
+}
+
+bool Router::isDescendant(int dst_id) const {
+    // 安全检查：如果目标就是自己，不是自己的子孙
+    if (dst_id == this->local_id) {
+        return false;
+    }
+
+    // 从目标节点开始，向上遍历父节点链
+    int current_node_id = dst_id;
+
+    // 只要还没到根节点，就继续向上找
+    while (GlobalParams::parent_map[current_node_id] != -1) {
+        // 获取当前节点的父节点
+        int parent_id = GlobalParams::parent_map[current_node_id];
+
+        // 检查父节点是否是我们正在寻找的 local_id
+        if (parent_id == this->local_id) {
+            return true; // 找到了！dst_id 是我们的子孙
+        }
+
+        // 继续向上一层
+        current_node_id = parent_id;
+    }
+
+    // 遍历到根节点都没找到，说明不是子孙
+    return false;
+}
+
+int Router::getNextHopChild(int dst_id) const {
+    // 安全检查和前提条件
+    assert(isDescendant(dst_id) && "getNextHopChild should only be called for descendant nodes.");
+
+    int current_node_id = dst_id;
+    int previous_node_id = dst_id; // 用于记录回溯路径上的前一个节点
+
+    // 只要还没到根节点，就继续向上找
+    while (GlobalParams::parent_map[current_node_id] != -1) {
+        // 获取当前节点的父节点
+        int parent_id = GlobalParams::parent_map[current_node_id];
+
+        // 检查父节点是否是我们的 local_id
+        if (parent_id == this->local_id) {
+            // 找到了！那么回溯路径上的前一个节点 previous_node_id
+            // 就是 local_id 的那个直接子节点。
+            return previous_node_id;
+        }
+
+        // 更新并继续向上一层
+        previous_node_id = current_node_id;
+        current_node_id = parent_id;
+    }
+
+    // 如果 isDescendant() 判断正确，代码理论上不应该执行到这里
+    assert(false && "Logical error in getNextHopChild: descendant not found in parent chain.");
+    return -1; // 表示错误
 }

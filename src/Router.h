@@ -10,7 +10,7 @@
 
 #ifndef __NOXIMROUTER_H__
 #define __NOXIMROUTER_H__
-#define NUM_LOCAL_PORTS 2
+#define NUM_LOCAL_PORTS 1
 
 #include <systemc.h>
 #include "DataStructs.h"
@@ -22,10 +22,6 @@
 #include "Utils.h"
 #include "routingAlgorithms/RoutingAlgorithm.h"
 #include "routingAlgorithms/RoutingAlgorithms.h"
-#include "selectionStrategies/SelectionStrategy.h"
-#include "selectionStrategies/SelectionStrategy.h"
-#include "selectionStrategies/Selection_NOP.h"
-#include "selectionStrategies/Selection_BUFFER_LEVEL.h"
 
 using namespace std;
 
@@ -33,8 +29,7 @@ extern unsigned int drained_volume;
 
 SC_MODULE(Router)
 {
-    friend class Selection_NOP;
-    friend class Selection_BUFFER_LEVEL;
+
 
     // I/O Ports
     sc_in_clk clock;		                  // The input clock for the router
@@ -79,7 +74,7 @@ SC_MODULE(Router)
 
     struct PortInfo {
         LogicalPortType type;
-        int instance_index;  // Only for DOWN ports
+        int instance_index; 
         std::string name;
     };
 
@@ -112,7 +107,6 @@ SC_MODULE(Router)
     ReservationTable reservation_table;		// Switch reservation table
     unsigned long routed_flits;
     RoutingAlgorithm * routingAlgorithm;
-    SelectionStrategy * selectionStrategy; 
     
     // Functions
 
@@ -120,21 +114,21 @@ SC_MODULE(Router)
     void rxProcess();		// The receiving process
     void txProcess();		// The transmitting process
     void perCycleUpdate();
-    void configure(const int _id, const double _warm_up_time,
+    void configure(const int _id, const int _level, const double _warm_up_time,
 		   const unsigned int _max_buffer_size,
 		   GlobalRoutingTable & grt);
 
     unsigned long getRoutedFlits();	// Returns the number of routed flits 
-
-    // Constructor and Destructor
-    SC_CTOR(Router);
+    SC_HAS_PROCESS(Router);
+    Router(sc_module_name nm); 
+        void initPorts();
+    void buildUnifiedInterface();
     ~Router();
 
   private:
 
     // Dynamic port management
-    void initPorts();
-    void buildUnifiedInterface();
+
     void cleanupPorts();
     int getLogicalPortIndex(LogicalPortType type, int down_index = -1) const;
 
@@ -161,6 +155,8 @@ SC_MODULE(Router)
     void ShowBuffersStats(std::ostream & out);
 
     bool connectedHubs(int src_hub, int dst_hub);
+    bool isDescendant(int dst_id) const;
+    int getNextHopChild(int dst_id) const;
 };
 
 #endif

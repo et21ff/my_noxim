@@ -68,7 +68,7 @@ class GlobalStats {
 
 
     // Returns the number of routed flits for each router
-     vector < vector < unsigned long > > getRoutedFlitsMtx();
+    vector <unsigned long> getRoutedFlitsMtx();
 
     // Returns the total dyamic power
     double getDynamicPower();

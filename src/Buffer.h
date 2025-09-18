@@ -82,7 +82,7 @@ class Buffer {
     void UpdateMeanOccupancy();
 };
 
-typedef Buffer BufferBank[MAX_VIRTUAL_CHANNELS];
+using BufferBank = std::array<Buffer, MAX_VIRTUAL_CHANNELS>;
 
 
 #endif

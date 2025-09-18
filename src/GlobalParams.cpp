@@ -63,3 +63,9 @@ int GlobalParams::channel_selection;
 
 int GlobalParams::num_levels;
 int* GlobalParams::fanouts_per_level;
+
+int* GlobalParams::node_level_map = nullptr;
+int* GlobalParams::parent_map = nullptr;
+int** GlobalParams::child_map = nullptr;
+int GlobalParams::total_hierarchical_nodes = 0;
+int GlobalParams::num_nodes = 0;

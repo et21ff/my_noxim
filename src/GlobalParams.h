@@ -192,6 +192,13 @@ struct GlobalParams {
 
     static int num_levels;
     static int* fanouts_per_level;
+    static int num_nodes;
+
+    // Hierarchical topology mapping
+    static int* node_level_map;      // 节点->层级映射
+    static int* parent_map;          // 节点->父节点映射  
+    static int** child_map;          // 节点->子节点映射
+    static int total_hierarchical_nodes;  // 总层次化节点数
 
 };
 

@@ -69,6 +69,8 @@
         "streambuf": "cpp",
         "cinttypes": "cpp",
         "typeinfo": "cpp",
-        "variant": "cpp"
-    }
+        "variant": "cpp",
+        "tags": "cpp"
+    },
+    "cmake.ignoreCMakeListsMissing": true
 }

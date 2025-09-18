@@ -74,34 +74,12 @@ public:
     sc_in_clk clock;   // The input clock for the NoC
     sc_in<bool> reset; // The reset signal for the NoC
 
-    // Signals mesh and switch bloc in delta topologies
-    sc_signal_NSWEH<bool> **req;
-    sc_signal_NSWEH<bool> **ack;
-    sc_signal_NSWEH<TBufferFullStatus> **buffer_full_status;
-    sc_signal_NSWEH<Flit> **flit;
-    sc_signal_NSWE<int> **free_slots;
-
-    // NoP
-    sc_signal_NSWE<NoP_data> **nop_data;
-
-    // signals for connecting Core2Hub (just to test wireless in Butterfly)
-    sc_signal<Flit> *flit_from_hub;
-    sc_signal<Flit> *flit_to_hub;
-
-    sc_signal<bool> *req_from_hub;
-    sc_signal<bool> *req_to_hub;
-
-    sc_signal<bool> *ack_from_hub;
-    sc_signal<bool> *ack_to_hub;
-
-    sc_signal<TBufferFullStatus> *buffer_full_status_from_hub;
-    sc_signal<TBufferFullStatus> *buffer_full_status_to_hub;
 
     // Hierarchical structure signals - redesigned for tree topology
-    sc_signal_Hierarchical<bool> **hierarchical_req;        // 层次化请求信号
-    sc_signal_Hierarchical<bool> **hierarchical_ack;        // 层次化应答信号
-    sc_signal_Hierarchical<TBufferFullStatus> **hierarchical_buffer_full_status;  // 层次化缓冲区状态
-    sc_signal_Hierarchical<Flit> **hierarchical_flit;        // 层次化数据流信号
+    sc_signal<bool> **hierarchical_req;        // 层次化请求信号
+    sc_signal<bool> **hierarchical_ack;        // 层次化应答信号
+    sc_signal<TBufferFullStatus> **hierarchical_buffer_full_status;  // 层次化缓冲区状态
+    sc_signal<Flit> **hierarchical_flit;        // 层次化数据流信号
     
     // Hierarchical topology parameters
     int num_levels;                          // 层次化层级数
@@ -112,8 +90,7 @@ public:
     int** child_map;                         // 节点->子节点映射 (2D数组)
 
     // Tile storage for hierarchical topology
-    Tile ***t;                                 // 2D数组存储所有Tile，按ID索引
-    Tile **t_h;                                // 1D数组存储所有Tile，按层级和ID索引
+    Tile **t;                                // 1D数组存储所有Tile，按层级和ID索引
     Tile **core;                              // 核心Tile数组
     
     // Hierarchical connection management
@@ -122,6 +99,7 @@ public:
     int getParentNode(int node_id);           // 获取节点的父节点
     const int* getChildNodes(int node_id);    // 获取节点的子节点数组
     int getLevelOfNode(int node_id);          // 获取节点所在的层级
+    void writeToGlobalParams();
 
     map<int, Hub *> hub;
     map<int, Channel *> channel;
@@ -166,6 +144,7 @@ public:
             sensitive << clock.pos();
         }
     }
+    ~NoC();
 
     // Support methods
     Tile *searchNode(const int id) const;
@@ -178,6 +157,7 @@ private:
     void buildHierarchical();
     void buildCommon();
     void asciiMonitor();
+    void setupLocalConnections();
     int *hub_connected_ports;
 };
 
