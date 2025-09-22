@@ -125,12 +125,16 @@ SC_MODULE(Router)
     void buildUnifiedInterface();
     ~Router();
 
+    vector<int> routeMulticast(const MulticastRouteData & route_data);
+    vector<int> getMulticastChildren(const vector<int>& dst_ids);
+    bool isMulticastToLocalOnly(const vector<int>& dst_ids);
+
   private:
 
     // Dynamic port management
 
     void cleanupPorts();
-    int getLogicalPortIndex(LogicalPortType type, int down_index = -1) const;
+    
 
     // performs actual routing + selection
     int route(const RouteData & route_data);
@@ -156,7 +160,8 @@ SC_MODULE(Router)
 
     bool connectedHubs(int src_hub, int dst_hub);
     bool isDescendant(int dst_id) const;
-    int getNextHopChild(int dst_id) const;
+    int getNextHopNode(int dst_id) const;
+    int getLogicalPortIndex(LogicalPortType type, int down_index = -1) const;
 };
 
 #endif

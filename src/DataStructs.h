@@ -84,6 +84,15 @@ struct RouteData {
     bool is_output;        // true if the packet is an output packet
 };
 
+struct MulticastRouteData {
+      int current_id;
+      int src_id;
+      vector<int> dst_ids;      // 多个目标节点
+      int dir_in;               // 输入方向
+      int vc_id;
+      bool is_output;
+};
+
 struct ChannelStatus {
     int free_slots;		// occupied buffer slots
     bool available;		// 

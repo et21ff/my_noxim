@@ -342,7 +342,7 @@ int Router::route(const RouteData & route_data)
         
         // 规则 2: 检查子孙 (向下路由)
         if (isDescendant(route_data.dst_id)) {
-            int next_hop_child_id = getNextHopChild(route_data.dst_id);
+            int next_hop_child_id = getNextHopNode(route_data.dst_id);
             
             for(int i=0; i<GlobalParams::fanouts_per_level[GlobalParams::node_level_map[local_id]]; i++) {
                 if (GlobalParams::child_map[local_id][i] == next_hop_child_id) {
@@ -375,41 +375,87 @@ int Router::route(const RouteData & route_data)
     return -2;
 }
 
-// void Router::NoP_report() const
-// {
-//     NoP_data NoP_tmp;
-// 	LOG << "NoP report: " << endl;
+  vector<int> Router::routeMulticast(const MulticastRouteData & route_data)
+  {
+      vector<int> output_ports;
 
-//     for (int i = 0; i < DIRECTIONS; i++) {
-// 	NoP_tmp = NoP_data_in[i].read();
-// 	if (NoP_tmp.sender_id != NOT_VALID)
-// 	    cout << NoP_tmp;
-//     }
-// }
+      if (GlobalParams::topology == TOPOLOGY_HIERARCHICAL) {
+          // 检查是否有本地目标
+          bool has_local_target = false;
+          for (int dst_id : route_data.dst_ids) {
+              if (dst_id == this->local_id) {
+                  has_local_target = true;
+                  break;
+              }
+          }
 
-//---------------------------------------------------------------------------
+          // 如果有本地目标，添加本地端口
+          if (has_local_target) {
+              output_ports.push_back(getLogicalPortIndex(PORT_LOCAL, 0));
+          }
 
-// int Router::NoPScore(const NoP_data & nop_data,
-// 			  const vector < int >&nop_channels) const
-// {
-//     int score = 0;
+          // 获取所有需要向下路由的子节点
+          vector<int> child_targets = getMulticastChildren(route_data.dst_ids);
+          dbg(child_targets);
 
-//     for (unsigned int i = 0; i < nop_channels.size(); i++) {
-// 	int available;
+          // 为每个子目标添加对应的下行端口
+          for (int child_id : child_targets) {
+              for(int i=0; i<GlobalParams::fanouts_per_level[GlobalParams::node_level_map[local_id]]; i++) {
+                  if (GlobalParams::child_map[local_id][i] == child_id) {
+                      output_ports.push_back(getLogicalPortIndex(PORT_DOWN, i));
+                      break;
+                  }
+              }
+          }
 
-// 	if (nop_data.channel_status_neighbor[nop_channels[i]].available)
-// 	    available = 1;
-// 	else
-// 	    available = 0;
+          // 如果存在非本地且非子孙的目标，需要向上路由
+          bool has_upward_target = false;
+          for (int dst_id : route_data.dst_ids) {
+              if (dst_id != this->local_id && !isDescendant(dst_id)) {
+                  has_upward_target = true;
+                  break;
+              }
+          }
 
-// 	int free_slots =
-// 	    nop_data.channel_status_neighbor[nop_channels[i]].free_slots;
+          if (has_upward_target && local_level > 0) {
+              output_ports.push_back(getLogicalPortIndex(PORT_UP, -1));
+          }
+      }
 
-// 	score += available * free_slots;
-//     }
+      return output_ports;
+  }
 
-//     return score;
-// }
+  vector<int> Router::getMulticastChildren(const vector<int>& dst_ids)
+  {
+      vector<int> child_targets;
+
+      for (int dst_id : dst_ids) {
+          if (dst_id != this->local_id && isDescendant(dst_id)) {
+              int next_hop_child = getNextHopNode(dst_id);
+
+              // 检查这个目标节点是否已经是我们的直接子节点
+              bool is_direct_child = false;
+              for(int i=0; i<GlobalParams::fanouts_per_level[GlobalParams::node_level_map[local_id]]; i++) {
+                  if (GlobalParams::child_map[local_id][i] == dst_id) {
+                      is_direct_child = true;
+                      break;
+                  }
+              }
+
+              // 如果目标是直接子节点，直接添加目标节点
+              // 如果目标是孙子或更深层节点，添加下一跳子节点
+              int child_to_add = is_direct_child ? dst_id : next_hop_child;
+              dbg(child_to_add);
+
+              // 避免重复添加相同的子节点
+              if (find(child_targets.begin(), child_targets.end(), child_to_add) == child_targets.end()) {
+                  child_targets.push_back(child_to_add);
+              }
+          }
+      }
+
+      return child_targets;
+  }
 
 int Router::selectionFunction(const vector < int >&directions,
 				   const RouteData & route_data)
@@ -885,9 +931,9 @@ bool Router::isDescendant(int dst_id) const {
     return false;
 }
 
-int Router::getNextHopChild(int dst_id) const {
+int Router::getNextHopNode(int dst_id) const {
     // 安全检查和前提条件
-    assert(isDescendant(dst_id) && "getNextHopChild should only be called for descendant nodes.");
+    assert(isDescendant(dst_id) && "getNextHopNode should only be called for descendant nodes.");
 
     int current_node_id = dst_id;
     int previous_node_id = dst_id; // 用于记录回溯路径上的前一个节点
@@ -901,15 +947,14 @@ int Router::getNextHopChild(int dst_id) const {
         if (parent_id == this->local_id) {
             // 找到了！那么回溯路径上的前一个节点 previous_node_id
             // 就是 local_id 的那个直接子节点。
-            return previous_node_id;
+            return current_node_id;
         }
 
         // 更新并继续向上一层
-        previous_node_id = current_node_id;
         current_node_id = parent_id;
     }
 
     // 如果 isDescendant() 判断正确，代码理论上不应该执行到这里
-    assert(false && "Logical error in getNextHopChild: descendant not found in parent chain.");
+    assert(false && "Logical error in getNextHopNode: descendant not found in parent chain.");
     return -1; // 表示错误
 }
