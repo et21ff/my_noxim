@@ -9,6 +9,7 @@
 #include "Router.h"
 #include "GlobalParams.h"
 #include "ConfigurationManager.h"
+#include "ReservationTable.h"
 
 using namespace std;
 

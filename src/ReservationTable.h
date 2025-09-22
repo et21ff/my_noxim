@@ -47,9 +47,20 @@ class ReservationTable {
     // Connects port_in with port_out. Asserts if port_out is reserved
     void reserve(const TReservation r, const int port_out);
 
-    // Releases port_out connection. 
+    // Releases port_out connection.
     // Asserts if port_out is not reserved or not valid
     void release(const TReservation r, const int port_out);
+
+    // Check reservation for multiple output ports
+    // Returns RT_AVAILABLE if all ports are available, otherwise returns the first error code encountered
+    int checkReservation(const TReservation& r, const std::vector<int>& outputs);
+
+    // Reserve multiple output ports atomically
+    // Either reserves all ports successfully or reserves none (atomic operation)
+    void reserve(const TReservation& r, const std::vector<int>& outputs);
+
+    // Release reservation for multiple output ports
+    void release(const TReservation& r, const std::vector<int>& outputs);
 
     // Returns the pairs of output port and virtual channel reserved by port_in
     vector<pair<int,int> > getReservations(const int port_int);

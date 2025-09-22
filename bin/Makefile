@@ -92,12 +92,50 @@ $(TEST_MODULE_HIERARCHICAL): $(TEST_HIERARCHICAL_OBJS)
 	$(CXX) $(LIBDIR) $^ $(LDFLAGS) $(LIBS) -o $@ 2>&1 | c++filt
 
 
+# --------------------------------------------------------------------
+#               #####  TESTBENCH FOR RESERVATION TABLE  #####
+# --------------------------------------------------------------------
+
+##### 1. 定义 ReservationTable 测试相关的文件 #####
+
+# 测试可执行文件的名字
+TEST_MODULE_RESERVATION_TABLE := test_reservation_table
+
+# 测试程序的源文件 (它使用 CATCH framework)
+TEST_RESERVATION_TABLE_MAIN_SRC := ../tests/test_reservation_table.cpp
+TEST_RESERVATION_TABLE_MAIN_OBJ := $(subst ../tests,$(OBJDIR),$(TEST_RESERVATION_TABLE_MAIN_SRC:.cpp=.o))
+
+# 对于 ReservationTable 测试，我们只需要最基本的组件
+OBJS_FOR_RES_TEST := $(OBJDIR)/ReservationTable.o
+# 然后加上我们自己的测试主程序 .o 文件
+TEST_RESERVATION_TABLE_OBJS := $(OBJS_FOR_RES_TEST) $(TEST_RESERVATION_TABLE_MAIN_OBJ)
+
+##### 2. 为 ReservationTable 测试编写特殊的编译规则 #####
+
+# 为 ReservationTable 测试创建特殊的编译规则（包含 SystemC）
+$(OBJDIR)/test_reservation_table.o: ../tests/test_reservation_table.cpp
+	@echo "--- Compiling ReservationTable test: $< ---"
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $(INCDIR) -c $< -o $@
+
+# 编译测试所需的简单对象文件
+$(OBJDIR)/ReservationTable.o: $(SRCDIR)/ReservationTable.cpp
+	@echo "--- Compiling ReservationTable: $< ---"
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $(INCDIR) -c $< -o $@
+
+
+# 链接 ReservationTable 测试可执行文件的规则（包含 SystemC 库）
+$(TEST_MODULE_RESERVATION_TABLE): $(TEST_RESERVATION_TABLE_OBJS)
+	@echo "--- Linking ReservationTable test executable: $(TEST_MODULE_RESERVATION_TABLE) ---"
+	$(CXX) $(LIBDIR) $^ $(LDFLAGS) $(LIBS) -o $@ 2>&1 | c++filt
+
+
 ##### 3. 更新辅助规则 #####
 
-# 默认的 'all' 目标，现在编译 noxim 和我们的测试程序
-all: $(MODULE) $(TEST_MODULE_HIERARCHICAL)
+# 默认的 'all' 目标，现在编译 noxim 和所有测试程序
+all: $(MODULE) $(TEST_MODULE_HIERARCHICAL) $(TEST_MODULE_RESERVATION_TABLE)
 
 # 新的 clean 规则，确保能清理所有文件
-# 注意：直接替换掉你旧的 clean 规则
 clean:
-	rm -f $(OBJS) $(MODULE) *~ $(TEST_HIERARCHICAL_MAIN_OBJ) $(TEST_MODULE_HIERARCHICAL)
+	rm -f $(OBJS) $(MODULE) *~ $(TEST_HIERARCHICAL_MAIN_OBJ) $(TEST_MODULE_HIERARCHICAL) $(TEST_RESERVATION_TABLE_MAIN_OBJ) $(TEST_MODULE_RESERVATION_TABLE)

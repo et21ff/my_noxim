@@ -70,7 +70,15 @@
         "cinttypes": "cpp",
         "typeinfo": "cpp",
         "variant": "cpp",
-        "tags": "cpp"
+        "tags": "cpp",
+        "bitset": "cpp",
+        "condition_variable": "cpp",
+        "regex": "cpp",
+        "future": "cpp",
+        "mutex": "cpp",
+        "semaphore": "cpp",
+        "stop_token": "cpp",
+        "thread": "cpp"
     },
     "cmake.ignoreCMakeListsMissing": true
 }
