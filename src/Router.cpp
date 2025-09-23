@@ -103,6 +103,7 @@ void Router::txProcess()
 	  all_req_tx[i]->write(0);
 	  current_level_tx[i] = 0;
 	}
+       reservation_table.reset();
     } 
   else 
     { 
@@ -125,58 +126,89 @@ void Router::txProcess()
 		  Flit flit = (*buffers[i])[vc].Front();
 		  power.bufferRouterFront();
 
-		  if (flit.flit_type == FLIT_TYPE_HEAD) 
+		  if (flit.flit_type == FLIT_TYPE_HEAD)
 		    {
 		      // prepare data for routing
-		      RouteData route_data;
-		      route_data.current_id = local_id;
-		      //LOG<< "current_id= "<< route_data.current_id <<" for sending " << flit << endl;
-		      route_data.src_id = flit.src_id;
-		      route_data.dst_id = flit.dst_id;
-		      route_data.dir_in = i;
-		      route_data.vc_id = flit.vc_id;
-			  route_data.is_output = flit.is_output; // 新增：标记是否为output包
+		      if (flit.is_multicast) {
+		          // 多播路由处理
+		          MulticastRouteData multicast_route_data;
+		          multicast_route_data.current_id = local_id;
+		          multicast_route_data.src_id = flit.src_id;
+		          multicast_route_data.dst_ids = flit.multicast_dst_ids;
+		          multicast_route_data.dir_in = i;
+		          multicast_route_data.vc_id = flit.vc_id;
+		          multicast_route_data.is_output = flit.is_output;
 
-		      // TODO: see PER POSTERI (adaptive routing should not recompute route if already reserved)
-		      int o = route(route_data);
+		          // 调用多播路由函数
+		          vector<int> output_ports = routeMulticast(multicast_route_data);
+		          cout << "Router " << local_id << " multicast route from input " << i << " to outputs: ";
+		          for (size_t idx = 0; idx < output_ports.size(); idx++) {
+		              cout << output_ports[idx] << (idx < output_ports.size() - 1 ? ", " : "");
+		          }
+		          cout << endl;
 
-              cout<<"Router "<<local_id<<" route from input "<<i<<" to output "<<o<<endl;
+		          // 预留所有输出端口（原子操作）
+		          TReservation r;
+		          r.input = i;
+		          r.vc = vc;
+		          int reservation_status = reservation_table.checkReservation(r, output_ports);
 
-		      // manage special case of target hub not directly connected to destination
-		      if (o>=DIRECTION_HUB_RELAY)
-			  {
-		      	Flit f = (*buffers[i])[vc].Pop();
-		      	f.hub_relay_node = o-DIRECTION_HUB_RELAY;
-		      	(*buffers[i])[vc].Push(f);
-		      	o = DIRECTION_HUB;
-			  }
+		          if (reservation_status == RT_AVAILABLE) {
+		              LOG << " reserving multicast outputs for flit " << flit << endl;
+		              reservation_table.reserve(r, output_ports);
+		          } else if (reservation_status == RT_ALREADY_SAME) {
+		              LOG << " RT_ALREADY_SAME reserved multicast outputs for flit " << flit << endl;
+		          } else if (reservation_status == RT_OUTVC_BUSY) {
+		              LOG << " RT_OUTVC_BUSY reservation for multicast flit " << flit << endl;
+		          } else if (reservation_status == RT_ALREADY_OTHER_OUT) {
+		              LOG << "RT_ALREADY_OTHER_OUT: another outputs previously reserved for the same multicast flit" << endl;
+		          } else {
+		              assert(false); // no meaningful status here
+		          }
+		      } else {
+		          // 单播路由处理
+		          RouteData route_data;
+		          route_data.current_id = local_id;
+		          //LOG<< "current_id= "<< route_data.current_id <<" for sending " << flit << endl;
+		          route_data.src_id = flit.src_id;
+		          route_data.dst_id = flit.dst_id;
+		          route_data.dir_in = i;
+		          route_data.vc_id = flit.vc_id;
+			      route_data.is_output = flit.is_output; // 新增：标记是否为output包
 
-		      TReservation r;
-		      r.input = i;
-		      r.vc = vc;
+		          // TODO: see PER POSTERI (adaptive routing should not recompute route if already reserved)
+		          int o = route(route_data);
+		          cout << "Router " << local_id << " route from input " << i << " to output " << o << endl;
 
-		      LOG << " checking availability of Output[" << o << "] for Input[" << i << "][" << vc << "] flit " << flit << endl;
+		          // manage special case of target hub not directly connected to destination
+		          if (o >= DIRECTION_HUB_RELAY) {
+		              Flit f = (*buffers[i])[vc].Pop();
+		              f.hub_relay_node = o - DIRECTION_HUB_RELAY;
+		              (*buffers[i])[vc].Push(f);
+		              o = DIRECTION_HUB;
+		          }
 
-		      int rt_status = reservation_table.checkReservation(r,o);
+		          TReservation r;
+		          r.input = i;
+		          r.vc = vc;
 
-		      if (rt_status == RT_AVAILABLE) 
-		      {
-			  LOG << " reserving direction " << o << " for flit " << flit << endl;
-			  reservation_table.reserve(r, o);
+		          LOG << " checking availability of Output[" << o << "] for Input[" << i << "][" << vc << "] flit " << flit << endl;
+
+		          int rt_status = reservation_table.checkReservation(r, o);
+
+		          if (rt_status == RT_AVAILABLE) {
+		              LOG << " reserving direction " << o << " for flit " << flit << endl;
+		              reservation_table.reserve(r, o);
+		          } else if (rt_status == RT_ALREADY_SAME) {
+		              LOG << " RT_ALREADY_SAME reserved direction " << o << " for flit " << flit << endl;
+		          } else if (rt_status == RT_OUTVC_BUSY) {
+		              LOG << " RT_OUTVC_BUSY reservation direction " << o << " for flit " << flit << endl;
+		          } else if (rt_status == RT_ALREADY_OTHER_OUT) {
+		              LOG << "RT_ALREADY_OTHER_OUT: another output previously reserved for the same flit " << endl;
+		          } else {
+		              assert(false); // no meaningful status here
+		          }
 		      }
-		      else if (rt_status == RT_ALREADY_SAME)
-		      {
-			  LOG << " RT_ALREADY_SAME reserved direction " << o << " for flit " << flit << endl;
-		      }
-		      else if (rt_status == RT_OUTVC_BUSY)
-		      {
-			  LOG << " RT_OUTVC_BUSY reservation direction " << o << " for flit " << flit << endl;
-		      }
-		      else if (rt_status == RT_ALREADY_OTHER_OUT)
-		      {
-			  LOG  << "RT_ALREADY_OTHER_OUT: another output previously reserved for the same flit " << endl;
-		      }
-		      else assert(false); // no meaningful status here
 		    }
 		}
 	  }
@@ -185,93 +217,101 @@ void Router::txProcess()
 
       start_from_port = (start_from_port + 1) % all_flit_rx.size();
 
-      // 2nd phase: Forwarding
-      //if (local_id==6) LOG<<"*TX*****local_id="<<local_id<<"__ack_tx[0]= "<<ack_tx[0].read()<<endl;
-      for (size_t i = 0; i < all_flit_rx.size(); i++) 
-      { 
-	  vector<pair<int,int> > reservations = reservation_table.getReservations(i);
-	  
-	  if (reservations.size()!=0)
-	  {
+      //==================================================================
+    // 2nd phase: Two-Phase Arbitration & Atomic Forwarding
+    // 阶段A: 候选筛选 - 收集所有准备就绪的VC
+    //==================================================================
+    std::vector<std::pair<int, int>> ready_vcs; // (input_port, vc) pairs
 
-	      int rnd_idx = rand()%reservations.size();
+    for (size_t input_port = 0; input_port < all_flit_rx.size(); input_port++) {
+        // 获取该输入端口的所有预留
+        std::map<int, std::vector<int>> vc_reservations = reservation_table.getReservations(input_port);
 
-	      int o = reservations[rnd_idx].first;
-	      int vc = reservations[rnd_idx].second;
-	     // LOG<< "found reservation from input= " << i << "_to output= "<<o<<endl;
-	      // can happen
-	      if (!(*buffers[i])[vc].IsEmpty())  
-	      {
-		  // power contribution already computed in 1st phase
-		  Flit flit = (*buffers[i])[vc].Front();
-		  //LOG<< "*****TX***Direction= "<<i<< "************"<<endl;
-		  //LOG<<"_cl_tx="<<current_level_tx[o]<<"req_tx="<<req_tx[o].read()<<" _ack= "<<all_ack_tx[o]->read()<< endl;
-		  
-		  if ( (current_level_tx[o] == all_ack_tx[o]->read()) &&
-		       (all_buffer_full_status_tx[o]->read().mask[vc] == false) ) 
-		  {
-		      //if (GlobalParams::verbose_mode > VERBOSE_OFF) 
-		      LOG << "Input[" << i << "][" << vc << "] forwarded to Output[" << o << "], flit: " << flit << endl;
+        for (auto& vc_entry : vc_reservations) {
+            int vc = vc_entry.first;
+            const std::vector<int>& output_ports = vc_entry.second;
 
-		      all_flit_tx[o]->write(flit);
-		      current_level_tx[o] = 1 - current_level_tx[o];
-		      all_req_tx[o]->write(current_level_tx[o]);
-		      (*buffers[i])[vc].Pop();
+            // 预检查：所有目标输出端口是否都准备就绪
+            bool all_outputs_ready = true;
+            for (int output_port : output_ports) {
+                if (!(current_level_tx[output_port] == all_ack_tx[output_port]->read() &&
+                      all_buffer_full_status_tx[output_port]->read().mask[vc] == false)) {
+                    all_outputs_ready = false;
+                    break;
+                }
+            }
 
-		      if (flit.flit_type == FLIT_TYPE_TAIL)
-		      {
-			  TReservation r;
-			  r.input = i;
-			  r.vc = vc;
-			  reservation_table.release(r,o);
-		      }
+            // 如果所有输出端口都准备就绪，且缓冲区非空，则加入候选列表
+            if (all_outputs_ready && !(*buffers[input_port])[vc].IsEmpty()) {
+                ready_vcs.emplace_back(input_port, vc);
+            }
+        }
+    }
 
-		      /* Power & Stats ------------------------------------------------- */
-		      if (o == DIRECTION_HUB) power.r2hLink();
-		      else
-			  power.r2rLink();
+    //==================================================================
+    // 阶段B: 仲裁与原子转发
+    //==================================================================
+    if (!ready_vcs.empty()) {
+        // 仲裁：随机选择一个准备就绪的VC
+        int winner_idx = rand() % ready_vcs.size();
+        int winner_input = ready_vcs[winner_idx].first;
+        int winner_vc = ready_vcs[winner_idx].second;
 
-		      power.bufferRouterPop();
-		      power.crossBar();
+        // 获取获胜VC的所有目标输出端口
+        std::map<int, std::vector<int>> winner_reservations = reservation_table.getReservations(winner_input);
+        const std::vector<int>& target_outputs = winner_reservations[winner_vc];
 
-		      if (o == DIRECTION_LOCAL) 
-		      {
-			  power.networkInterface();
-			  LOG << "Consumed flit " << flit << endl;
-			  stats.receivedFlit(sc_time_stamp().to_double() / GlobalParams::clock_period_ps, flit);
-			  if (GlobalParams:: max_volume_to_be_drained) 
-			  {
-			      if (drained_volume >= GlobalParams:: max_volume_to_be_drained)
-				  sc_stop();
-			      else 
-			      {
-				  drained_volume++;
-				  local_drained++;
-			      }
-			  }
-		      } 
-		      else if (i != DIRECTION_LOCAL && i!= DIRECTION_LOCAL_2) // not generated locally
-			  routed_flits++;
-		      /* End Power & Stats ------------------------------------------------- */
-			 //LOG<<"END_OK_cl_tx="<<current_level_tx[o]<<"_req_tx="<<req_tx[o].read()<<" _ack= "<<all_ack_tx[o]->read()<< endl;
-		  }
-		  else
-		  {
-		      LOG << " Cannot forward Input[" << i << "][" << vc << "] to Output[" << o << "], flit: " << flit << endl;
+        // 原子转发：复制Flit到所有目标输出端口
+        Flit flit = (*buffers[winner_input])[winner_vc].Front();
+        LOG << "Atomic Forwarding: Input[" << winner_input << "][" << winner_vc << "] -> ";
+        for (size_t i = 0; i < target_outputs.size(); i++) {
+            int output_port = target_outputs[i];
+            all_flit_tx[output_port]->write(flit);
+            current_level_tx[output_port] = 1 - current_level_tx[output_port];
+            all_req_tx[output_port]->write(current_level_tx[output_port]);
+            LOG << "Output[" << output_port << (i < target_outputs.size() - 1 ? ", " : "");
+        }
+        LOG << ", flit: " << flit << endl;
 
-		  	//LOG<<"END_NO_cl_tx="<<current_level_tx[o]<<"_req_tx="<<req_tx[o].read()<<" _ack= "<<all_ack_tx[o]->read()<< endl;
-		      /*
-		      if (flit.flit_type == FLIT_TYPE_HEAD)
-			  reservation_table.release(i,flit.vc_id,o);
-			  */
-		  }
-	      }
-	  } // if not reserved 
-	 // else LOG<<"we have no reservation for direction "<<i<< endl;
-      } // for loop directions
+        // 原子弹出：只从输入缓冲区弹出一次
+        (*buffers[winner_input])[winner_vc].Pop();
 
-      if ((int)(sc_time_stamp().to_double() / GlobalParams::clock_period_ps)%2==0)
-	  reservation_table.updateIndex();
+        // 处理TAIL Flit的资源释放
+        if (flit.flit_type == FLIT_TYPE_TAIL) {
+            TReservation r;
+            r.input = winner_input;
+            r.vc = winner_vc;
+            reservation_table.release(r, target_outputs);
+        }
+
+        // 功耗与统计（对所有目标端口进行统计）
+        for (int output_port : target_outputs) {
+            if (output_port == DIRECTION_HUB) power.r2hLink();
+            else power.r2rLink();
+
+            if (output_port == DIRECTION_LOCAL) {
+                power.networkInterface();
+                LOG << "Consumed flit " << flit << endl;
+                stats.receivedFlit(sc_time_stamp().to_double() / GlobalParams::clock_period_ps, flit);
+                if (GlobalParams::max_volume_to_be_drained) {
+                    if (drained_volume >= GlobalParams::max_volume_to_be_drained)
+                        sc_stop();
+                    else {
+                        drained_volume++;
+                        local_drained++;
+                    }
+                }
+            } else if (winner_input != DIRECTION_LOCAL && winner_input != DIRECTION_LOCAL_2) {
+                routed_flits++;
+            }
+        }
+
+        power.bufferRouterPop();
+        power.crossBar();
+    }
+
+    if ((int)(sc_time_stamp().to_double() / GlobalParams::clock_period_ps)%2==0)
+	reservation_table.updateIndex();
     }   
 }
 
@@ -396,7 +436,6 @@ int Router::route(const RouteData & route_data)
 
           // 获取所有需要向下路由的子节点
           vector<int> child_targets = getMulticastChildren(route_data.dst_ids);
-          dbg(child_targets);
 
           // 为每个子目标添加对应的下行端口
           for (int child_id : child_targets) {
@@ -417,8 +456,11 @@ int Router::route(const RouteData & route_data)
               }
           }
 
-          if (has_upward_target && local_level > 0) {
-              output_ports.push_back(getLogicalPortIndex(PORT_UP, -1));
+          // 防环路规则：只有当数据包不是从UP端口来时，才允许向上转发
+          // 这避免了从父节点接收的多播包再次被送回父节点造成环路
+          int up_port_index = getLogicalPortIndex(PORT_UP, -1);
+          if (has_upward_target && local_level > 0 && route_data.dir_in != up_port_index) {
+              output_ports.push_back(up_port_index);
           }
       }
 
@@ -445,7 +487,6 @@ int Router::route(const RouteData & route_data)
               // 如果目标是直接子节点，直接添加目标节点
               // 如果目标是孙子或更深层节点，添加下一跳子节点
               int child_to_add = is_direct_child ? dst_id : next_hop_child;
-              dbg(child_to_add);
 
               // 避免重复添加相同的子节点
               if (find(child_targets.begin(), child_targets.end(), child_to_add) == child_targets.end()) {

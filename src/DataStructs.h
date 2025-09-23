@@ -12,6 +12,7 @@
 #define _DATASTRUCS_H__
 
 #include <systemc.h>
+#include <vector>
 #include "GlobalParams.h"
 
 // Coord -- XY coordinates type of the Tile inside the Mesh
@@ -158,6 +159,8 @@ struct Flit {
     int payload_sizes[3]; // 索引0: INPUT, 1: WEIGHT, 2: OUTPUT
     int src_id;
     int dst_id;
+    bool is_multicast; // true if this flit belongs to a multicast packet
+    vector<int> multicast_dst_ids; // multiple destination nodes for multicast
     int vc_id; // Virtual Channel
     FlitType flit_type;	// The flit type (FLIT_TYPE_HEAD, FLIT_TYPE_BODY, FLIT_TYPE_TAIL)
     int sequence_no;		// The sequence number of the flit inside the packet
@@ -170,8 +173,16 @@ struct Flit {
 
     int hub_relay_node;
 
+    Flit():
+        multicast_dst_ids()
+        {
+            is_multicast = false;
+        }
+
     inline bool operator ==(const Flit & flit) const {
 	return (flit.src_id == src_id && flit.dst_id == dst_id
+		&& flit.is_multicast == is_multicast
+		&& flit.multicast_dst_ids == multicast_dst_ids
 		&& flit.flit_type == flit_type
 		&& flit.vc_id == vc_id
 		&& flit.sequence_no == sequence_no

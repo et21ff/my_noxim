@@ -94,13 +94,13 @@ void MockPE::txProcess()
         req_tx.write(false);               // 清除发送请求
         total_packets_sent = 0;            // 清零发送统计
         total_flits_sent = 0;              // 清零flit统计
-        cout << "[MockPE_" << local_id << "] txProcess: 复位完成，所有状态已清零" << endl;
+        // cout << "[MockPE_" << local_id << "] txProcess: 复位完成，所有状态已清零" << endl;
         return;
     }
 
     // --- 核心ABP流控逻辑 ---
     // 如果收到的确认信号电平，正是我当前期望的电平，说明对方已准备好接收
-    if (ack_tx.read() == current_level_tx) {
+    if (ack_tx.read() == current_level_tx ) {
 
         // 只有在可以发送，并且确实有东西要发时，才执行操作
         if (!packet_queue.empty()) {
@@ -121,6 +121,12 @@ void MockPE::txProcess()
                 return;
             }
 
+            if (buffer_full_status_tx.read().mask[current_packet.vc_id]) {
+                // 如果目标VC满了，等待下次机会
+                cout << "[MockPE_" << local_id << "] txProcess: 目标VC " << current_packet.vc_id << " 满，等待下次发送机会" << endl;
+                return;
+            }
+
             // 调用nextFlit()生成下一个flit
             Flit flit = nextFlit();
 
@@ -133,10 +139,18 @@ void MockPE::txProcess()
 
             // 更新统计信息
             total_flits_sent++;
-
-            cout << "[MockPE_" << local_id << "] txProcess: 发送" << getFlitTypeString(flit.flit_type)
+            if(flit.is_multicast==false)
+                cout << "[MockPE_" << local_id << "] txProcess: 发送" << getFlitTypeString(flit.flit_type)
                  << " flit -> Dst:" << flit.dst_id
-                 << ", 电平:" << (current_level_tx ? "HIGH" : "LOW");
+                 << ", 电平:" << (current_level_tx ? "HIGH" : "LOW");\
+            else
+                cout << "[MockPE_" << local_id << "] txProcess: 发送" << getFlitTypeString(flit.flit_type)
+                 << " flit -> Dsts:";
+                for(size_t i=0;i<flit.multicast_dst_ids.size();i++){
+                    cout<<flit.multicast_dst_ids[i];
+                    if(i!=flit.multicast_dst_ids.size()-1) cout<<",";
+                }
+                cout<<", 电平:" << (current_level_tx ? "HIGH" : "LOW");
 
             if (flit.flit_type == FLIT_TYPE_HEAD) {
                 total_packets_sent++;
@@ -175,7 +189,7 @@ void MockPE::rxProcess() {
         total_packets_received = 0;        // 清零接收统计
         receiving_in_progress = false;     // 重置接收状态标志
 
-        cout << "[MockPE_" << local_id << "] rxProcess: 复位完成，接收状态已清零" << endl;
+        // cout << "[MockPE_" << local_id << "] rxProcess: 复位完成，接收状态已清零" << endl;
         return;
     }
 
@@ -275,6 +289,32 @@ void MockPE::injectTestPacket(int dst_id, int size, int src_id) {
          << ", Size:" << size << " flits, 队列长度:" << packet_queue.size() << endl;
 }
 
+void MockPE::injectTestPacket(vector<int> dst_ids, int size,int src_id) {
+    if(size <= 0) {
+        cerr << "[MockPE_" << local_id << "] 错误：包大小必须大于0 " << size << endl;
+        return;
+    }
+
+    for(auto dis_id : dst_ids) {
+        if(dis_id < 0) {
+            cerr << "[MockPE_" << local_id << "] 错误：无效的目标ID " << dis_id << endl;
+            return;
+        }
+        
+    }
+
+    TestPacket test_packet;
+    test_packet.size = size;         // 设置包大小（flit数量）
+    test_packet.src_id = src_id;     // 设置源ID（用于日志）
+    test_packet.vc_id = std::rand() % GlobalParams::n_virtual_channels;
+    test_packet.is_multicast = true;
+    test_packet.multicast_dst_ids = dst_ids;
+    packet_queue.push(test_packet);
+    cout << "[MockPE_" << local_id << "] 注入多播测试包 -> Dsts: ";
+    for(auto dis_id : dst_ids) {
+        cout << dis_id << " ";
+    }   
+}
 // ================================================================
 // 公共接口方法：设置固定的测试目标
 // 简化测试场景，所有包都发送到同一个目标
@@ -366,7 +406,6 @@ Flit MockPE::nextFlit()
     TestPacket packet = current_packet;
 
     flit.src_id = local_id;
-    flit.dst_id = packet.dst_id;
     flit.vc_id = packet.vc_id;
     flit.timestamp = sc_time_stamp().to_double();
     flit.sequence_no = packet.size - flit_left_in_packet + 1;
@@ -375,18 +414,52 @@ Flit MockPE::nextFlit()
     flit.payload_data_size = packet.size;
     flit.is_output = false;
     flit.hub_relay_node = NOT_VALID;
+    if(packet.is_multicast) {
+        flit.is_multicast = true;
+        flit.multicast_dst_ids = packet.multicast_dst_ids;
 
-    // 根据剩余flit数量确定类型
-    if (flit_left_in_packet == packet.size) {
-        flit.flit_type = FLIT_TYPE_HEAD;
-        cout << "[MockPE_" << local_id << "] nextFlit: 创建HEAD flit for 包 -> Dst:" << packet.dst_id << endl;
-    } else if (flit_left_in_packet == 1) {
-        flit.flit_type = FLIT_TYPE_TAIL;
-        cout << "[MockPE_" << local_id << "] nextFlit: 创建TAIL flit for 包 -> Dst:" << packet.dst_id << endl;
-    } else {
-        flit.flit_type = FLIT_TYPE_BODY;
-        cout << "[MockPE_" << local_id << "] nextFlit: 创建BODY flit for 包 -> Dst:" << packet.dst_id << endl;
+        if(flit_left_in_packet == packet.size) {
+            flit.flit_type = FLIT_TYPE_HEAD;
+            cout << "[MockPE_" << local_id << "] nextFlit: 创建MULTICAST HEAD flit for 包 -> Dsts: ";
+            for(auto dis_id : packet.multicast_dst_ids) {
+                cout << dis_id << " ";
+            }
+            cout << endl;
+        } else if (flit_left_in_packet == 1) {
+            flit.flit_type = FLIT_TYPE_TAIL;
+            cout << "[MockPE_" << local_id << "] nextFlit: 创建MULTICAST TAIL flit for 包 -> Dsts: ";
+            for(auto dis_id : packet.multicast_dst_ids) {
+                cout << dis_id << " ";
+            }
+            cout << endl;
+        } else {
+            flit.flit_type = FLIT_TYPE_BODY;
+            cout << "[MockPE_" << local_id << "] nextFlit: 创建MULTICAST BODY flit for 包 -> Dsts: ";
+            for(auto dis_id : packet.multicast_dst_ids) {
+                cout << dis_id << " ";
+            }
+            cout << endl;
+        }
+    } 
+    else {
+        flit.is_multicast = false;
+        flit.dst_id = packet.dst_id;
+        flit.multicast_dst_ids.clear();
+
+            // 根据剩余flit数量确定类型
+        if (flit_left_in_packet == packet.size) {
+            flit.flit_type = FLIT_TYPE_HEAD;
+            cout << "[MockPE_" << local_id << "] nextFlit: 创建HEAD flit for 包 -> Dst:" << packet.dst_id << endl;
+        } else if (flit_left_in_packet == 1) {
+            flit.flit_type = FLIT_TYPE_TAIL;
+            cout << "[MockPE_" << local_id << "] nextFlit: 创建TAIL flit for 包 -> Dst:" << packet.dst_id << endl;
+        } else {
+            flit.flit_type = FLIT_TYPE_BODY;
+            cout << "[MockPE_" << local_id << "] nextFlit: 创建BODY flit for 包 -> Dst:" << packet.dst_id << endl;
+        }
+
     }
+
 
     // 减少剩余flit计数
     flit_left_in_packet--;

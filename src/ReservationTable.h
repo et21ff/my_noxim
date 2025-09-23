@@ -12,6 +12,9 @@
 #define __NOXIMRESERVATIONTABLE_H__
 
 #include <cassert>
+#include <vector>
+#include <map>
+
 #include "DataStructs.h"
 #include "Utils.h"
 
@@ -62,8 +65,8 @@ class ReservationTable {
     // Release reservation for multiple output ports
     void release(const TReservation& r, const std::vector<int>& outputs);
 
-    // Returns the pairs of output port and virtual channel reserved by port_in
-    vector<pair<int,int> > getReservations(const int port_int);
+    // Returns a map of VC to list of output ports reserved by port_in
+    std::map<int, std::vector<int>> getReservations(const int port_in);
 
     // update the index of the reservation having highest priority in the current cycle
     void updateIndex();
@@ -74,6 +77,8 @@ class ReservationTable {
     void setSize(const int n_outputs);
 
     void print();
+
+    void reset();
 
   private:
 

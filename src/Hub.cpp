@@ -375,14 +375,16 @@ void Hub::antennaToTileProcess()
 	for (unsigned int i = 0; i < rxChannels.size(); i++)
 	{
 		int channel = rxChannels[i];
-		vector<pair<int,int> > reservations = antenna2tile_reservation_table.getReservations(channel);
+		map<int, vector<int>> reservations = antenna2tile_reservation_table.getReservations(channel);
 
 		if (reservations.size()!=0)
 		{
-			int rnd_idx = rand()%reservations.size();
-
-			int port = reservations[rnd_idx].first;
-			int vc = reservations[rnd_idx].second;
+			// 随机选择一个VC
+			int vc_idx = rand()%reservations.size();
+			auto it = reservations.begin();
+		 advance(it, vc_idx);
+		 int vc = it->first;
+		 int port = it->second[0]; // 取第一个输出端口
 
 			if (!(target[channel]->buffer_rx.IsEmpty()))
 			{
@@ -549,14 +551,16 @@ void Hub::tileToAntennaProcess()
 	// 2nd phase: Forwarding
 	for (int i = 0; i < num_ports; i++)
 	{
-		vector<pair<int,int> > reservations = tile2antenna_reservation_table.getReservations(i);
+		map<int, vector<int>> reservations = tile2antenna_reservation_table.getReservations(i);
 
 		if (reservations.size()!=0)
 		{
-			int rnd_idx = rand()%reservations.size();
-
-			int o = reservations[rnd_idx].first;
-			int vc = reservations[rnd_idx].second;
+			// 随机选择一个VC
+			int vc_idx = rand()%reservations.size();
+			auto it = reservations.begin();
+		 advance(it, vc_idx);
+		 int vc = it->first;
+		 int o = it->second[0]; // 取第一个输出端口
 
 			if (!buffer_from_tile[i][vc].IsEmpty())
 			{

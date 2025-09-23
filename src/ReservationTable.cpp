@@ -36,20 +36,25 @@ bool ReservationTable::isNotReserved(const int port_out)
 /* For a given input, returns the set of output/vc reserved from that input.
  * An index is required for each output entry, to avoid that multiple invokations
  * with different inputs returns the same output in the same clock cycle. */
-vector<pair<int,int> > ReservationTable::getReservations(const int port_in)
+std::map<int, std::vector<int>> ReservationTable::getReservations(const int port_in)
 {
-    vector<pair<int,int> > reservations;
+    std::map<int, std::vector<int>> result_map;
 
-    for (int o = 0;o<n_outputs;o++)
+    for (int o = 0; o < n_outputs; o++)
     {
-	if (rtable[o].reservations.size()>0)
-	{
-	    int current_index = rtable[o].index;
-	    if (rtable[o].reservations[current_index].input == port_in)
-		reservations.push_back(pair<int,int>(o,rtable[o].reservations[current_index].vc));
-	}
+        if (!rtable[o].reservations.empty())
+        {
+            int winner_index = rtable[o].index;
+            const TReservation& winner_reservation = rtable[o].reservations[winner_index];
+
+            if (winner_reservation.input == port_in)
+            {
+                int winner_vc = winner_reservation.vc;
+                result_map[winner_vc].push_back(o);
+            }
+        }
     }
-    return reservations;
+    return result_map;
 }
 
 int ReservationTable::checkReservation(const TReservation r, const int port_out)
@@ -237,4 +242,32 @@ void ReservationTable::updateIndex()
     }
 }
 
+/**
+ * @brief Resets the reservation table to a clean state.
+ *
+ * This function clears all reservations from all output ports and resets the
+ * priority index for each port. It effectively brings the table to the same
+ * state it was in immediately after being initialized by setSize().
+ */
+void ReservationTable::reset()
+{
+    // A safety check to ensure the table has been allocated.
+    // If setSize() has not been called, rtable will be null.
+    if (rtable == nullptr) {
+        return;
+    }
+
+    // Iterate over every output port in the reservation table.
+    for (int i = 0; i < n_outputs; ++i) {
+        // For each output port i:
+        
+        // 1. Clear the vector of active reservations.
+        // The .clear() method removes all elements from the std::vector.
+        rtable[i].reservations.clear();
+
+        // 2. Reset the priority index to its starting position (0).
+        // This is important for fair arbitration in subsequent cycles.
+        rtable[i].index = 0;
+    }
+}
 

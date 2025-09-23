@@ -34,6 +34,13 @@ struct TestPacket {
     int size;       // 包的大小（flit数量）
     int src_id;     // 源节点ID（用于日志记录）
     int vc_id;      // 虚拟通道ID
+    vector<int> multicast_dst_ids; // 多播目标ID列表（如果是多播包）
+    bool is_multicast; // 是否为多播包
+
+    TestPacket() : dst_id(0), size(0), src_id(0), vc_id(0), multicast_dst_ids(), is_multicast(false) {}
+    // 可选：带参数构造函数
+    TestPacket(int dst, int sz, int src, int vc, const vector<int>& mcast = {}, bool is_mc = false)
+        : dst_id(dst), size(sz), src_id(src), vc_id(vc), multicast_dst_ids(mcast), is_multicast(is_mc) {}
 };
 
 // ================================================================
@@ -112,6 +119,7 @@ SC_MODULE(MockPE) {
 
     // 测试包注入方法
     void injectTestPacket(int dst_id, int size, int src_id = -1);
+    void injectTestPacket(vector<int> dst_ids, int size, int src_id = -1);
     void setFixedDestination(int dst_id);
     void sendFixedPacket(int dst_id, int size);
 

@@ -136,8 +136,10 @@ SC_MODULE(Router)
     void cleanupPorts();
     
 
+    public:
     // performs actual routing + selection
     int route(const RouteData & route_data);
+private:
 
     // wrappers
     int selectionFunction(const vector <int> &directions,

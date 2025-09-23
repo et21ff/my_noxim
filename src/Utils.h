@@ -93,8 +93,21 @@ inline ostream & operator <<(ostream & os, const Flit & flit)
 	    os << "T";
 	    break;
 	}
+    if(flit.is_multicast) {
+        os << flit.sequence_no << ", " << flit.src_id << "->";
+        os << " M{";
+        for(size_t i = 0; i < flit.multicast_dst_ids.size(); i++) {
+            os << flit.multicast_dst_ids[i];
+            if(i != flit.multicast_dst_ids.size() - 1)
+                os << ",";
+        }
+        os << "}";
+        os << " VC " << flit.vc_id << ")";
+    } else {
+        os <<  flit.sequence_no << ", " << flit.src_id << "->" << flit.dst_id << " VC " << flit.vc_id << ")";
+    }
 
-	os <<  flit.sequence_no << ", " << flit.src_id << "->" << flit.dst_id << " VC " << flit.vc_id << ")";
+	
     }
 
     return os;
