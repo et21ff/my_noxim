@@ -202,16 +202,16 @@ void ProcessingElement::update_ready_signal() {
 void ProcessingElement::rxProcess() {
     // 步骤 0: 处理Reset信号 (保持不变)
     if (reset.read()) {
-        ack_rx.write(0);
+        ack_rx[0].write(0);
         current_level_rx = 0;
         // 在reset时，也应该清理其他与接收相关的状态
         return;
     }
 
     // 步骤 1: 遵循Noxim的握手协议 (核心结构保持不变)
-    if (req_rx.read() == 1 - current_level_rx) {
+    if (req_rx[0].read() == 1 - current_level_rx) {
         // 读取flit，这是我们处理的输入
-        Flit flit = flit_rx.read();
+        Flit flit = flit_rx[0].read();
         // ------------------- 我们注入的新逻辑 [开始] -------------------
         if (flit.flit_type == FLIT_TYPE_HEAD) {
             std::copy(std::begin(flit.payload_sizes),std::end(flit.payload_sizes), incoming_payload_sizes);
@@ -252,7 +252,7 @@ void ProcessingElement::rxProcess() {
     current_level_rx = 1 - current_level_rx;
     }
     // 步骤 5: 将新的ack level写回端口 (核心结构保持不变)
-    ack_rx.write(current_level_rx);
+    ack_rx[0].write(current_level_rx);
 }
 
 // in PE.cpp
@@ -260,7 +260,7 @@ void ProcessingElement::rxProcess() {
 void ProcessingElement::txProcess() {
     // 复位逻辑保持不变
     if (reset.read()) {
-        req_tx.write(0);
+        req_tx[0].write(0);
         current_level_tx = 0;
         while (!packet_queue.empty()) packet_queue.pop();
         return;
@@ -304,7 +304,7 @@ void ProcessingElement::txProcess() {
         int downstream_capability = downstream_ready_in[0]->read(); // 目前只支持单一路径
 
         // 4. 终极守门员检查：检查ack，并进行精确的能力匹配
-        if (ack_tx.read() == current_level_tx && downstream_capability >= required_capability) {
+        if (ack_tx[0].read() == current_level_tx && downstream_capability >= required_capability) {
             // 所有检查通过！可以安全地发送Flit
             Flit flit = nextFlit(); // nextFlit() 会在发送TAIL后从队列中pop
 
@@ -326,10 +326,10 @@ void ProcessingElement::txProcess() {
             }
             
         }
-             flit_tx.write(flit);
+             flit_tx[0].write(flit);
             // 更新Noxim的握手协议状态
             current_level_tx = 1 - current_level_tx;
-            req_tx.write(current_level_tx);
+            req_tx[0].write(current_level_tx);
 
         } 
     }
@@ -338,7 +338,7 @@ void ProcessingElement::txProcess() {
 void ProcessingElement::output_txprocess() {
     // 复位逻辑保持不变
     if (reset.read()) {
-        req_tx_2.write(0);
+        req_tx[1].write(0);
         current_level_tx_2 = 0;
         while (!packet_queue_2.empty()) packet_queue_2.pop();
         return;
@@ -403,7 +403,7 @@ void ProcessingElement::output_txprocess() {
 
     // 步骤 B: 发送逻辑
     if (!packet_queue_2.empty()) {
-        if (ack_tx_2.read() == current_level_tx_2) {
+        if (ack_tx[1].read() == current_level_tx_2) {
             Flit flit = nextOutputFlit();
             
             if (flit.flit_type == FLIT_TYPE_HEAD) {
@@ -434,22 +434,22 @@ void ProcessingElement::output_txprocess() {
                 }
             }
             
-            flit_tx_2.write(flit);
+            flit_tx[1].write(flit);
             current_level_tx_2 = 1 - current_level_tx_2;
-            req_tx_2.write(current_level_tx_2);
+            req_tx[1].write(current_level_tx_2);
         }
     }
 }
 
 void ProcessingElement::output_rxProcess() {
     if (reset.read()) {
-        ack_rx_2.write(0);
+        ack_rx[1].write(0);
         current_level_rx_2 = 0;
         return;
     }
 
-    if (req_rx_2.read() == 1 - current_level_rx_2) {
-        Flit flit = flit_rx_2.read();
+    if (req_rx[1].read() == 1 - current_level_rx_2) {
+        Flit flit = flit_rx[1].read();
         
         if (flit.flit_type == FLIT_TYPE_HEAD) {
             std::copy(std::begin(flit.payload_sizes), std::end(flit.payload_sizes), incoming_output_payload_sizes);
@@ -496,7 +496,7 @@ void ProcessingElement::output_rxProcess() {
         current_level_rx_2 = 1 - current_level_rx_2;
     }
     
-    ack_rx_2.write(current_level_rx_2);
+    ack_rx[1].write(current_level_rx_2);
 }
 
 #include <vector>

@@ -376,6 +376,9 @@ int Router::route(const RouteData & route_data)
     if (GlobalParams::topology == TOPOLOGY_HIERARCHICAL) {
         
         // 规则 1: 检查本地
+        if(this->local_id == route_data.dst_id&& route_data.is_output == true) {
+            return getLogicalPortIndex(PORT_LOCAL, 1);
+        }
         if (this->local_id == route_data.dst_id) {
             return getLogicalPortIndex(PORT_LOCAL, 0);
         }

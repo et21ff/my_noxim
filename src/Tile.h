@@ -15,6 +15,7 @@
 #include "Router.h"
 #include "ProcessingElement.h"
 #include "MockPE.h"
+#include "ProcessingElement.h"
 #include <dbg.h>
 using namespace std;
 
@@ -55,18 +56,19 @@ SC_MODULE(Tile)
 	std::vector<sc_out<bool>*> hierarchical_ack_down_rx;      // DOWN方向应答输出
 	std::vector<sc_out<TBufferFullStatus>*> hierarchical_buffer_full_status_down_rx;
 
-    sc_signal<Flit>*  sig_flit_p2r;
-    sc_signal<bool>*  sig_req_p2r;
+    // --- 链路 1: 数据从 PE 发往 Router (P2R) ---
+    sc_signal<Flit>**  sig_flit_p2r;
+    sc_signal<bool>**  sig_req_p2r;
     // 反向信号: Router -> PE
-    sc_signal<bool>*  sig_ack_r2p;
-    sc_signal<TBufferFullStatus>* sig_stat_r2p;
+    sc_signal<bool>**  sig_ack_r2p;
+    sc_signal<TBufferFullStatus>** sig_stat_r2p;
 
-        // --- 链路 2: 数据从 Router 发往 PE (R2P) ---
-    sc_signal<Flit>*  sig_flit_r2p;
-    sc_signal<bool>*  sig_req_r2p;  
+    // --- 链路 2: 数据从 Router 发往 PE (R2P) ---
+    sc_signal<Flit>**  sig_flit_r2p;
+    sc_signal<bool>**  sig_req_r2p;  
     // 反向信号: PE -> Router
-    sc_signal<bool>*  sig_ack_p2r;  
-    sc_signal<TBufferFullStatus>* sig_stat_p2r;
+    sc_signal<bool>**  sig_ack_p2r;  
+    sc_signal<TBufferFullStatus>** sig_stat_p2r;
 
     // Hierarchical port management
     void initHierarchicalPorts();  // 初始化层次化端口
@@ -76,6 +78,30 @@ SC_MODULE(Tile)
     // Destructor
     ~Tile() {
         cleanupHierarchicalPorts();
+        
+        // 清理二维指针数组
+        const int NUM_INTERNAL_CONNECTIONS = 1;
+        if (sig_flit_p2r) {
+            for (int i = 0; i < NUM_INTERNAL_CONNECTIONS; i++) {
+                delete sig_flit_p2r[i];
+                delete sig_req_p2r[i];
+                delete sig_ack_r2p[i];
+                delete sig_stat_r2p[i];
+                delete sig_flit_r2p[i];
+                delete sig_req_r2p[i];
+                delete sig_ack_p2r[i];
+                delete sig_stat_p2r[i];
+            }
+            delete[] sig_flit_p2r;
+            delete[] sig_req_p2r;
+            delete[] sig_ack_r2p;
+            delete[] sig_stat_r2p;
+            delete[] sig_flit_r2p;
+            delete[] sig_req_r2p;
+            delete[] sig_ack_p2r;
+            delete[] sig_stat_p2r;
+        }
+        
         delete r;
         delete pe;
     }
@@ -107,7 +133,7 @@ SC_MODULE(Tile)
 
 
     Router *r;		                // Router instance
-    MockPE *pe;	                // Processing Element instance
+    ProcessingElement *pe;	                // Processing Element instance
 	    GlobalRoutingTable grtable;
 
 

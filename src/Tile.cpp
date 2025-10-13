@@ -65,6 +65,10 @@ void Tile::initHierarchicalPorts() {
     hierarchical_ack_down_rx.reserve(fanout);
     hierarchical_buffer_full_status_down_rx.reserve(fanout);
 
+    this->pe->downstream_ready_in.reserve(fanout); //在这里完成对downstream_ready_in的初始化
+
+    // this->pe->downstream_ready_out = new sc_out<int>((std::to_string(local_id) + " downstream_ready_out").c_str());
+
 
     // Allocate DOWN ports for each child connection
     for (int i = 0; i < fanout; i++) {
@@ -81,6 +85,10 @@ void Tile::initHierarchicalPorts() {
         hierarchical_req_down_rx.push_back(new sc_in<bool>((name_prefix + "_req_rx").c_str()));
         hierarchical_ack_down_rx.push_back(new sc_out<bool>((name_prefix + "_ack_rx").c_str()));
         hierarchical_buffer_full_status_down_rx.push_back(new sc_out<TBufferFullStatus>((name_prefix + "_buffer_status_rx").c_str()));
+
+        this->pe->downstream_ready_in.push_back(new sc_in<int>((name_prefix + "_downstream_ready_in").c_str()));
+
+
     }
 }
 
@@ -133,7 +141,10 @@ Tile::Tile(sc_module_name nm, int id, int level): sc_module(nm) {
     r->buildUnifiedInterface();
     // ... (r->configure) ...
     
-    pe = new MockPE("MockPE",local_id);
+    // pe = new MockPE("MockPE",local_id);
+    pe = new ProcessingElement("ProcessingElement");
+    pe -> local_id = local_id;
+
     // pe ->local_id = local_id;
 
     // --- 2. 连接时钟和复位 (您的这部分是正确的) ---
@@ -149,45 +160,73 @@ Tile::Tile(sc_module_name nm, int id, int level): sc_module(nm) {
     //  并完成其子模块 PE 和 Router 之间的内部布线。
     // ====================================================================================
 
-    int local_port_index = 0;
-
-    // --- 链路 1: 数据从 PE 发往 Router (P2R) ---
-     sig_flit_p2r = new sc_signal<Flit>("sig_flit_p2r");
-     sig_req_p2r  = new sc_signal<bool>("sig_req_p2r");
-    // 反向信号: Router -> PE
-     sig_ack_r2p  = new sc_signal<bool>("sig_ack_r2p");
-     sig_stat_r2p = new sc_signal<TBufferFullStatus>("sig_stat_r2p");
-
-    // 连接 PE(out) --> Router(in)
-    pe->flit_tx.bind(*sig_flit_p2r);
-    pe->req_tx.bind(*sig_req_p2r);
-    r->h_flit_rx_local[local_port_index]->bind(*sig_flit_p2r);
-    r->h_req_rx_local[local_port_index]->bind(*sig_req_p2r);
-
-    // 连接 Router(out) --> PE(in) (反向)
-    r->h_ack_rx_local[local_port_index]->bind(*sig_ack_r2p);
-    r->h_buffer_full_status_rx_local[local_port_index]->bind(*sig_stat_r2p);
-    pe->ack_tx.bind(*sig_ack_r2p);
-    pe->buffer_full_status_tx.bind(*sig_stat_r2p);
-
-    // --- 链路 2: 数据从 Router 发往 PE (R2P) ---
-    sig_flit_r2p = new sc_signal<Flit>("sig_flit_r2p");
-    sig_req_r2p  = new sc_signal<bool>("sig_req_r2p");
-        // 反向信号: PE -> Router
-    sig_ack_p2r  = new sc_signal<bool>("sig_ack_p2r");
-    sig_stat_p2r = new sc_signal<TBufferFullStatus>("sig_stat_p2r");
+    // 内部连接常量：定义PE与Router之间的连接数量
+    const int NUM_INTERNAL_CONNECTIONS = 2;
     
-    // 连接 Router(out) --> PE(in)
-    r->h_flit_tx_local[local_port_index]->bind(*sig_flit_r2p);
-    r->h_req_tx_local[local_port_index]->bind(*sig_req_r2p);
-    pe->flit_rx.bind(*sig_flit_r2p);
-    pe->req_rx.bind(*sig_req_r2p);
+    // 分配二维指针数组
+    sig_flit_p2r = new sc_signal<Flit>*[NUM_INTERNAL_CONNECTIONS];
+    sig_req_p2r = new sc_signal<bool>*[NUM_INTERNAL_CONNECTIONS];
+    sig_ack_r2p = new sc_signal<bool>*[NUM_INTERNAL_CONNECTIONS];
+    sig_stat_r2p = new sc_signal<TBufferFullStatus>*[NUM_INTERNAL_CONNECTIONS];
+    
+    sig_flit_r2p = new sc_signal<Flit>*[NUM_INTERNAL_CONNECTIONS];
+    sig_req_r2p = new sc_signal<bool>*[NUM_INTERNAL_CONNECTIONS];
+    sig_ack_p2r = new sc_signal<bool>*[NUM_INTERNAL_CONNECTIONS];
+    sig_stat_p2r = new sc_signal<TBufferFullStatus>*[NUM_INTERNAL_CONNECTIONS];
 
-    // 连接 PE(out) --> Router(in) (反向)
-    pe->ack_rx.bind(*sig_ack_p2r);
-    pe->buffer_full_status_rx.bind(*sig_stat_p2r);
-    r->h_ack_tx_local[local_port_index]->bind(*sig_ack_p2r);
-    r->h_buffer_full_status_tx_local[local_port_index]->bind(*sig_stat_p2r);
+    // 通过循环创建信号并进行绑定
+    for (int i = 0; i < NUM_INTERNAL_CONNECTIONS; i++) {
+        // --- 链路 1: 数据从 PE 发往 Router (P2R) ---
+        char name_buffer[64];
+        sprintf(name_buffer, "sig_flit_p2r_%d", i);
+        sig_flit_p2r[i] = new sc_signal<Flit>(name_buffer);
+        
+        sprintf(name_buffer, "sig_req_p2r_%d", i);
+        sig_req_p2r[i] = new sc_signal<bool>(name_buffer);
+        
+        sprintf(name_buffer, "sig_ack_r2p_%d", i);
+        sig_ack_r2p[i] = new sc_signal<bool>(name_buffer);
+        
+        sprintf(name_buffer, "sig_stat_r2p_%d", i);
+        sig_stat_r2p[i] = new sc_signal<TBufferFullStatus>(name_buffer);
+
+        // --- 链路 2: 数据从 Router 发往 PE (R2P) ---
+        sprintf(name_buffer, "sig_flit_r2p_%d", i);
+        sig_flit_r2p[i] = new sc_signal<Flit>(name_buffer);
+        
+        sprintf(name_buffer, "sig_req_r2p_%d", i);
+        sig_req_r2p[i] = new sc_signal<bool>(name_buffer);
+        
+        sprintf(name_buffer, "sig_ack_p2r_%d", i);
+        sig_ack_p2r[i] = new sc_signal<bool>(name_buffer);
+        
+        sprintf(name_buffer, "sig_stat_p2r_%d", i);
+        sig_stat_p2r[i] = new sc_signal<TBufferFullStatus>(name_buffer);
+
+        // 连接 PE(out) --> Router(in)
+        pe->flit_tx[i].bind(*sig_flit_p2r[i]);
+        pe->req_tx[i].bind(*sig_req_p2r[i]);
+        r->h_flit_rx_local[i]->bind(*sig_flit_p2r[i]);
+        r->h_req_rx_local[i]->bind(*sig_req_p2r[i]);
+
+        // 连接 Router(out) --> PE(in) (反向)
+        r->h_ack_rx_local[i]->bind(*sig_ack_r2p[i]);
+        r->h_buffer_full_status_rx_local[i]->bind(*sig_stat_r2p[i]);
+        pe->ack_tx[i].bind(*sig_ack_r2p[i]);
+        pe->buffer_full_status_tx[i].bind(*sig_stat_r2p[i]);
+
+        // 连接 Router(out) --> PE(in)
+        r->h_flit_tx_local[i]->bind(*sig_flit_r2p[i]);
+        r->h_req_tx_local[i]->bind(*sig_req_r2p[i]);
+        pe->flit_rx[i].bind(*sig_flit_r2p[i]);
+        pe->req_rx[i].bind(*sig_req_r2p[i]);
+
+        // 连接 PE(out) --> Router(in) (反向)
+        pe->ack_rx[i].bind(*sig_ack_p2r[i]);
+        pe->buffer_full_status_rx[i].bind(*sig_stat_p2r[i]);
+        r->h_ack_tx_local[i]->bind(*sig_ack_p2r[i]);
+        r->h_buffer_full_status_tx_local[i]->bind(*sig_stat_p2r[i]);
+    }
 
     // Hierarchical ports initialization
 	initHierarchicalPorts();

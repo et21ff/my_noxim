@@ -65,7 +65,7 @@ enum HierarchicalDirection {
 
 SC_MODULE(NoC)
 {
-    std::vector<std::vector<sc_signal<int> *>> pe_ready_signals_x;
+    sc_signal<int>** downstream_ready_signals;
     sc_signal<int> dummy_signal;
 
 public:

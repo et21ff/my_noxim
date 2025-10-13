@@ -34,28 +34,17 @@ SC_MODULE(ProcessingElement)
     sc_in_clk clock;		// The input clock for the PE
     sc_in < bool > reset;	// The reset signal for the PE
 
-    sc_in < Flit > flit_rx;	// The input channel (Primary - LOCAL)
-    sc_in < bool > req_rx;	// The request associated with the input channel
-    sc_out < bool > ack_rx;	// The outgoing ack signal associated with the input channel
-    sc_out < TBufferFullStatus > buffer_full_status_rx;	
+    // Primary and Secondary connections as arrays
+    sc_in < Flit > flit_rx[2];	// The input channels [0: PRIMARY, 1: SECONDARY]
+    sc_in < bool > req_rx[2];	// The request signals associated with input channels
+    sc_out < bool > ack_rx[2];	// The outgoing ack signals associated with input channels
+    sc_out < TBufferFullStatus > buffer_full_status_rx[2];	
 
-    sc_out < Flit > flit_tx;	// The output channel (Primary - LOCAL)
-    sc_out < bool > req_tx;	// The request associated with the output channel
-    sc_in < bool > ack_tx;	// The outgoing ack signal associated with the output channel
-    sc_in < TBufferFullStatus > buffer_full_status_tx;
+    sc_out < Flit > flit_tx[2];	// The output channels [0: PRIMARY, 1: SECONDARY]
+    sc_out < bool > req_tx[2];	// The request signals associated with output channels
+    sc_in < bool > ack_tx[2];	// The incoming ack signals associated with output channels
+    sc_in < TBufferFullStatus > buffer_full_status_tx[2];
 
-    // Secondary connection for output data (LOCAL_2)
-    sc_in < Flit > flit_rx_2;	// The input channel (Secondary - LOCAL_2)
-    sc_in < bool > req_rx_2;	// The request associated with the input channel
-    sc_out < bool > ack_rx_2;	// The outgoing ack signal associated with the input channel
-    sc_out < TBufferFullStatus > buffer_full_status_rx_2;	
-
-    sc_out < Flit > flit_tx_2;	// The output channel (Secondary - LOCAL_2)
-    sc_out < bool > req_tx_2;	// The request associated with the output channel
-    sc_in < bool > ack_tx_2;	// The outgoing ack signal associated with the output channel
-    sc_in < TBufferFullStatus > buffer_full_status_tx_2;
-
-    sc_in < int >free_slots_neighbor;
 
     // Registers
     int local_id;		// Unique identification number

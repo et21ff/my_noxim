@@ -266,6 +266,8 @@ void NoC::buildHierarchical()
     hierarchical_req  = new sc_signal<bool>*[GlobalParams::num_nodes];
     hierarchical_ack  = new sc_signal<bool>*[GlobalParams::num_nodes];
     hierarchical_buffer_full_status = new sc_signal<TBufferFullStatus>*[GlobalParams::num_nodes];
+    downstream_ready_signals = new sc_signal<int>*[GlobalParams::num_nodes];
+
 
 // 为每个节点的连接分配两个方向的信号
 for (int i = 0; i < GlobalParams::num_nodes; i++) {
@@ -274,8 +276,10 @@ for (int i = 0; i < GlobalParams::num_nodes; i++) {
     hierarchical_req[i]  = new sc_signal<bool>[2];
     hierarchical_ack[i]  = new sc_signal<bool>[2];
     hierarchical_buffer_full_status[i] = new sc_signal<TBufferFullStatus>[2];
+    downstream_ready_signals[i] = new sc_signal<int>[1];
 }
-    for (int i = 0; i < GlobalParams::num_nodes; i++) {
+
+for (int i = 0; i < GlobalParams::num_nodes; i++) {
     // 0: C->P (UP), 1: P->C (DOWN)
     hierarchical_flit[i] = new sc_signal<Flit>[2];
     hierarchical_req[i]  = new sc_signal<bool>[2];
@@ -395,6 +399,9 @@ void NoC::buildOmega()
 void NoC::setupHierarchicalConnections() {
     cout << "[连接] 正在建立 Tile 间的层次化连接..." << endl;
 
+    t[0]->pe->downstream_ready_out.bind(dummy_signal); // make systemc satisfied
+
+
     // 遍历所有非根节点（从1开始）
     for (int i = 1; i < GlobalParams::num_nodes; i++) {
         int parent_id = GlobalParams::parent_map[i];
@@ -446,6 +453,11 @@ void NoC::setupHierarchicalConnections() {
             t[parent_id]->hierarchical_req_down_rx[child_index]->bind(hierarchical_req[i][0]);
             t[parent_id]->hierarchical_ack_down_rx[child_index]->bind(hierarchical_ack[i][0]);
             t[parent_id]->hierarchical_buffer_full_status_down_rx[child_index]->bind(hierarchical_buffer_full_status[i][0]);
+
+
+
+            t[parent_id]->pe->downstream_ready_in[child_index]->bind(downstream_ready_signals[i][0]);
+            t[i]->pe->downstream_ready_out.bind(downstream_ready_signals[i][0]);
             
             cout << "    - C->P Bind OK." << endl;
         }
@@ -569,7 +581,7 @@ void NoC::asciiMonitor()
 }
 
 void NoC::setupLocalConnections() {
-    cout << "[连接] 正在建立 Tile 和 MockPE 间的本地连接..." << endl;
+    // cout << "[连接] 正在建立 Tile 和 MockPE 间的本地连接..." << endl;
 
     // 将这些信号声明为 NoC 的成员变量，以便在析构函数中释放它们
     // 例如在 NoC.h 中:
