@@ -29,7 +29,7 @@ OTHER    := -Wall -DSC_NO_WRITE_CHECK --std=c++11 # -Wno-deprecated
 CXXFLAGS := $(OPT) $(OTHER) $(DEBUG)
 
 LDFLAGS  := -Wl,-rpath,$(SYSTEMC_LIBS)
-INCDIR := -I$(SRCDIR) -I$(SRCDIR)/smartbuffer -isystem $(SYSTEMC)/include -I$(YAML)/include
+INCDIR := -I$(SRCDIR) -I$(SRCDIR)/smartbuffer -isystem $(SYSTEMC)/include -I$(YAML)/include -I$(SRCDIR)/taskmanager
 LIBDIR := -L$(SRCDIR) -L$(SYSTEMC_LIBS) -L$(YAML)/lib
 
 LIBS := -lsystemc -lm -lyaml-cpp
@@ -131,6 +131,107 @@ $(TEST_MODULE_RESERVATION_TABLE): $(TEST_RESERVATION_TABLE_OBJS)
 	$(CXX) $(LIBDIR) $^ $(LDFLAGS) $(LIBS) -o $@ 2>&1 | c++filt
 
 
+
+# ##############################################################################
+# TESTING CONFIGURATION (for ConfigParser only)
+# ##############################################################################
+
+# 1. 定义测试可执行文件的名字
+TEST_MODULE_CONFIG_PARSER := test_config_parser
+
+# 2. 定义测试程序的源文件和对应的目标文件
+TEST_CONFIG_PARSER_MAIN_SRC := ../tests/test_ConfigParser.cpp
+TEST_CONFIG_PARSER_MAIN_OBJ := $(subst ../tests,$(OBJDIR),$(TEST_CONFIG_PARSER_MAIN_SRC:.cpp=.o))
+
+# 3. 定义构建测试程序所需的所有 .o 文件
+#    (当前只需要测试主程序的 .o 文件，因为 ConfigParser.h 是纯头文件)
+TEST_CONFIG_PARSER_OBJS := $(TEST_CONFIG_PARSER_MAIN_OBJ)
+
+
+
+# ##############################################################################
+# RULES FOR test_config_parser
+# ##############################################################################
+
+# --- 1. 新增一个目标来构建并运行测试 ---
+test_parser: $(TEST_MODULE_CONFIG_PARSER)
+	@echo "\n--- Running ConfigParser tests ---"
+	./$(TEST_MODULE_CONFIG_PARSER)
+	@echo "--- ConfigParser tests completed ---\n"
+
+
+# --- 2. ConfigParser 测试主程序的编译规则 ---
+#    (它需要能够找到 systemc.h 和 yaml.h)
+$(TEST_CONFIG_PARSER_MAIN_OBJ): $(TEST_CONFIG_PARSER_MAIN_SRC)
+	@echo "--- Compiling ConfigParser test: $< ---"
+	@mkdir -p $(dir $@)
+	# 使用全局的 CXXFLAGS 和 INCDIR 来确保所有头文件都能被找到
+	$(CXX) $(CXXFLAGS) $(INCDIR) -I../tests/include -c $< -o $@
+
+
+# --- 3. ConfigParser 测试可执行文件的链接规则 ---
+#    (它需要链接 systemc 和 yaml-cpp 库)
+$(TEST_MODULE_CONFIG_PARSER): $(TEST_CONFIG_PARSER_OBJS)
+	@echo "--- Linking ConfigParser test executable: $(TEST_MODULE_CONFIG_PARSER) ---"
+	# 使用全局的 LIBDIR 和 LIBS 来确保所有库都被链接
+	$(CXX) $(LIBDIR) $^ $(LDFLAGS) $(LIBS) -o $@ 2>&1 | c++filt
+
+
+
+# --------------------------------------------------------------------
+#               #####  TESTBENCH FOR TASK MANAGER  #####
+# --------------------------------------------------------------------
+
+# 测试可执行文件的名字
+TEST_MODULE_TASK_MANAGER := test_task_manager
+
+# 测试程序的源文件和对应的目标文件
+TEST_TASK_MANAGER_MAIN_SRC := ../tests/test_TaskManager.cpp
+TEST_TASK_MANAGER_MAIN_OBJ := $(subst ../tests,$(OBJDIR),$(TEST_TASK_MANAGER_MAIN_SRC:.cpp=.o))
+
+# TaskManager 测试需要链接 TaskManager.o
+# 我们定义 TaskManager 的源文件和目标文件
+TASK_MANAGER_SRC := $(SRCDIR)/taskmanager/TaskManager.cpp
+TASK_MANAGER_OBJ := $(subst $(SRCDIR),$(OBJDIR),$(TASK_MANAGER_SRC:.cpp=.o))
+
+# 构建测试程序所需的所有 .o 文件
+TEST_TASK_MANAGER_OBJS := $(TASK_MANAGER_OBJ) $(TEST_TASK_MANAGER_MAIN_OBJ)
+
+
+
+
+# ##############################################################################
+# RULES FOR test_task_manager
+# ##############################################################################
+
+# --- 1. 新增一个目标来构建并运行测试 ---
+test_taskmanager: $(TEST_MODULE_TASK_MANAGER)
+	@echo "\n--- Running TaskManager tests ---"
+	./$(TEST_MODULE_TASK_MANAGER)
+	@echo "--- TaskManager tests completed ---\n"
+
+
+# --- 2. TaskManager 测试主程序的编译规则 ---
+$(TEST_TASK_MANAGER_MAIN_OBJ): $(TEST_TASK_MANAGER_MAIN_SRC)
+	@echo "--- Compiling TaskManager test: $< ---"
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $(INCDIR) -I../tests/include -c $< -o $@
+
+
+# --- 3. TaskManager 模块自身的编译规则 ---
+#    (它可能已经包含在全局的 $(OBJS) 规则中，但为了清晰和独立，
+#     我们在这里提供一个明确的规则)
+$(TASK_MANAGER_OBJ): $(TASK_MANAGER_SRC)
+	@echo "--- Compiling TaskManager module: $< ---"
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $(INCDIR) -c $< -o $@
+
+
+# --- 4. TaskManager 测试可执行文件的链接规则 ---
+$(TEST_MODULE_TASK_MANAGER): $(TEST_TASK_MANAGER_OBJS)
+	@echo "--- Linking TaskManager test executable: $(TEST_MODULE_TASK_MANAGER) ---"
+	$(CXX) $(LIBDIR) $^ $(LDFLAGS) $(LIBS) -o $@ 2>&1 | c++filt
+
 ##### 3. 更新辅助规则 #####
 
 # 默认的 'all' 目标，现在编译 noxim 和所有测试程序
@@ -139,3 +240,5 @@ all: $(MODULE) $(TEST_MODULE_HIERARCHICAL) $(TEST_MODULE_RESERVATION_TABLE)
 # 新的 clean 规则，确保能清理所有文件
 clean:
 	rm -f $(OBJS) $(MODULE) *~ $(TEST_HIERARCHICAL_MAIN_OBJ) $(TEST_MODULE_HIERARCHICAL) $(TEST_RESERVATION_TABLE_MAIN_OBJ) $(TEST_MODULE_RESERVATION_TABLE)
+	rm -f $(TEST_CONFIG_PARSER_OBJS) $(TEST_MODULE_CONFIG_PARSER)
+	rm -f $(TEST_TASK_MANAGER_OBJS) $(TEST_MODULE_TASK_MANAGER)

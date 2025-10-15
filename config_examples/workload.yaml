@@ -1,0 +1,44 @@
+# =================================================================
+# WORKLOAD CONFIGURATION for GLB (Generated from Timeloop Log)
+# =================================================================
+workload:
+  # --- 1. 角色工作集与复用策略 ---
+  working_set:
+    - role: "ROLE_GLB"
+      data:
+        # Weights 和 Inputs 在 GLB 都是驻留的，以服务于整个 256 步的计算
+        # 注意：在您的日志中，Weights 在 GLB 和 DRAM 层面都是 96，所以是 resident。
+        # 如果 GLB 的 Weights 小于 DRAM，那这里就应该是 stream。
+        - { data_space: "Weights", size: 96, reuse_strategy: "resident" } 
+        - { data_space: "Inputs", size: 18, reuse_strategy: "resident" }
+
+  # --- 2. 每个角色的数据流规格 ---
+  data_flow_specs:
+
+    # -----------------------------------------------------------
+    # 规格 A: 针对 GLB (数据分发中心)
+    # -----------------------------------------------------------
+    - role: "ROLE_GLB"
+      
+      # [核心] 使用“规则模板”来定义 GLB 的周期性发送行为
+      schedule_template:
+        # GLB 的主循环总共有 256 个时间步
+        total_timesteps: 256
+        
+        # 定义在不同事件下，GLB 需要向 BUFFER 发送的数据块 (Delta)
+        delta_events:
+          # --- 事件 1: FILL 操作 ---
+          # 触发条件：当 glb_timestep 是 16 的倍数时 (0, 16, 32, ...)
+          - trigger: { on_timestep_modulo: [16, 0] } # mod(timestep, 16) == 0
+            name: "FILL"
+            # 发送的数据：对应日志 {6, 3, 2}
+            # 我们假设 Outputs(2) 是 PE 需要读的旧 Psum
+            delta: { Weights: 6, Inputs: 3, Outputs: 2 }
+
+          # --- 事件 2: DELTA 操作 ---
+          # 触发条件：默认情况 (所有其他时间步)
+          - trigger: { on_timestep: "default" }
+            name: "DELTA"
+            # 发送的数据：对应日志 {0, 1, 2}
+            # 注意 Weights 是 0，因为在 DELTA 阶段不传输新的权重
+            delta: { Weights: 0, Inputs: 1, Outputs: 2 }

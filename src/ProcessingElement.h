@@ -13,12 +13,13 @@
 
 #include <queue>
 #include <systemc.h>
+#include <map>
 
 #include "DataStructs.h"
 #include "GlobalTrafficTable.h"
 #include "Utils.h"
-#include "BufferManager.h" 
-#include <memory> 
+#include "BufferManager.h"
+#include <memory>
 
 using namespace std;
 
@@ -48,12 +49,10 @@ SC_MODULE(ProcessingElement)
 
     // Registers
     int local_id;		// Unique identification number
-    bool current_level_rx;	// Current level for Alternating Bit Protocol (ABP)
-    bool current_level_tx;	// Current level for Alternating Bit Protocol (ABP)
+    bool current_level_rx[2];	// Current level for Alternating Bit Protocol (ABP)
+    bool current_level_tx[2];	// Current level for Alternating Bit Protocol (ABP)
     queue < Packet > packet_queue;	// Local queue of packets
     bool transmittedAtPreviousCycle;	// Used for distributions with memory
-    bool current_level_rx_2;	// Current level for Alternating Bit Protocol (ABP)
-    bool current_level_tx_2;	// Current level for Alternating Bit Protocol (ABP)
     queue < Packet > packet_queue_2;
 
     // Functions
@@ -153,11 +152,45 @@ public:
     bool is_stalled_waiting_for_data;  // 是否因数据不足而停顿
     int  required_data_on_fill;  // 消耗一个FILL任务所需数据 (Bytes)
     int  required_data_on_delta; // 消耗一个DELTA任务所需数据 (Bytes)
+
+    int required_output_data_on_fill;  // 消耗一个输出FILL任务所需数据 (Bytes)
+    int required_output_data_on_delta; // 消耗一个输出DELTA任务所需数据 (Bytes)
+    
     int data_to_consume_on_finish; // 本次消耗的实际数据量 (Bytes)
     int total_bytes_consumed; // 总消耗量 (Bytes)
     int total_bytes_received; // 总接收量 (Bytes)
     int bytes_received_this_cycle; // 本周期接收量 (Bytes)
-    
+
+    //========================================================================
+    // VI. GLB 专用：基于 Map 的发送同步机制 (GLB Dispatch Sync Mechanism)
+    //========================================================================
+
+    // --- 发送状态跟踪结构 ---
+    struct PacketSentStatus {
+        bool weights_sent = false;  // 是否已发送 Weights 包
+        bool inputs_sent = false;   // 是否已发送 Inputs 包
+        bool outputs_sent = false;  // 是否已发送 Outputs 包
+
+        // 检查所有类型包是否都已发送
+        bool all_sent() const {
+            return weights_sent && inputs_sent && outputs_sent;
+        }
+
+        // 重置状态
+        void reset() {
+            weights_sent = false;
+            inputs_sent = false;
+            outputs_sent = false;
+        }
+    };
+
+    // --- GLB 发送跟踪器 ---
+    std::map<int, PacketSentStatus> dispatch_tracker_;  // 跟踪每个下游节点的发送状态
+    bool dispatch_in_progress_ = false;                // 标记是否正在进行一轮发送
+
+    // --- GLB 逻辑时间戳控制 ---
+    int glb_timestep_ = 0;                             // GLB 主逻辑时间戳，只有在一批发送完成后才推进
+
 public: // 建议将内部状态变量设为私有
     //========================================================================
     // V. 内部状态与辅助变量 (Internal State & Helper Variables)
@@ -184,8 +217,14 @@ public: // 建议将内部状态变量设为私有
 
     void output_txprocess(); // 用于输出txprocess的日志
     void output_rxProcess();
-    
-    
+
+    void handle_tx_for_port(int port_index);
+    Flit generate_next_flit_from_queue(std::queue<Packet>& queue, bool is_output = false);
+
+    // --- GLB 发送同步相关辅助函数 ---
+    void start_new_dispatch_phase();                      // 开始新的发送阶段
+    bool is_dispatch_complete();                          // 检查当前发送批次是否完成
+
     unsigned int getQueueSize() const; 
     // Constructor
 

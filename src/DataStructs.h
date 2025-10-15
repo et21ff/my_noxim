@@ -255,5 +255,20 @@ typedef struct
     PowerBreakdownEntry breakdown[NO_BREAKDOWN_ENTRIES_D+NO_BREAKDOWN_ENTRIES_S];
 } PowerBreakdown;
 
+enum class DataType {
+    INPUT,
+    WEIGHT,
+    OUTPUT,
+    UNKNOWN
+};
+
+inline const char* DataType_to_str(DataType type) {
+    switch (type) {
+        case DataType::INPUT:  return "INPUT";
+        case DataType::WEIGHT: return "WEIGHT";
+        case DataType::OUTPUT: return "OUTPUT";
+        default:               return "UNKNOWN";
+    }
+}
 
 #endif
