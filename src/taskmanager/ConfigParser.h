@@ -78,6 +78,52 @@ struct convert<Trigger> {
     }
 };
 
+// RoleProperties 转换器
+template<>
+struct convert<RoleProperties> {
+    static bool decode(const Node& node, RoleProperties& rhs) {
+        if (!node.IsMap()) {
+            return false;
+        }
+
+        // 可选字段：compute_latency
+        if (node["compute_latency"]) {
+            rhs.compute_latency = node["compute_latency"].as<int>();
+        } else {
+            rhs.compute_latency = 0; // 默认值
+        }
+
+        return true;
+    }
+};
+
+// CommandDefinition 转换器
+template<>
+struct convert<CommandDefinition> {
+    static bool decode(const Node& node, CommandDefinition& rhs) {
+        if (!node.IsMap()) {
+            return false;
+        }
+
+        // 必需字段检查
+        if (!node["command_id"] || !node["name"]) {
+            return false;
+        }
+
+        rhs.command_id = node["command_id"].as<int>();
+        rhs.name = node["name"].as<std::string>();
+
+        // 可选字段：evict_payload
+        if (node["evict_payload"]) {
+            rhs.evict_payload = node["evict_payload"].as<DataDelta>();
+        } else {
+            rhs.evict_payload = DataDelta(); // 默认为空
+        }
+
+        return true;
+    }
+};
+
 // WorkspaceData 转换器
 template<>
 struct convert<WorkspaceData> {
@@ -174,13 +220,34 @@ struct convert<DataFlowSpec> {
             return false;
         }
 
-        // 必需字段检查
-        if (!node["role"] || !node["schedule_template"]) {
+        // 必需字段检查：role 是必需的
+        if (!node["role"]) {
             return false;
         }
 
         rhs.role = node["role"].as<std::string>();
-        rhs.schedule_template = node["schedule_template"].as<ScheduleTemplate>();
+
+        // 可选字段：properties
+        if (node["properties"]) {
+            rhs.properties = node["properties"].as<RoleProperties>();
+        } else {
+            rhs.properties = RoleProperties(); // 默认构造
+        }
+
+        // 可选字段：schedule_template
+        if (node["schedule_template"]) {
+            rhs.schedule_template = std::unique_ptr<ScheduleTemplate>(new ScheduleTemplate());
+            *rhs.schedule_template = node["schedule_template"].as<ScheduleTemplate>();
+        } else {
+            rhs.schedule_template = nullptr; // 没有 schedule template
+        }
+
+        // 可选字段：command_definitions
+        if (node["command_definitions"]) {
+            rhs.command_definitions = node["command_definitions"].as<std::vector<CommandDefinition>>();
+        } else {
+            rhs.command_definitions.clear(); // 没有 command definitions
+        }
 
         return true;
     }
@@ -285,13 +352,32 @@ inline bool validateWorkloadConfig(const WorkloadConfig& config) {
             return false;
         }
 
-        if (spec.schedule_template.total_timesteps <= 0) {
-            std::cerr << "Validation Error: Invalid total_timesteps in role '" << spec.role << "'" << std::endl;
-            return false;
+        // 验证 schedule_template（如果存在）
+        if (spec.has_schedule()) {
+            if (spec.schedule_template->total_timesteps <= 0) {
+                std::cerr << "Validation Error: Invalid total_timesteps in role '" << spec.role << "'" << std::endl;
+                return false;
+            }
+
+            if (spec.schedule_template->delta_events.empty()) {
+                std::cerr << "Validation Error: No delta events found in role '" << spec.role << "'" << std::endl;
+                return false;
+            }
         }
 
-        if (spec.schedule_template.delta_events.empty()) {
-            std::cerr << "Validation Error: No delta events found in role '" << spec.role << "'" << std::endl;
+        // 验证 command_definitions（如果存在）
+        if (spec.has_commands()) {
+            for (const auto& cmd : spec.command_definitions) {
+                if (!cmd.is_valid()) {
+                    std::cerr << "Validation Error: Invalid command definition in role '" << spec.role << "'" << std::endl;
+                    return false;
+                }
+            }
+        }
+
+        // 至少要有 schedule_template 或 command_definitions 中的一个
+        if (!spec.has_schedule() && !spec.has_commands()) {
+            std::cerr << "Validation Error: Role '" << spec.role << "' has neither schedule_template nor command_definitions" << std::endl;
             return false;
         }
     }
@@ -322,25 +408,46 @@ inline void printWorkloadConfig(const WorkloadConfig& config) {
     std::cout << "\nData Flow Specifications:" << std::endl;
     for (const auto& spec : config.data_flow_specs) {
         std::cout << "  Role: " << spec.role << std::endl;
-        std::cout << "    Schedule Template:" << std::endl;
-        std::cout << "      Total Timesteps: " << spec.schedule_template.total_timesteps << std::endl;
-        std::cout << "      Delta Events:" << std::endl;
 
-        for (const auto& event : spec.schedule_template.delta_events) {
-            std::cout << "        - Event: " << event.name << std::endl;
-            std::cout << "          Target Group: " << event.target_group << std::endl;
-            std::cout << "          Trigger Type: " << event.trigger.type << std::endl;
-            if (!event.trigger.params.empty()) {
-                std::cout << "          Trigger Params: ";
-                for (size_t i = 0; i < event.trigger.params.size(); ++i) {
-                    if (i > 0) std::cout << ", ";
-                    std::cout << event.trigger.params[i];
+        // 打印属性
+        if (spec.properties.compute_latency > 0) {
+            std::cout << "    Properties:" << std::endl;
+            std::cout << "      Compute Latency: " << spec.properties.compute_latency << std::endl;
+        }
+
+        // 打印调度模板（如果存在）
+        if (spec.has_schedule()) {
+            std::cout << "    Schedule Template:" << std::endl;
+            std::cout << "      Total Timesteps: " << spec.schedule_template->total_timesteps << std::endl;
+            std::cout << "      Delta Events:" << std::endl;
+
+            for (const auto& event : spec.schedule_template->delta_events) {
+                std::cout << "        - Event: " << event.name << std::endl;
+                std::cout << "          Target Group: " << event.target_group << std::endl;
+                std::cout << "          Trigger Type: " << event.trigger.type << std::endl;
+                if (!event.trigger.params.empty()) {
+                    std::cout << "          Trigger Params: ";
+                    for (size_t i = 0; i < event.trigger.params.size(); ++i) {
+                        if (i > 0) std::cout << ", ";
+                        std::cout << event.trigger.params[i];
+                    }
+                    std::cout << std::endl;
                 }
-                std::cout << std::endl;
+                std::cout << "          Data Delta: Weights=" << event.delta.weights
+                         << ", Inputs=" << event.delta.inputs
+                         << ", Outputs=" << event.delta.outputs << std::endl;
             }
-            std::cout << "          Data Delta: Weights=" << event.delta.weights
-                     << ", Inputs=" << event.delta.inputs
-                     << ", Outputs=" << event.delta.outputs << std::endl;
+        }
+
+        // 打印命令定义（如果存在）
+        if (spec.has_commands()) {
+            std::cout << "    Command Definitions:" << std::endl;
+            for (const auto& cmd : spec.command_definitions) {
+                std::cout << "        - Command " << cmd.command_id << ": " << cmd.name << std::endl;
+                std::cout << "          Evict Payload: Weights=" << cmd.evict_payload.weights
+                         << ", Inputs=" << cmd.evict_payload.inputs
+                         << ", Outputs=" << cmd.evict_payload.outputs << std::endl;
+            }
         }
     }
 

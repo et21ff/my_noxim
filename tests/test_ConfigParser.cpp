@@ -1,16 +1,77 @@
 #define CATCH_CONFIG_MAIN
 #include "catch.hpp"
 #include "ConfigParser.h" // 假设的路径
+#include "dbg.h"          // 用于调试输出
 
-// --- 准备一个用于测试的 YAML 字符串 ---
+// --- 准备一个用于测试的 YAML 字符串（完整的多角色配置）---
 const std::string test_yaml_content = R"(
 workload:
   working_set:
     - role: "ROLE_GLB"
       data:
         - { data_space: "Weights", size: 96, reuse_strategy: "resident" }
+        - { data_space: "Inputs", size: 18, reuse_strategy: "resident" }
+        - { data_space: "Outputs", size: 512, reuse_strategy: "resident" }
+    - role: "ROLE_COMPUTE"
+      data:
+        - { data_space: "Weights", size: 6, reuse_strategy: "temporal" }
+        - { data_space: "Inputs",  size: 3, reuse_strategy: "temporal" }
+        - { data_space: "Outputs", size: 2, reuse_strategy: "temporal" }
+
+
+  data_flow_specs:
+    # DRAM 规格
+    - role: "ROLE_DRAM"
+      schedule_template:
+        total_timesteps: 1
+        delta_events:
+          - trigger: { on_timestep: "default" }
+            name: "INITIAL_LOAD_TO_GLB"
+            delta: { weights: 96, inputs: 18, outputs: 512 }  # 改为小写
+            target_group: "ALL_GLBS"
+
+    # GLB 规格
+    - role: "ROLE_GLB"
+      schedule_template:
+        total_timesteps: 256
+        delta_events:
+          - trigger: { on_timestep_modulo: [16, 0] }
+            name: "FILL_TO_PES"
+            delta: { weights: 6, inputs: 3, outputs: 2 }     # 改为小写
+            target_group: "ALL_COMPUTE_PES"
+
+          - trigger: { on_timestep: "default" }
+            name: "DELTA_TO_PES"
+            delta: { weights: 0, inputs: 1, outputs: 2 }     # 改为小写
+            target_group: "ALL_COMPUTE_PES"
+
+      command_definitions:
+        - command_id: 0
+          name: "EVICT_AFTER_INIT_LOAD"
+          evict_payload: { weights: 96, inputs: 18, outputs: 512 }  # 改为小写
+
+    # COMPUTE PE 规格
+    - role: "ROLE_COMPUTE"
+      properties:
+        compute_latency: 6
+      command_definitions:
+        - command_id: 0
+          name: "EVICT_DELTA"
+          evict_payload: { weights: 0, inputs: 1, outputs: 2 }      # 改为小写
+        - command_id: 1
+          name: "EVICT_FULL_CONTEXT"
+          evict_payload: { weights: 6, inputs: 3, outputs: 2 }      # 改为小写
+)";
+
+// --- 简化的测试配置（仅用于基础测试）---
+const std::string simple_test_yaml_content = R"(
+workload:
+  working_set:
+    - role: "ROLE_GLB"
+      data:
+        - { data_space: "Weights", size: 96, reuse_strategy: "resident" }
         - { data_space: "Inputs",  size: 18, reuse_strategy: "resident" }
-  
+
   data_flow_specs:
     - role: "ROLE_GLB"
       schedule_template:
@@ -18,9 +79,9 @@ workload:
         delta_events:
           - name: "FILL"
             target_group: "ALL_COMPUTE_PES"
-            trigger: 
+            trigger:
               on_timestep_modulo: [16, 0]
-            delta: 
+            delta:
               weights: 6
               inputs: 3
               outputs: 2
@@ -36,74 +97,114 @@ workload:
 
 // --- 开始测试 ---
 
-TEST_CASE("YAML configuration is parsed correctly into WorkloadConfig struct", "[ConfigParser]") {
-    
+TEST_CASE("Complete multi-role YAML configuration is parsed correctly", "[ConfigParser][MultiRole]") {
+
     WorkloadConfig config;
-    
+
     // 使用 loadWorkloadConfigFromString 进行测试，避免文件 I/O
-    std::cout << "--- CATCH2 TEST: Starting test_ConfigParser ---" << std::endl;
+    std::cout << "--- CATCH2 TEST: Starting multi-role ConfigParser test ---" << std::endl;
     REQUIRE_NOTHROW(config = loadWorkloadConfigFromString(test_yaml_content));
 
     // 使用 validate 函数进行初步检查
     REQUIRE(validateWorkloadConfig(config) == true);
 
-    SECTION("Working Set is parsed correctly") {
-        REQUIRE(config.working_set.size() == 1);
+    SECTION("All roles are present in working set") {
+        REQUIRE(config.working_set.size() == 2);
+
+        // 验证 GLB 工作集
         const auto& glb_ws = config.working_set[0];
         REQUIRE(glb_ws.role == "ROLE_GLB");
-        REQUIRE(glb_ws.data.size() == 2);
+        REQUIRE(glb_ws.data.size() == 3);
         REQUIRE(glb_ws.data[0].data_space == "Weights");
         REQUIRE(glb_ws.data[0].size == 96);
         REQUIRE(glb_ws.data[1].data_space == "Inputs");
-        REQUIRE(glb_ws.data[1].reuse_strategy == "resident");
+        REQUIRE(glb_ws.data[1].size == 18);
+        REQUIRE(glb_ws.data[2].data_space == "Outputs");
+        REQUIRE(glb_ws.data[2].size == 512);
+
+        // 验证 COMPUTE 工作集
+        const auto& compute_ws = config.working_set[1];
+        REQUIRE(compute_ws.role == "ROLE_COMPUTE");
+        REQUIRE(compute_ws.data.size() == 3);
+        REQUIRE(compute_ws.data[0].size == 6);
+        REQUIRE(compute_ws.data[1].size == 3);
+        REQUIRE(compute_ws.data[2].size == 2);
     }
 
-    SECTION("Data Flow Specs are parsed correctly") {
-        REQUIRE(config.data_flow_specs.size() == 1);
-        const auto& glb_spec = config.data_flow_specs[0];
-        REQUIRE(glb_spec.role == "ROLE_GLB");
+    SECTION("All three role specs are parsed correctly") {
+        REQUIRE(config.data_flow_specs.size() == 3);
 
-        SECTION("Schedule Template is parsed correctly") {
-            const auto& tmpl = glb_spec.schedule_template;
+        SECTION("DRAM spec is parsed correctly") {
+            const auto* dram_spec = config.find_spec_for_role("ROLE_DRAM");
+            REQUIRE(dram_spec != nullptr);
+            REQUIRE(dram_spec->role == "ROLE_DRAM");
+            REQUIRE(dram_spec->has_schedule());
+            REQUIRE_FALSE(dram_spec->has_commands());
+
+            const auto& tmpl = *dram_spec->schedule_template;
+            REQUIRE(tmpl.total_timesteps == 1);
+            REQUIRE(tmpl.delta_events.size() == 1);
+
+            const auto& event = tmpl.delta_events[0];
+            REQUIRE(event.name == "INITIAL_LOAD_TO_GLB");
+            REQUIRE(event.delta.weights == 96);
+            REQUIRE(event.delta.inputs == 18);
+            REQUIRE(event.delta.outputs == 512);
+        }
+
+        SECTION("GLB spec is parsed correctly") {
+            const auto* glb_spec = config.find_spec_for_role("ROLE_GLB");
+            REQUIRE(glb_spec != nullptr);
+            REQUIRE(glb_spec->role == "ROLE_GLB");
+            REQUIRE(glb_spec->has_schedule());
+            REQUIRE(glb_spec->has_commands());
+
+            // 验证调度模板
+            const auto& tmpl = *glb_spec->schedule_template;
             REQUIRE(tmpl.total_timesteps == 256);
             REQUIRE(tmpl.delta_events.size() == 2);
+
+            // 验证命令定义
+            REQUIRE(glb_spec->command_definitions.size() == 1);
+            const auto& cmd = glb_spec->command_definitions[0];
+            REQUIRE(cmd.command_id == 0);
+            REQUIRE(cmd.name == "EVICT_AFTER_INIT_LOAD");
+            dbg(cmd.evict_payload.weights);
+            dbg(cmd.evict_payload.inputs);
+            dbg(cmd.evict_payload.outputs);
+            REQUIRE(cmd.evict_payload.weights == 96);
+            REQUIRE(cmd.evict_payload.inputs == 18);
+            REQUIRE(cmd.evict_payload.outputs == 512);
         }
 
-        SECTION("FILL Delta Event is parsed correctly") {
-            const auto& fill_event = glb_spec.schedule_template.delta_events[0];
-            REQUIRE(fill_event.name == "FILL");
-            REQUIRE(fill_event.target_group == "ALL_COMPUTE_PES");
-            
-            // 验证 Trigger
-            REQUIRE(fill_event.trigger.type == "on_timestep_modulo");
-            REQUIRE(fill_event.trigger.params.size() == 2);
-            REQUIRE(fill_event.trigger.params[0] == 16);
-            REQUIRE(fill_event.trigger.params[1] == 0);
+        SECTION("COMPUTE spec is parsed correctly") {
+            const auto* compute_spec = config.find_spec_for_role("ROLE_COMPUTE");
+            REQUIRE(compute_spec != nullptr);
+            REQUIRE(compute_spec->role == "ROLE_COMPUTE");
+            REQUIRE_FALSE(compute_spec->has_schedule());
+            REQUIRE(compute_spec->has_commands());
 
-            // 验证 Delta
-            REQUIRE(fill_event.delta.weights == 6);
-            REQUIRE(fill_event.delta.inputs == 3);
-            REQUIRE(fill_event.delta.outputs == 2);
-        }
+            // 验证属性
+            REQUIRE(compute_spec->properties.compute_latency == 6);
 
-        SECTION("DELTA Delta Event is parsed correctly") {
-            const auto& delta_event = glb_spec.schedule_template.delta_events[1];
-            REQUIRE(delta_event.name == "DELTA");
+            // 验证命令定义
+            REQUIRE(compute_spec->command_definitions.size() == 2);
 
-            // 验证 Trigger
-            REQUIRE(delta_event.trigger.type == "default");
-            REQUIRE(delta_event.trigger.is_default() == true);
-            
-            // 验证 Delta
-            REQUIRE(delta_event.delta.weights == 0);
-            REQUIRE(delta_event.delta.inputs == 1);
-            REQUIRE(delta_event.delta.outputs == 2);
+            const auto& cmd1 = compute_spec->command_definitions[0];
+            REQUIRE(cmd1.command_id == 0);
+            REQUIRE(cmd1.name == "EVICT_DELTA");
+            REQUIRE(cmd1.evict_payload.weights == 0);
+            REQUIRE(cmd1.evict_payload.inputs == 1);
+            REQUIRE(cmd1.evict_payload.outputs == 2);
+
+            const auto& cmd2 = compute_spec->command_definitions[1];
+            REQUIRE(cmd2.command_id == 1);
+            REQUIRE(cmd2.name == "EVICT_FULL_CONTEXT");
+            REQUIRE(cmd2.evict_payload.weights == 6);
+            REQUIRE(cmd2.evict_payload.inputs == 3);
+            REQUIRE(cmd2.evict_payload.outputs == 2);
         }
     }
-    
-    // 可以在这里调用 printWorkloadConfig(config) 来手动检查
-    // std::cout << "\n--- Parsed Config For Visual Inspection ---" << std::endl;
-    // printWorkloadConfig(config);
 }
 
 TEST_CASE("YAML parsing handles errors gracefully", "[ConfigParser]") {
