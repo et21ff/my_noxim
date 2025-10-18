@@ -10,7 +10,7 @@
 // TaskManager 类实现（支持新 YAML 格式）
 //========================================================================
 
-void TaskManager::ConfigureFromYAML(const std::string& yaml_file_path) {
+void TaskManager::ConfigureFromYAML(const std::string& yaml_file_path, const std::string& role) {
     std::cout << "TaskManager: Loading configuration from YAML file: " << yaml_file_path << std::endl;
 
     try {
@@ -25,7 +25,7 @@ void TaskManager::ConfigureFromYAML(const std::string& yaml_file_path) {
         std::cout << "TaskManager: YAML configuration loaded and validated successfully" << std::endl;
 
         // 调用现有的配置方法
-        Configure(config);
+        Configure(config, role);
 
     } catch (const std::exception& e) {
         std::cerr << "TaskManager: Error loading YAML configuration: " << e.what() << std::endl;
@@ -33,24 +33,78 @@ void TaskManager::ConfigureFromYAML(const std::string& yaml_file_path) {
     }
 }
 
-void TaskManager::Configure(const WorkloadConfig& config) {
-    std::cout << "TaskManager: Starting configuration with new YAML format" << std::endl;
+void TaskManager::Configure(const WorkloadConfig& config ,const std::string& role) {
+    std::cout << "TaskManager: Starting configuration for role '" << role << "'" << std::endl;
 
     // 存储配置
     config_ = config;
 
+    // 打印配置摘要
+    std::cout << "TaskManager: Configuration summary:" << std::endl;
+    std::cout << "  - Working sets: " << config.working_set.size() << std::endl;
+    std::cout << "  - Data flow specs: " << config.data_flow_specs.size() << std::endl;
+
+    // 打印所有已配置的角色
+    auto roles = config.get_all_roles();
+    std::cout << "  - Configured roles: ";
+    for (size_t i = 0; i < roles.size(); ++i) {
+        if (i > 0) std::cout << ", ";
+        std::cout << roles[i];
+    }
+    std::cout << std::endl;
+
     // 清空现有任务
     all_tasks_.clear();
 
-    // 查找 GLB 角色的数据流规格
-    const DataFlowSpec* glb_spec = find_data_flow_spec("ROLE_GLB");
-    if (!glb_spec) {
-        std::cout << "TaskManager: Warning - No ROLE_GLB data flow spec found" << std::endl;
+    // 查找指定角色的数据流规格（使用 TaskManager 的私有辅助函数）
+    const DataFlowSpec* spec = find_data_flow_spec(role);
+    if (!spec) {
+        std::cout << "TaskManager: Warning - No data flow spec found for role '" << role << "'" << std::endl;
         return;
     }
 
-    const ScheduleTemplate& schedule = glb_spec->schedule_template;
-    std::cout << "TaskManager: Found GLB schedule with " << schedule.total_timesteps
+    // 查找角色的工作集（使用 TaskManager 的私有辅助函数）
+    role_working_set_ = find_working_set_for_role(role);
+    if (!role_working_set_) {
+        std::cout << "TaskManager: Warning - No working set found for role '" << role << "'" << std::endl;
+    }
+
+    // 打印角色的详细信息
+    std::cout << "TaskManager: Role '" << role << "' details:" << std::endl;
+    std::cout << "  - Has schedule template: " << (spec->has_schedule() ? "Yes" : "No") << std::endl;
+    std::cout << "  - Has command definitions: " << (spec->has_commands() ? "Yes" : "No") << std::endl;
+    std::cout << "  - Compute latency: " << spec->properties.compute_latency << std::endl;
+    if (role_working_set_) {
+        std::cout << "  - Working set found for role '" << role << "'" << std::endl;
+    }
+    
+
+    // 如果有命令定义，打印它们
+    if (spec->has_commands()) {
+        std::cout << "  - Command definitions (" << spec->command_definitions.size() << "):" << std::endl;
+        for (const auto& cmd : spec->command_definitions) {
+            std::cout << "    * ID " << cmd.command_id << ": " << cmd.name;
+            if (!cmd.evict_payload.is_empty()) {
+                std::cout << " (evict: W=" << cmd.evict_payload.weights
+                         << ", I=" << cmd.evict_payload.inputs
+                         << ", O=" << cmd.evict_payload.outputs << ")";
+            }
+            std::cout << std::endl;
+        }
+    }
+
+    // 存储角色的属性和命令定义（使用 TaskManager 的公共接口）
+    role_properties_ = get_properties_for_role(role);
+    role_commands_ = get_commands_for_role(role);
+
+    // 只有当角色有调度模板时才继续处理
+    if (!spec->has_schedule()) {
+        std::cout << "TaskManager: Role '" << role << "' has no schedule template, skipping task generation" << std::endl;
+        return;
+    }
+
+    const ScheduleTemplate& schedule = *spec->schedule_template;
+    std::cout << "TaskManager: Found " << role << " schedule with " << schedule.total_timesteps
               << " timesteps and " << schedule.delta_events.size() << " delta events" << std::endl;
 
     // 调整任务向量大小以匹配总时间步数
@@ -103,12 +157,11 @@ DispatchTask TaskManager::get_task_for_timestep(int timestep) const {
 //========================================================================
 
 const DataFlowSpec* TaskManager::find_data_flow_spec(const std::string& role) const {
-    for (const auto& spec : config_.data_flow_specs) {
-        if (spec.role == role) {
-            return &spec;
-        }
-    }
-    return nullptr;
+    return config_.find_spec_for_role(role);
+}
+
+const RoleWorkingSet* TaskManager::find_working_set_for_role(const std::string& role) const {
+    return config_.find_working_set_for_role(role);
 }
 
 std::vector<int> TaskManager::resolve_target_group(const std::string& target_group) const {

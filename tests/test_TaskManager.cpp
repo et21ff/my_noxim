@@ -47,17 +47,17 @@ workload:
             trigger:
               on_timestep: 0
             delta:
-              weights: 6
-              inputs: 3
-              outputs: 2
+              Weights: 6
+              Inputs: 3
+              Outputs: 2
           - name: "DELTA"
             target_group: "ALL_COMPUTE_PES"
             trigger:
               on_timestep: "default"
             delta:
-              weights: 0
-              inputs: 1
-              outputs: 2
+              Weights: 0
+              Inputs: 1
+              Outputs: 2
 )";
 
     // 解析配置
@@ -65,7 +65,7 @@ workload:
 
     // 配置 TaskManager
     TaskManager task_manager;
-    task_manager.Configure(config);
+    task_manager.Configure(config, "ROLE_GLB");
 
     // 基本配置验证
     REQUIRE(task_manager.is_configured() == true);
@@ -105,13 +105,13 @@ workload:
             trigger:
               on_timestep_modulo: [16, 0]
             delta:
-              weights: 100
+              Weights: 100
           - name: "DELTA"
             target_group: "ALL_COMPUTE_PES"
             trigger:
               on_timestep: "default"
             delta:
-              inputs: 10
+              Inputs: 10
 )";
 
     // 解析配置
@@ -119,7 +119,7 @@ workload:
 
     // 配置 TaskManager
     TaskManager task_manager;
-    task_manager.Configure(config);
+    task_manager.Configure(config, "ROLE_GLB");
 
     // 验证 timestep 0: 应该包含 Weights，大小为 100 (因为 0 % 16 == 0)
     DispatchTask task0 = task_manager.get_task_for_timestep(0);
@@ -162,7 +162,7 @@ workload:
         TaskManager task_manager;
 
         // 空配置应该不会导致配置成功
-        task_manager.Configure(config);
+        task_manager.Configure(config, "ROLE_GLB");
         REQUIRE(task_manager.is_configured() == false);
         REQUIRE(task_manager.get_total_timesteps() == 0);
     }
@@ -181,14 +181,14 @@ workload:
             trigger:
               on_timestep: "default"
             delta:
-              inputs: 1
+              Inputs: 1
 )";
 
         WorkloadConfig config = loadWorkloadConfigFromString(no_glb_yaml_content);
         TaskManager task_manager;
 
         // 没有 GLB 规格的配置应该不会导致配置成功
-        task_manager.Configure(config);
+        task_manager.Configure(config, "ROLE_GLB");
         REQUIRE(task_manager.is_configured() == false);
         REQUIRE(task_manager.get_total_timesteps() == 0);
     }
@@ -207,12 +207,12 @@ workload:
             trigger:
               on_timestep: "default"
             delta:
-              inputs: 1
+              Inputs: 1
 )";
 
         WorkloadConfig config = loadWorkloadConfigFromString(valid_yaml_content);
         TaskManager task_manager;
-        task_manager.Configure(config);
+        task_manager.Configure(config, "ROLE_GLB");
 
         // 测试负数时间步
         DispatchTask task_neg = task_manager.get_task_for_timestep(-1);
@@ -239,12 +239,12 @@ workload:
             trigger:
               on_timestep: "default"
             delta:
-              inputs: 1
+              Inputs: 1
 )";
 
         WorkloadConfig config = loadWorkloadConfigFromString(valid_yaml_content);
         TaskManager task_manager;
-        task_manager.Configure(config);
+        task_manager.Configure(config, "ROLE_GLB");
 
         // 验证配置成功
         REQUIRE(task_manager.is_configured() == true);
@@ -273,12 +273,12 @@ workload:
             trigger:
               on_timestep: "default"
             delta:
-              inputs: 5
+              Inputs: 5
 )";
 
         WorkloadConfig config = loadWorkloadConfigFromString(yaml_content);
         TaskManager task_manager;
-        task_manager.Configure(config);
+        task_manager.Configure(config, "ROLE_GLB");
 
         DispatchTask task = task_manager.get_task_for_timestep(0);
 
@@ -302,14 +302,14 @@ workload:
             trigger:
               on_timestep: "default"
             delta:
-              weights: 8
-              inputs: 4
-              outputs: 6
+              Weights: 8
+              Inputs: 4
+              Outputs: 6
 )";
 
         WorkloadConfig config = loadWorkloadConfigFromString(yaml_content);
         TaskManager task_manager;
-        task_manager.Configure(config);
+        task_manager.Configure(config, "ROLE_GLB");
 
         DispatchTask task = task_manager.get_task_for_timestep(0);
 
@@ -338,24 +338,24 @@ workload:
             trigger:
               on_timestep: 0
             delta:
-              weights: 10
+              Weights: 10
           - name: "FILL_8"
             target_group: "ALL_COMPUTE_PES"
             trigger:
               on_timestep: 8
             delta:
-              weights: 20
+              Weights: 20
           - name: "DELTA"
             target_group: "ALL_COMPUTE_PES"
             trigger:
               on_timestep: "default"
             delta:
-              inputs: 1
+              Inputs: 1
 )";
 
         WorkloadConfig config = loadWorkloadConfigFromString(yaml_content);
         TaskManager task_manager;
-        task_manager.Configure(config);
+        task_manager.Configure(config, "ROLE_GLB");
 
         // 验证 timestep 0: 特定的 FILL_0 事件
         DispatchTask task0 = task_manager.get_task_for_timestep(0);
@@ -374,6 +374,205 @@ workload:
         DispatchTask task16 = task_manager.get_task_for_timestep(16);
         REQUIRE(task16.sub_tasks.count(DataType::WEIGHT) == 0);
         REQUIRE(task16.sub_tasks.at(DataType::INPUT).size == 1);
+    }
+}
+
+TEST_CASE("Multi-role configuration with working_set, compute_latency, and command_definitions", "[TaskManager][MultiRole]") {
+    // 创建测试用的完整多角色 YAML 内容
+    const std::string multi_role_yaml_content = R"(
+workload:
+  working_set:
+    - role: "ROLE_GLB"
+      data:
+        - { data_space: "Weights", size: 96, reuse_strategy: "resident" }
+        - { data_space: "Inputs",  size: 18, reuse_strategy: "resident" }
+        - { data_space: "Outputs", size: 512, reuse_strategy: "resident" }
+
+    - role: "ROLE_COMPUTE"
+      data:
+        - { data_space: "Weights", size: 6, reuse_strategy: "resident" }
+        - { data_space: "Inputs",  size: 3, reuse_strategy: "resident" }
+        - { data_space: "Outputs", size: 2, reuse_strategy: "resident" }
+
+
+  data_flow_specs:
+    - role: "ROLE_DRAM"
+      schedule_template:
+        total_timesteps: 1
+        delta_events:
+          - trigger: { on_timestep: "default" }
+            name: "INITIAL_LOAD_TO_GLB"
+            delta: { Weights: 96, Inputs: 18, Outputs: 512 }
+            target_group: "1" 
+
+    - role: "ROLE_GLB"
+      schedule_template:
+        total_timesteps: 256
+        delta_events:
+          - trigger: { on_timestep_modulo: [16, 0] }
+            name: "FILL_TO_PES"
+            delta: { Weights: 6, Inputs: 3, Outputs: 2 }
+            target_group: "ALL_COMPUTE_PES"
+          - trigger: { on_timestep: "default" }
+            name: "DELTA_TO_PES"
+            delta: { Weights: 0, Inputs: 1, Outputs: 2 }
+            target_group: "ALL_COMPUTE_PES"
+      command_definitions:
+        - command_id: 0
+          name: "EVICT_AFTER_INIT_LOAD"
+          evict_payload: { Weights: 96, Inputs: 18, Outputs: 512 }
+
+    - role: "ROLE_COMPUTE"
+      properties:
+        compute_latency: 6
+      command_definitions:
+        - command_id: 0
+          name: "EVICT_DELTA"
+          evict_payload: { Weights: 0, Inputs: 1, Outputs: 2 }
+        - command_id: 1
+          name: "EVICT_FULL_CONTEXT"
+          evict_payload: { Weights: 6, Inputs: 3, Outputs: 2 }
+)";
+
+    SECTION("GLB role configuration") {
+        WorkloadConfig config = loadWorkloadConfigFromString(multi_role_yaml_content);
+        TaskManager glb_manager;
+
+        // 配置 GLB 角色
+        REQUIRE_NOTHROW(glb_manager.Configure(config, "ROLE_GLB"));
+
+        // 验证 GLB 工作集
+        const RoleWorkingSet* glb_ws = glb_manager.get_working_set_for_role("ROLE_GLB");
+        REQUIRE(glb_ws != nullptr);
+        REQUIRE(glb_ws->role == "ROLE_GLB");
+        REQUIRE(glb_ws->data.size() == 3);
+        REQUIRE(glb_ws->data[0].data_space == "Weights");
+        REQUIRE(glb_ws->data[0].size == 96);
+        REQUIRE(glb_ws->data[1].data_space == "Inputs");
+        REQUIRE(glb_ws->data[1].size == 18);
+        REQUIRE(glb_ws->data[2].data_space == "Outputs");
+        REQUIRE(glb_ws->data[2].size == 512);
+
+        // 验证 GLB 角色有调度模板和命令定义
+        REQUIRE(glb_manager.role_has_schedule_template("ROLE_GLB") == true);
+        REQUIRE(glb_manager.role_has_command_definitions("ROLE_GLB") == true);
+
+        // 验证 GLB 调度任务生成
+        REQUIRE(glb_manager.get_total_timesteps() == 256);
+
+        // 验证 FILL 事件（timestep 0）
+        DispatchTask fill_task = glb_manager.get_task_for_timestep(0);
+        REQUIRE(fill_task.sub_tasks.find(DataType::WEIGHT) != fill_task.sub_tasks.end());
+        REQUIRE(fill_task.sub_tasks.at(DataType::WEIGHT).size == 6);
+        REQUIRE(fill_task.sub_tasks.at(DataType::INPUT).size == 3);
+        REQUIRE(fill_task.sub_tasks.at(DataType::OUTPUT).size == 2);
+
+        // 验证 DELTA 事件（timestep 1）
+        DispatchTask delta_task = glb_manager.get_task_for_timestep(1);
+        REQUIRE(delta_task.sub_tasks.find(DataType::WEIGHT) == delta_task.sub_tasks.end());
+        REQUIRE(delta_task.sub_tasks.at(DataType::INPUT).size == 1);
+        REQUIRE(delta_task.sub_tasks.at(DataType::OUTPUT).size == 2);
+
+        // 验证命令定义
+        const std::vector<CommandDefinition>* glb_commands = glb_manager.get_commands_for_role("ROLE_GLB");
+        REQUIRE(glb_commands != nullptr);
+        REQUIRE(glb_commands->size() == 1);
+        REQUIRE(glb_commands->at(0).command_id == 0);
+        REQUIRE(glb_commands->at(0).name == "EVICT_AFTER_INIT_LOAD");
+        REQUIRE(glb_commands->at(0).evict_payload.weights == 96);
+        REQUIRE(glb_commands->at(0).evict_payload.inputs == 18);
+        REQUIRE(glb_commands->at(0).evict_payload.outputs == 512);
+    }
+
+    SECTION("COMPUTE role configuration") {
+        WorkloadConfig config = loadWorkloadConfigFromString(multi_role_yaml_content);
+        TaskManager compute_manager;
+
+        // 配置 COMPUTE 角色
+        REQUIRE_NOTHROW(compute_manager.Configure(config, "ROLE_COMPUTE"));
+
+        // 验证 COMPUTE 工作集
+        const RoleWorkingSet* compute_ws = compute_manager.get_working_set_for_role("ROLE_COMPUTE");
+        REQUIRE(compute_ws != nullptr);
+        REQUIRE(compute_ws->role == "ROLE_COMPUTE");
+        REQUIRE(compute_ws->data.size() == 3);
+        REQUIRE(compute_ws->data[0].size == 6);
+        REQUIRE(compute_ws->data[1].size == 3);
+        REQUIRE(compute_ws->data[2].size == 2);
+
+        // 验证 COMPUTE 角色的属性
+        int compute_latency = compute_manager.get_compute_latency_for_role("ROLE_COMPUTE");
+        REQUIRE(compute_latency == 6);
+
+        // 验证 COMPUTE 角色没有调度模板但有命令定义
+        REQUIRE(compute_manager.role_has_schedule_template("ROLE_COMPUTE") == false);
+        REQUIRE(compute_manager.role_has_command_definitions("ROLE_COMPUTE") == true);
+
+        // 验证 COMPUTE 角色不生成调度任务
+        REQUIRE(compute_manager.get_total_timesteps() == 0);
+
+        // 验证命令定义
+        const std::vector<CommandDefinition>* compute_commands = compute_manager.get_commands_for_role("ROLE_COMPUTE");
+        REQUIRE(compute_commands != nullptr);
+        REQUIRE(compute_commands->size() == 2);
+
+        REQUIRE(compute_commands->at(0).command_id == 0);
+        REQUIRE(compute_commands->at(0).name == "EVICT_DELTA");
+        REQUIRE(compute_commands->at(0).evict_payload.weights == 0);
+        REQUIRE(compute_commands->at(0).evict_payload.inputs == 1);
+        REQUIRE(compute_commands->at(0).evict_payload.outputs == 2);
+
+        REQUIRE(compute_commands->at(1).command_id == 1);
+        REQUIRE(compute_commands->at(1).name == "EVICT_FULL_CONTEXT");
+        REQUIRE(compute_commands->at(1).evict_payload.weights == 6);
+        REQUIRE(compute_commands->at(1).evict_payload.inputs == 3);
+        REQUIRE(compute_commands->at(1).evict_payload.outputs == 2);
+    }
+
+    SECTION("DRAM role configuration") {
+        WorkloadConfig config = loadWorkloadConfigFromString(multi_role_yaml_content);
+        TaskManager dram_manager;
+
+        // 配置 DRAM 角色
+        REQUIRE_NOTHROW(dram_manager.Configure(config, "ROLE_DRAM"));
+
+        // 验证 DRAM 角色有调度模板但没有命令定义
+        REQUIRE(dram_manager.role_has_schedule_template("ROLE_DRAM") == true);
+        REQUIRE(dram_manager.role_has_command_definitions("ROLE_DRAM") == false);
+
+        // 验证 DRAM 调度任务生成
+        REQUIRE(dram_manager.get_total_timesteps() == 1);
+
+        
+
+        DispatchTask dram_task = dram_manager.get_task_for_timestep(0);
+        REQUIRE(dram_task.sub_tasks.find(DataType::WEIGHT) != dram_task.sub_tasks.end());
+        REQUIRE(dram_task.sub_tasks.at(DataType::WEIGHT).size == 96);
+        REQUIRE(dram_task.sub_tasks.at(DataType::INPUT).size == 18);
+        REQUIRE(dram_task.sub_tasks.at(DataType::OUTPUT).size == 512);
+    }
+
+    SECTION("Role utility functions") {
+        WorkloadConfig config = loadWorkloadConfigFromString(multi_role_yaml_content);
+        TaskManager manager;
+        manager.Configure(config, "ROLE_GLB");
+
+        // 测试角色列表获取
+        auto roles = manager.get_all_configured_roles();
+        // REQUIRE(roles.size() == 3);
+        // REQUIRE(std::find(roles.begin(), roles.end(), "ROLE_GLB") != roles.end());
+        // REQUIRE(std::find(roles.begin(), roles.end(), "ROLE_COMPUTE") != roles.end());
+        // REQUIRE(std::find(roles.begin(), roles.end(), "ROLE_DRAM") != roles.end());
+
+        // 测试工作数据大小计算
+        size_t glb_size = manager.get_total_working_data_size_for_role("ROLE_GLB");
+        size_t compute_size = manager.get_total_working_data_size_for_role("ROLE_COMPUTE");
+        REQUIRE(glb_size == 96 + 18 + 512);  // 626
+        REQUIRE(compute_size == 6 + 3 + 2);   // 11
+
+        // 测试默认计算延迟
+        int dram_latency = manager.get_compute_latency_for_role("ROLE_DRAM");
+        REQUIRE(dram_latency == 0); // DRAM 没有定义计算延迟，应该返回默认值 0
     }
 }
 

@@ -100,9 +100,14 @@ class TaskManager {
 private:
     std::vector<DispatchTask> all_tasks_;  // 存储整个任务时间线
     WorkloadConfig config_;                 // 存储工作负载配置
+    const RoleWorkingSet* role_working_set_; // GLB 角色的工作集
+    const RoleProperties* role_properties_; // GLB 角色的属性
+    const std::vector<CommandDefinition>* role_commands_; // GLB 角色的命令定义
 
     // 私有辅助函数
     const DataFlowSpec* find_data_flow_spec(const std::string& role) const;
+    const RoleWorkingSet* find_working_set_for_role(const std::string& role) const;
+
     std::vector<int> resolve_target_group(const std::string& target_group) const;
     void create_dispatch_task_from_event(DispatchTask& task, const DeltaEvent& event, int timestep) const;
     bool matches_trigger_condition(const Trigger& trigger, int timestep) const;
@@ -128,13 +133,13 @@ public:
      * @brief 从工作负载配置中设置任务
      * @param config 工作负载配置
      */
-    void Configure(const WorkloadConfig& config);
+    void Configure(const WorkloadConfig& config ,const std::string& role);
 
     /**
      * @brief 从 YAML 文件配置任务
      * @param yaml_file_path YAML 文件路径
      */
-    void ConfigureFromYAML(const std::string& yaml_file_path);
+    void ConfigureFromYAML(const std::string& yaml_file_path , const std::string& role);
 
     /**
      * @brief 获取指定时间步的任务
@@ -175,6 +180,82 @@ public:
             std::cout << "Timestep " << i << ": " << all_tasks_[i].to_string() << std::endl;
         }
         std::cout << "=============================" << std::endl;
+    }
+
+    // --- 新增：访问工作集配置的接口 ---
+
+    /**
+     * @brief 获取指定角色的工作集
+     * @param role 角色名称
+     * @return 角色工作集指针，如果不存在则返回 nullptr
+     */
+    const RoleWorkingSet* get_working_set_for_role(const std::string& role) const {
+        return config_.find_working_set_for_role(role);
+    }
+
+    /**
+     * @brief 获取指定角色的属性
+     * @param role 角色名称
+     * @return 角色属性指针，如果不存在则返回 nullptr
+     */
+    const RoleProperties* get_properties_for_role(const std::string& role) const {
+        return config_.find_properties_for_role(role);
+    }
+
+    /**
+     * @brief 获取指定角色的命令定义
+     * @param role 角色名称
+     * @return 命令定义向量指针，如果不存在则返回 nullptr
+     */
+    const std::vector<CommandDefinition>* get_commands_for_role(const std::string& role) const {
+        return config_.find_commands_for_role(role);
+    }
+
+    /**
+     * @brief 获取角色的总工作数据大小
+     * @param role 角色名称
+     * @return 总数据大小（字节）
+     */
+    size_t get_total_working_data_size_for_role(const std::string& role) const {
+        return config_.get_total_working_data_size_for_role(role);
+    }
+
+    /**
+     * @brief 获取角色的计算延迟
+     * @param role 角色名称
+     * @return 计算延迟（时钟周期），如果未定义则返回 0
+     */
+    int get_compute_latency_for_role(const std::string& role) const {
+        const RoleProperties* props = get_properties_for_role(role);
+        return props ? props->compute_latency : 0;
+    }
+
+    /**
+     * @brief 获取所有已配置的角色列表
+     * @return 角色名称向量
+     */
+    std::vector<std::string> get_all_configured_roles() const {
+        return config_.get_all_roles();
+    }
+
+    /**
+     * @brief 检查角色是否有调度模板
+     * @param role 角色名称
+     * @return 如果角色有调度模板则返回 true
+     */
+    bool role_has_schedule_template(const std::string& role) const {
+        const DataFlowSpec* spec = config_.find_spec_for_role(role);
+        return spec && spec->has_schedule();
+    }
+
+    /**
+     * @brief 检查角色是否有命令定义
+     * @param role 角色名称
+     * @return 如果角色有命令定义则返回 true
+     */
+    bool role_has_command_definitions(const std::string& role) const {
+        const DataFlowSpec* spec = config_.find_spec_for_role(role);
+        return spec && spec->has_commands();
     }
 };
 

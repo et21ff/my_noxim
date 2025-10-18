@@ -25,22 +25,22 @@ struct convert<DataDelta> {
         }
 
         // 解析 weights 字段
-        if (node["weights"]) {
-            rhs.weights = node["weights"].as<size_t>();
+        if (node["Weights"]) {
+            rhs.weights = node["Weights"].as<size_t>();
         } else {
             rhs.weights = 0; // 默认值
         }
 
         // 解析 inputs 字段
-        if (node["inputs"]) {
-            rhs.inputs = node["inputs"].as<size_t>();
+        if (node["Inputs"]) {
+            rhs.inputs = node["Inputs"].as<size_t>();
         } else {
             rhs.inputs = 0; // 默认值
         }
 
         // 解析 outputs 字段
-        if (node["outputs"]) {
-            rhs.outputs = node["outputs"].as<size_t>();
+        if (node["Outputs"]) {
+            rhs.outputs = node["Outputs"].as<size_t>();
         } else {
             rhs.outputs = 0; // 默认值
         }

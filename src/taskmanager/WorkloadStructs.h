@@ -137,6 +137,34 @@ struct DataFlowSpec {
 
     DataFlowSpec() = default;
 
+        // 自定义拷贝构造函数
+    DataFlowSpec(const DataFlowSpec& other) 
+        : role(other.role), properties(other.properties), command_definitions(other.command_definitions) {
+        if (other.schedule_template) {
+            schedule_template = std::unique_ptr<ScheduleTemplate>(new ScheduleTemplate(*other.schedule_template));
+        }
+    }
+
+    // 自定义拷贝赋值运算符
+    DataFlowSpec& operator=(const DataFlowSpec& other) {
+        if (this != &other) {
+            role = other.role;
+            properties = other.properties;
+            command_definitions = other.command_definitions;
+            
+            if (other.schedule_template) {
+                schedule_template = std::unique_ptr<ScheduleTemplate>(new ScheduleTemplate(*other.schedule_template));
+            } else {
+                schedule_template.reset();
+            }
+        }
+        return *this;
+    }
+
+    // 移动构造函数（默认即可）
+    DataFlowSpec(DataFlowSpec&&) = default;
+    DataFlowSpec& operator=(DataFlowSpec&&) = default;
+
     bool has_schedule() const {
         return schedule_template != nullptr && schedule_template->is_valid();
     }
@@ -233,6 +261,31 @@ struct WorkloadConfig {
             }
         }
         return nullptr;
+    }
+    
+    const RoleProperties* find_properties_for_role(const std::string& role) const {
+        const DataFlowSpec* spec = find_spec_for_role(role);
+        if (spec) {
+            return &spec->properties;
+        }
+        return nullptr;
+    }
+
+    const std::vector<CommandDefinition>* find_commands_for_role(const std::string& role) const {
+        const DataFlowSpec* spec = find_spec_for_role(role);
+        if (spec && spec->has_commands()) {
+            return &spec->command_definitions;
+        }
+        return nullptr;
+    }
+
+    // 获取角色的总工作数据大小
+    size_t get_total_working_data_size_for_role(const std::string& role) const {
+        const RoleWorkingSet* ws = find_working_set_for_role(role);
+        if (ws) {
+            return ws->get_total_data_size();
+        }
+        return 0;
     }
 
     // 获取所有角色列表

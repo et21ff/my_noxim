@@ -27,7 +27,7 @@ workload:
         delta_events:
           - trigger: { on_timestep: "default" }
             name: "INITIAL_LOAD_TO_GLB"
-            delta: { weights: 96, inputs: 18, outputs: 512 }  # 改为小写
+            delta: { Weights: 96, Inputs: 18, Outputs: 512 }  # 改为小写
             target_group: "ALL_GLBS"
 
     # GLB 规格
@@ -37,18 +37,18 @@ workload:
         delta_events:
           - trigger: { on_timestep_modulo: [16, 0] }
             name: "FILL_TO_PES"
-            delta: { weights: 6, inputs: 3, outputs: 2 }     # 改为小写
+            delta: { Weights: 6, Inputs: 3, Outputs: 2 }     # 改为小写
             target_group: "ALL_COMPUTE_PES"
 
           - trigger: { on_timestep: "default" }
             name: "DELTA_TO_PES"
-            delta: { weights: 0, inputs: 1, outputs: 2 }     # 改为小写
+            delta: { Weights: 0, Inputs: 1, Outputs: 2 }     # 改为小写
             target_group: "ALL_COMPUTE_PES"
 
       command_definitions:
         - command_id: 0
           name: "EVICT_AFTER_INIT_LOAD"
-          evict_payload: { weights: 96, inputs: 18, outputs: 512 }  # 改为小写
+          evict_payload: { Weights: 96, Inputs: 18, Outputs: 512 }  # 改为小写
 
     # COMPUTE PE 规格
     - role: "ROLE_COMPUTE"
@@ -57,10 +57,10 @@ workload:
       command_definitions:
         - command_id: 0
           name: "EVICT_DELTA"
-          evict_payload: { weights: 0, inputs: 1, outputs: 2 }      # 改为小写
+          evict_payload: { Weights: 0, Inputs: 1, Outputs: 2 }      # 改为小写
         - command_id: 1
           name: "EVICT_FULL_CONTEXT"
-          evict_payload: { weights: 6, inputs: 3, outputs: 2 }      # 改为小写
+          evict_payload: { Weights: 6, Inputs: 3, Outputs: 2 }      # 改为小写
 )";
 
 // --- 简化的测试配置（仅用于基础测试）---
@@ -82,17 +82,17 @@ workload:
             trigger:
               on_timestep_modulo: [16, 0]
             delta:
-              weights: 6
-              inputs: 3
-              outputs: 2
+              Weights: 6
+              Inputs: 3
+              Outputs: 2
           - name: "DELTA"
             target_group: "ALL_COMPUTE_PES"
             trigger:
               on_timestep: "default"
             delta:
-              weights: 0
-              inputs: 1
-              outputs: 2
+              Weights: 0
+              Inputs: 1
+              Outputs: 2
 )";
 
 // --- 开始测试 ---
