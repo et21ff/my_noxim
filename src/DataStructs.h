@@ -14,6 +14,7 @@
 #include <systemc.h>
 #include <vector>
 #include "GlobalParams.h"
+#include <DataTypes.h>
 
 // Coord -- XY coordinates type of the Tile inside the Mesh
 class Coord {
@@ -43,15 +44,21 @@ struct Packet {
     int src_id;
     int dst_id;
     int vc_id;
-    double timestamp;		// SC timestamp at packet generation
+    int logical_timestamp;		// SC timestamp at packet generation
     int size;
     int flit_left;		// Number of remaining flits inside the packet
     bool use_low_voltage_path;
+    vector<int> multicast_dst_ids;
+    bool is_multicast; // true if this packet is a multicast packet
 
 
     int payload_data_size; //用来表示整个Packet的真实数据大小（以字节为单位）
     int payload_sizes[3]; // 索引0: INPUT, 1: WEIGHT, 2: OUTPUT
+    DataType data_type; // Packet的数据类型（FILL或DELTA）
+    int command; // 用于存储来自txprocess的命令 (timestamp,command)
 
+    Packet(const Packet& other) = default;
+    Packet& operator=(const Packet& other) = default;
     // Constructors
     Packet() { }
 
@@ -59,11 +66,11 @@ struct Packet {
 	make(s, d, vc, ts, sz);
     }
 
-    void make(const int s, const int d, const int vc, const double ts, const int sz) {
+    void make(const int s, const int d, const int vc, const int ts, const int sz) {
 	src_id = s;
 	dst_id = d;
 	vc_id = vc;
-	timestamp = ts;
+	logical_timestamp = ts;
 	size = sz;
 	flit_left = sz;
 	use_low_voltage_path = false;
@@ -166,10 +173,12 @@ struct Flit {
     int sequence_no;		// The sequence number of the flit inside the packet
     int sequence_length;
     Payload payload;	// Optional payload
-    double timestamp;		// Unix timestamp at packet generation
     int hop_no;			// Current number of hops from source to destination
     bool use_low_voltage_path;
     bool is_output; // true if the flit belongs to an output packet
+    int logical_timestamp;
+    DataType data_type; // flit携带的数据种类
+    int command; // 用于存储来自txprocess的命令 (timestamp,command)
 
     int hub_relay_node;
 
@@ -187,7 +196,7 @@ struct Flit {
 		&& flit.vc_id == vc_id
 		&& flit.sequence_no == sequence_no
 		&& flit.sequence_length == sequence_length
-		&& flit.payload == payload && flit.timestamp == timestamp
+		&& flit.payload == payload && flit.logical_timestamp == logical_timestamp
 		&& flit.hop_no == hop_no
 		&& flit.use_low_voltage_path == use_low_voltage_path);
 }};
@@ -255,20 +264,5 @@ typedef struct
     PowerBreakdownEntry breakdown[NO_BREAKDOWN_ENTRIES_D+NO_BREAKDOWN_ENTRIES_S];
 } PowerBreakdown;
 
-enum class DataType {
-    INPUT,
-    WEIGHT,
-    OUTPUT,
-    UNKNOWN
-};
-
-inline const char* DataType_to_str(DataType type) {
-    switch (type) {
-        case DataType::INPUT:  return "INPUT";
-        case DataType::WEIGHT: return "WEIGHT";
-        case DataType::OUTPUT: return "OUTPUT";
-        default:               return "UNKNOWN";
-    }
-}
 
 #endif

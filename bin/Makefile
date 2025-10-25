@@ -232,6 +232,53 @@ $(TEST_MODULE_TASK_MANAGER): $(TEST_TASK_MANAGER_OBJS)
 	@echo "--- Linking TaskManager test executable: $(TEST_MODULE_TASK_MANAGER) ---"
 	$(CXX) $(LIBDIR) $^ $(LDFLAGS) $(LIBS) -o $@ 2>&1 | c++filt
 
+
+# 测试可执行文件的名字
+TEST_MODULE_PE := test_pe
+
+# 测试程序的源文件和对应的目标文件
+TEST_PE_MAIN_SRC := ../tests/test_PE_smoke_test.cpp
+TEST_PE_MAIN_OBJ := $(subst ../tests,$(OBJDIR),$(TEST_PE_MAIN_SRC:.cpp=.o))
+
+# [核心修改] 构建 PE 测试所需的所有 .o 文件
+# 我们需要除了 main.o 之外的所有主程序对象文件
+
+# 1. 首先，定义 main.o 的路径
+MAIN_OBJ := $(OBJDIR)/Main.o
+
+# 2. 使用 filter-out 函数，从 $(OBJS) 列表中剔除 main.o
+OBJS_WITHOUT_MAIN := $(filter-out $(MAIN_OBJ),$(OBJS))
+
+# 3. 最终的依赖列表 = (所有.o - main.o) + 测试主程序的.o
+TEST_PE_OBJS := $(OBJS_WITHOUT_MAIN) $(TEST_PE_MAIN_OBJ)
+
+
+# ... (在 ##### RULES ##### 部分，编译和链接规则保持不变) ...
+
+# ##############################################################################
+# RULES FOR test_pe
+# ##############################################################################
+
+# test_pe 目标 (保持不变)
+test_pe: $(TEST_MODULE_PE)
+	@echo "\n--- Running ProcessingElement module tests ---"
+	./$(TEST_MODULE_PE)
+	@echo "--- ProcessingElement tests completed ---\n"
+
+
+# PE 测试主程序的编译规则 (保持不变)
+$(TEST_PE_MAIN_OBJ): $(TEST_PE_MAIN_SRC)
+	@echo "--- Compiling PE testbench: $< ---"
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $(INCDIR) -I../tests/include -c $< -o $@
+
+
+# PE 测试可执行文件的链接规则 (保持不变)
+# 它现在会自动使用我们上面定义的、不包含 main.o 的 $(TEST_PE_OBJS)
+$(TEST_MODULE_PE): $(TEST_PE_OBJS)
+	@echo "--- Linking PE test executable: $(TEST_MODULE_PE) ---"
+	$(CXX) $(LIBDIR) $^ $(LDFLAGS) $(LIBS) -o $@ 2>&1 | c++filt
+
 ##### 3. 更新辅助规则 #####
 
 # 默认的 'all' 目标，现在编译 noxim 和所有测试程序
@@ -242,3 +289,4 @@ clean:
 	rm -f $(OBJS) $(MODULE) *~ $(TEST_HIERARCHICAL_MAIN_OBJ) $(TEST_MODULE_HIERARCHICAL) $(TEST_RESERVATION_TABLE_MAIN_OBJ) $(TEST_MODULE_RESERVATION_TABLE)
 	rm -f $(TEST_CONFIG_PARSER_OBJS) $(TEST_MODULE_CONFIG_PARSER)
 	rm -f $(TEST_TASK_MANAGER_OBJS) $(TEST_MODULE_TASK_MANAGER)
+	rm -f $(TEST_PE_MAIN_OBJ) $(TEST_MODULE_PE)

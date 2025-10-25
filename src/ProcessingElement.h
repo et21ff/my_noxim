@@ -20,6 +20,8 @@
 #include "Utils.h"
 #include "BufferManager.h"
 #include <memory>
+#include "dbg.h"
+#include <TaskManager.h>
 
 using namespace std;
 
@@ -94,7 +96,7 @@ public:
     // I. 核心身份与物理属性 (Core Identity & Physical Attributes)
     //========================================================================
     
-    enum PE_Role { ROLE_UNUSED, ROLE_DRAM, ROLE_GLB, ROLE_BUFFER };
+    
     PE_Role role;
 
     int max_capacity;     // 单位: Bytes
@@ -103,6 +105,10 @@ public:
     // --- 新增：LivenessAwareBuffer 现在是缓冲区管理的核心 ---
     std::unique_ptr<BufferManager> buffer_manager_; // <--- 3. 添加 BufferManager 实例
     std::unique_ptr<BufferManager> output_buffer_manager_; // <--- 新增：output smartbuffer
+    std::unique_ptr<TaskManager> task_manager_;   // 任务管理器实例
+    DispatchTask current_dispatch_task_; // 当前任务
+    size_t outputs_received_count_;
+    size_t outputs_required_count_;
     
     //========================================================================
     // II. 网络接口与通信 (Network Interface & Communication)
@@ -204,6 +210,11 @@ public: // 建议将内部状态变量设为私有
     sc_event buffer_state_changed_event;
     sc_event output_buffer_state_changed_event; // 新增：output buffer状态改变事件
     int incoming_output_payload_sizes[3]; // 用于存储接收到的output payload信息
+    int command_to_send;
+    std::map<int, int> pending_commands_;
+    bool compute_in_progress_;
+    bool is_compute_complete;
+    int compute_cycles;
 
 
     sc_signal<bool> is_receiving_packet;
@@ -215,18 +226,31 @@ public: // 建议将内部状态变量设为私有
     void update_transfer_loop_counters();
     void update_receive_loop_counters();
 
-    void output_txprocess(); // 用于输出txprocess的日志
-    void output_rxProcess();
+    int get_command_to_send();
+
+    void reset_logic(); //达到timestamp上限时的重置行为
+
+    // void output_txprocess(); // 用于输出txprocess的日志
+    // void output_rxProcess();
 
     void handle_tx_for_port(int port_index);
+
+    void handle_rx_for_port(int port_index);
+
+    int find_child_id(int id);
     Flit generate_next_flit_from_queue(std::queue<Packet>& queue, bool is_output = false);
 
     // --- GLB 发送同步相关辅助函数 ---
-    void start_new_dispatch_phase();                      // 开始新的发送阶段
-    bool is_dispatch_complete();                          // 检查当前发送批次是否完成
+    size_t get_required_capability(size_t size, int port_index) const;
 
+    std::string get_packet_type_str(const Packet& packet, int port_index) const;
+
+    int decode_ready_signal(int combined_ready_value, int port_index) const;
+
+    void process_tail_sent_event(int port_index,Packet sent_status);
     unsigned int getQueueSize() const; 
     // Constructor
+    
 
     SC_CTOR(ProcessingElement) {
     SC_METHOD(pe_init);
@@ -241,13 +265,13 @@ public: // 建议将内部状态变量设为私有
 	sensitive << reset;
 	sensitive << clock.pos();
 
-    SC_METHOD(output_txprocess);
-    sensitive << clock.pos();
-    sensitive << reset; 
+    // SC_METHOD(output_txprocess);
+    // sensitive << clock.pos();
+    // sensitive << reset; 
 
-    SC_METHOD(output_rxProcess);
-    sensitive << clock.neg();
-    sensitive << reset;
+    // SC_METHOD(output_rxProcess);
+    // sensitive << clock.neg();
+    // sensitive << reset;
 
     SC_METHOD(update_ready_signal);
     sensitive << reset;

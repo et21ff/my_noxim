@@ -7,6 +7,7 @@
 #include <iostream>
 #include <memory>
 #include <algorithm>
+#include "DataTypes.h"
 
 //========================================================================
 // 基础数据类型枚举
@@ -93,22 +94,32 @@ struct RoleProperties {
     RoleProperties() : compute_latency(0) {}
 };
 
+struct AtomicDispatchAction {
+    std::string data_space; // "Weights", "Inputs", "Outputs"
+    size_t size;
+    std::string target_group;
+};
+
 /**
- * @brief Delta 事件结构体
- * 定义基于条件的数据分发事件
+ * @brief Delta 事件结构体 (升级版)
+ * 定义一个触发事件及其包含的 *多个* 原子分发动作
  */
 struct DeltaEvent {
-    Trigger trigger;                              // 触发条件
-    std::string name;                             // 事件名称（如 "FILL", "DELTA"）
-    DataDelta delta;                              // 要发送的数据块
-    std::string target_group;                     // 目标组（如 "ALL_COMPUTE_PES"）
+    Trigger trigger;
+    std::string name;
+    
+    // [核心修改]
+    // 不再是 "DataDelta delta;" 和 "string target_group;"
+    // 而是 "AtomicDispatchAction" 的一个列表
+    std::vector<AtomicDispatchAction> actions;
 
     DeltaEvent() = default;
 
     bool is_valid() const {
-        return !name.empty() && !target_group.empty() && !trigger.type.empty();
+        return !name.empty() && !trigger.type.empty() && !actions.empty();
     }
 };
+
 
 /**
  * @brief 调度模板结构体
@@ -219,6 +230,18 @@ struct RoleWorkingSet {
         }
         return total;
     }
+
+    std::map<DataType, size_t> get_data_map() const {
+        std::map<DataType, size_t> data_map;
+        for (const auto& workspace : data) {
+            DataType type = stringToDataType(workspace.data_space);
+            if (type != DataType::UNKNOWN) {
+                data_map[type] = workspace.size;
+            }
+        }
+        return data_map;
+    }
+        
 };
 
 /**

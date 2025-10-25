@@ -46,8 +46,8 @@ void NoC::buildCommon()
 
 		sprintf(hub_name, "Hub_%d", hub_id);
 		hub[hub_id] = new Hub(hub_name, hub_id,token_ring);
-		hub[hub_id]->clock(clock);
-		hub[hub_id]->reset(reset);
+        hub[hub_id]->clock(clock);
+        hub[hub_id]->reset(reset);
 
 
 		// Determine, from configuration file, which Hub is connected to which Tile

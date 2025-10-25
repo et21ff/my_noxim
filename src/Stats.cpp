@@ -39,7 +39,7 @@ void Stats::receivedFlit(const double arrival_time,
     }
 
     if (flit.flit_type == FLIT_TYPE_HEAD)
-	chist[i].delays.push_back(arrival_time - flit.timestamp);
+	chist[i].delays.push_back(arrival_time - flit.logical_timestamp);
 
     chist[i].total_received_flits++;
     chist[i].last_received_flit_time = arrival_time - warm_up_time;

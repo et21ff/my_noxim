@@ -68,7 +68,7 @@ void TaskManager::Configure(const WorkloadConfig& config ,const std::string& rol
     if (!role_working_set_) {
         std::cout << "TaskManager: Warning - No working set found for role '" << role << "'" << std::endl;
     }
-
+    
     // 打印角色的详细信息
     std::cout << "TaskManager: Role '" << role << "' details:" << std::endl;
     std::cout << "  - Has schedule template: " << (spec->has_schedule() ? "Yes" : "No") << std::endl;
@@ -136,6 +136,50 @@ void TaskManager::Configure(const WorkloadConfig& config ,const std::string& rol
         }
     }
 
+    if(!all_tasks_.empty())
+    {
+        auto example_task = all_tasks_[0];
+        size_t output_size = 0;
+        std::unordered_set<int> all_output_targets;
+        for(const auto& sub_task : example_task.sub_tasks)
+        {
+            if(sub_task.type == DataType::OUTPUT)
+            {
+                output_size += sub_task.size;
+                for(auto target : sub_task.target_ids)
+                {
+                    all_output_targets.insert(target);
+                }
+            } 
+    }
+        size_t avg_output = output_size/all_output_targets.size();
+        
+        size_t output_ws_size = 0;
+        for(auto workspace : role_working_set_->data)
+        {
+            if(stringToDataType(workspace.data_space) == DataType::OUTPUT)
+            {
+                output_ws_size = workspace.size;
+
+            }
+        }
+
+        role_output_working_set_size_ = output_ws_size;
+
+        size_t cumulative_outputs_sent = 0;
+        for(int t=0; t<schedule.total_timesteps; ++t)
+        {
+            cumulative_outputs_sent += avg_output;
+            if (cumulative_outputs_sent>= output_ws_size)
+            {
+                sync_points_[t] = true;
+                cumulative_outputs_sent = 0;
+            } 
+
+        }
+        
+}
+
     std::cout << "TaskManager: Configuration completed with " << all_tasks_.size()
               << " tasks total" << std::endl;
 }
@@ -152,6 +196,18 @@ DispatchTask TaskManager::get_task_for_timestep(int timestep) const {
     return all_tasks_[timestep];
 }
 
+DataDelta TaskManager::get_command_definition(int command_id) const {
+    // 假设 task_manager_ 已经初始化并包含所有命令定义
+    for (const auto& cmd_def : *role_commands_) {
+        if (cmd_def.command_id == command_id) {
+            return cmd_def.evict_payload;
+        }
+    } 
+    std::cerr << "Error: role_commands_ is a nullptr!" << std::endl;
+
+
+}
+    
 //========================================================================
 // 私有辅助函数实现（新格式）
 //========================================================================
@@ -164,14 +220,44 @@ const RoleWorkingSet* TaskManager::find_working_set_for_role(const std::string& 
     return config_.find_working_set_for_role(role);
 }
 
-std::vector<int> TaskManager::resolve_target_group(const std::string& target_group) const {
-    std::vector<int> targets;
+DataDelta TaskManager::get_current_working_set() const {
+    DataDelta current_set;
+
+    if (!role_working_set_) {
+        return current_set; // 返回空的 DataDelta
+    }
+
+    for(auto workspace : role_working_set_->data)
+    {
+        DataType type = stringToDataType(workspace.data_space);
+        switch(type) {
+            case DataType::INPUT:
+                current_set.inputs += workspace.size;
+                break;
+            case DataType::WEIGHT:
+                current_set.weights += workspace.size;
+                break;
+            case DataType::OUTPUT:
+                current_set.outputs += workspace.size;
+                break;
+            default:
+                // 忽略未知类型
+                break;
+        }
+    }
+
+    return current_set;
+
+        
+    }
+std::unordered_set<int> TaskManager::resolve_target_group(const std::string& target_group) const {
+    std::unordered_set<int> targets;
 
     if (target_group == "ALL_COMPUTE_PES") {
         // 假设计算PE的ID从某个范围开始
         // 这里使用简单的假设：ID 1-15 是计算PE
         for (int i = 1; i <= 15; ++i) {
-            targets.push_back(i);
+            targets.insert(i);
         }
     } else {
         // 尝试解析为具体的ID列表
@@ -180,7 +266,7 @@ std::vector<int> TaskManager::resolve_target_group(const std::string& target_gro
         while (std::getline(ss, item, ',')) {
             try {
                 int id = std::stoi(item);
-                targets.push_back(id);
+                targets.insert(id);
             } catch (const std::exception&) {
                 // 忽略无效的ID
             }
@@ -190,48 +276,52 @@ std::vector<int> TaskManager::resolve_target_group(const std::string& target_gro
     return targets;
 }
 
+/**
+ * @brief 根据单个 DeltaEvent，为 DispatchTask 填充子任务
+ * @param task (输出参数) 将被填充的 DispatchTask 对象
+ * @param event 包含规则的 DeltaEvent
+ * @param timestep 当前的时间步 (用于调试日志)
+ */
 void TaskManager::create_dispatch_task_from_event(DispatchTask& task, const DeltaEvent& event, int timestep) const {
-    std::cout << "TaskManager: Creating dispatch task for event '" << event.name
-              << "' at timestep " << timestep << std::endl;
+    
+    dbg(sc_time_stamp(), "TaskManager", "[CONFIG] Processing event '" + event.name + 
+        "' for timestep " + std::to_string(timestep));
 
-    // 解析目标组
-    std::vector<int> target_ids = resolve_target_group(event.target_group);
-    if (target_ids.empty()) {
-        std::cout << "TaskManager: Warning - No valid targets for group '" << event.target_group << "'" << std::endl;
-        return;
-    }
+    // --- [核心修改] 遍历 event 中的所有 actions ---
+    // 每个 action 都将成为 DispatchTask 中的一个独立 sub_task
+    for (const auto& action : event.actions) {
+        
+        // 1. 解析数据类型 (data_space -> DataType)
+        DataType type = stringToDataType(action.data_space);
+        if (type == DataType::UNKNOWN) {
+            // 如果 data_space 无效，则跳过这个 action
+            dbg(sc_time_stamp(), "TaskManager", "[WARNING] Invalid data_space '" + action.data_space + "' in event '" + event.name + "'. Skipping.");
+            continue;
+        }
 
-    // 创建 Weights 数据分发任务
-    if (event.delta.weights > 0) {
-        DataDispatchInfo weights_info;
-        weights_info.size = event.delta.weights;
-        weights_info.target_ids = target_ids; // 复制目标列表
-        task.sub_tasks[DataType::WEIGHT] = weights_info;
+        // 2. 解析目标组 (target_group -> vector<int>)
+        // (假设 resolve_target_group 已经实现，它会查询 logical_architecture 配置)
+        std::unordered_set<int> target_ids = resolve_target_group(action.target_group);
+        if (target_ids.empty()) {
+            // 如果目标组为空或未找到，则跳过这个 action
+            dbg(sc_time_stamp(), "TaskManager", "[WARNING] No valid targets found for group '" + action.target_group + "'. Skipping.");
+            continue;
+        }
 
-        std::cout << "TaskManager: Added Weights dispatch: " << weights_info.size
-                  << " bytes to " << weights_info.target_ids.size() << " targets" << std::endl;
-    }
+        // 3. 创建一个 DataDispatchInfo (一个可被跟踪的子任务)
+        DataDispatchInfo sub_task_info;
+        sub_task_info.type = type;
+        sub_task_info.size = action.size;
+        sub_task_info.target_ids = target_ids;
+        
+        // 4. 将这个子任务添加到 DispatchTask 的 vector 中
+        task.sub_tasks.push_back(sub_task_info);
 
-    // 创建 Inputs 数据分发任务
-    if (event.delta.inputs > 0) {
-        DataDispatchInfo inputs_info;
-        inputs_info.size = event.delta.inputs;
-        inputs_info.target_ids = target_ids; // 复制目标列表
-        task.sub_tasks[DataType::INPUT] = inputs_info;
-
-        std::cout << "TaskManager: Added Inputs dispatch: " << inputs_info.size
-                  << " bytes to " << inputs_info.target_ids.size() << " targets" << std::endl;
-    }
-
-    // 创建 Outputs 数据分发任务
-    if (event.delta.outputs > 0) {
-        DataDispatchInfo outputs_info;
-        outputs_info.size = event.delta.outputs;
-        outputs_info.target_ids = target_ids; // 复制目标列表
-        task.sub_tasks[DataType::OUTPUT] = outputs_info;
-
-        std::cout << "TaskManager: Added Outputs dispatch: " << outputs_info.size
-                  << " bytes to " << outputs_info.target_ids.size() << " targets" << std::endl;
+        // 5. 打印详细的调试日志
+        dbg(sc_time_stamp(), "TaskManager", "[CONFIG] Added sub-task:",
+            "Type=" + action.data_space,
+            "Size=" + std::to_string(action.size) + "B",
+            "TargetGroup='" + action.target_group + "' (" + std::to_string(target_ids.size()) + " targets)");
     }
 }
 

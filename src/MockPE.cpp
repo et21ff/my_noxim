@@ -407,7 +407,7 @@ Flit MockPE::nextFlit()
 
     flit.src_id = local_id;
     flit.vc_id = packet.vc_id;
-    flit.timestamp = sc_time_stamp().to_double();
+    flit.logical_timestamp = sc_time_stamp().to_double();
     flit.sequence_no = packet.size - flit_left_in_packet + 1;
     flit.sequence_length = packet.size;
     flit.hop_no = 0;

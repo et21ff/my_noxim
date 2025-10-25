@@ -149,24 +149,61 @@ struct convert<WorkspaceData> {
 // 中层复合结构的 YAML 转换器
 //========================================================================
 
-// DeltaEvent 转换器
+template<>
+struct convert<AtomicDispatchAction> {
+    static bool decode(const Node& node, AtomicDispatchAction& rhs) {
+        if (!node.IsMap() || !node["data_space"] || !node["size"]) {
+            return false;
+        }
+        rhs.data_space = node["data_space"].as<std::string>();
+        rhs.size = node["size"].as<size_t>();
+        
+        // [核心修改] target_group 是可选的
+        if (node["target_group"]) {
+            rhs.target_group = node["target_group"].as<std::string>();
+        } else {
+            rhs.target_group = ""; // 留空，表示需要继承
+        }
+        return true;
+    }
+};
+
+
+// DeltaEvent 解码器现在需要处理继承逻辑
 template<>
 struct convert<DeltaEvent> {
     static bool decode(const Node& node, DeltaEvent& rhs) {
-        if (!node.IsMap()) {
+        if (!node.IsMap() || !node["name"] || !node["trigger"] || !node["delta"]) {
             return false;
         }
 
-        // 必需字段检查
-        if (!node["name"] || !node["trigger"] || !node["delta"] || !node["target_group"]) {
-            return false;
-        }
-
-        // 解析各个字段
         rhs.name = node["name"].as<std::string>();
         rhs.trigger = node["trigger"].as<Trigger>();
-        rhs.delta = node["delta"].as<DataDelta>();
-        rhs.target_group = node["target_group"].as<std::string>();
+
+        // [核心修改] 读取顶层的、可选的 target_group
+        std::string default_target_group = "";
+        if (node["target_group"]) {
+            default_target_group = node["target_group"].as<std::string>();
+        }
+
+        const Node& delta_node = node["delta"];
+        if (delta_node.IsSequence()) {
+            rhs.actions = delta_node.as<std::vector<AtomicDispatchAction>>();
+
+            // [核心修改] 遍历并应用继承
+            for (auto& action : rhs.actions) {
+                if (action.target_group.empty() && !default_target_group.empty()) {
+                    action.target_group = default_target_group;
+                }
+                // 验证每个 action 最终都有一个 target_group
+                if (action.target_group.empty()) {
+                    // 如果 action 自己没有，顶层也没有，这是一个错误
+                    return false; 
+                }
+            }
+        } else {
+            return false;
+        }
 
         return true;
     }
@@ -423,7 +460,7 @@ inline void printWorkloadConfig(const WorkloadConfig& config) {
 
             for (const auto& event : spec.schedule_template->delta_events) {
                 std::cout << "        - Event: " << event.name << std::endl;
-                std::cout << "          Target Group: " << event.target_group << std::endl;
+                std::cout << "          Target Group: " << event.actions[0].target_group << std::endl;
                 std::cout << "          Trigger Type: " << event.trigger.type << std::endl;
                 if (!event.trigger.params.empty()) {
                     std::cout << "          Trigger Params: ";
@@ -433,9 +470,6 @@ inline void printWorkloadConfig(const WorkloadConfig& config) {
                     }
                     std::cout << std::endl;
                 }
-                std::cout << "          Data Delta: Weights=" << event.delta.weights
-                         << ", Inputs=" << event.delta.inputs
-                         << ", Outputs=" << event.delta.outputs << std::endl;
             }
         }
 

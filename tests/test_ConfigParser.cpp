@@ -18,49 +18,66 @@ workload:
         - { data_space: "Inputs",  size: 3, reuse_strategy: "temporal" }
         - { data_space: "Outputs", size: 2, reuse_strategy: "temporal" }
 
-
   data_flow_specs:
-    # DRAM 规格
+
     - role: "ROLE_DRAM"
       schedule_template:
         total_timesteps: 1
         delta_events:
           - trigger: { on_timestep: "default" }
             name: "INITIAL_LOAD_TO_GLB"
-            delta: { Weights: 96, Inputs: 18, Outputs: 512 }  # 改为小写
             target_group: "ALL_GLBS"
+            delta:
+              - { data_space: "Weights", size: 96 }
+              - { data_space: "Inputs",  size: 18 }
+              - { data_space: "Outputs", size: 512 }
+              - { data_space: "Weight",  size: 1 , target_group: "1,2,3" }
 
-    # GLB 规格
+    # -----------------------------------------------------------
+    # 规格 B: 针对 ROLE_GLB
+    # -----------------------------------------------------------
     - role: "ROLE_GLB"
       schedule_template:
         total_timesteps: 256
         delta_events:
           - trigger: { on_timestep_modulo: [16, 0] }
             name: "FILL_TO_PES"
-            delta: { Weights: 6, Inputs: 3, Outputs: 2 }     # 改为小写
-            target_group: "ALL_COMPUTE_PES"
+            target_group: "ALL_COMPUTE_PES" 
+            
+            delta:
+              - { data_space: "Weights", size: 6 }
+              - { data_space: "Inputs",  size: 3 }
+              - { data_space: "Outputs", size: 2 }
 
           - trigger: { on_timestep: "default" }
             name: "DELTA_TO_PES"
-            delta: { Weights: 0, Inputs: 1, Outputs: 2 }     # 改为小写
             target_group: "ALL_COMPUTE_PES"
+            
+            delta:
+              - { data_space: "Inputs",  size: 1 }
+              - { data_space: "Outputs", size: 2 }
 
       command_definitions:
         - command_id: 0
           name: "EVICT_AFTER_INIT_LOAD"
-          evict_payload: { Weights: 96, Inputs: 18, Outputs: 512 }  # 改为小写
+          evict_payload: { Weights: 96, Inputs: 18, Outputs: 512 }
 
-    # COMPUTE PE 规格
+    # -----------------------------------------------------------
+    # 规格 C: 针对 ROLE_COMPUTE
+    # -----------------------------------------------------------
     - role: "ROLE_COMPUTE"
       properties:
         compute_latency: 6
+        
       command_definitions:
         - command_id: 0
           name: "EVICT_DELTA"
-          evict_payload: { Weights: 0, Inputs: 1, Outputs: 2 }      # 改为小写
+
+          evict_payload: { Weights: 0, Inputs: 1, Outputs: 2 }
+          
         - command_id: 1
           name: "EVICT_FULL_CONTEXT"
-          evict_payload: { Weights: 6, Inputs: 3, Outputs: 2 }      # 改为小写
+          evict_payload: { Weights: 6, Inputs: 3, Outputs: 2 } 
 )";
 
 // --- 简化的测试配置（仅用于基础测试）---
@@ -147,9 +164,20 @@ TEST_CASE("Complete multi-role YAML configuration is parsed correctly", "[Config
 
             const auto& event = tmpl.delta_events[0];
             REQUIRE(event.name == "INITIAL_LOAD_TO_GLB");
-            REQUIRE(event.delta.weights == 96);
-            REQUIRE(event.delta.inputs == 18);
-            REQUIRE(event.delta.outputs == 512);
+            REQUIRE(event.actions.size() == 4);
+            REQUIRE(event.actions[0].data_space == "Weights");
+            REQUIRE(event.actions[0].size == 96);
+            REQUIRE(event.actions[1].data_space == "Inputs");
+            REQUIRE(event.actions[1].size == 18);
+            REQUIRE(event.actions[2].data_space == "Outputs");
+            REQUIRE(event.actions[2].size == 512);
+            REQUIRE(event.actions[0].target_group == "ALL_GLBS");
+            REQUIRE(event.actions[1].target_group == "ALL_GLBS");
+            REQUIRE(event.actions[2].target_group == "ALL_GLBS");
+            REQUIRE(event.actions[3].data_space == "Weight");
+            REQUIRE(event.actions[3].size == 1);
+            REQUIRE(event.actions[3].target_group == "1,2,3");
+
         }
 
         SECTION("GLB spec is parsed correctly") {

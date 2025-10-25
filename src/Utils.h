@@ -77,7 +77,7 @@ inline ostream & operator <<(ostream & os, const Flit & flit)
 	os << "Sequence no. " << flit.sequence_no << endl;
 	os << "Payload printing not implemented (yet)." << endl;
 	os << "Unix timestamp at packet generation " << flit.
-	    timestamp << endl;
+	    logical_timestamp << endl;
 	os << "Total number of hops from source to destination is " <<
 	    flit.hop_no << endl;
     } else {
@@ -163,7 +163,7 @@ inline void sc_trace(sc_trace_file * tf, const Flit & flit, const string & name)
     sc_trace(tf, flit.sequence_no, name + ".sequence_no");
     sc_trace(tf, flit.sequence_length, name + ".sequence_length");
     sc_trace(tf, flit.payload.data, name + ".payload.data");
-    sc_trace(tf, flit.timestamp, name + ".timestamp");
+    sc_trace(tf, flit.logical_timestamp, name + ".logical_timestamp");
     sc_trace(tf, flit.hop_no, name + ".hop_no");
     sc_trace(tf, flit.use_low_voltage_path, name + ".use_low_voltage_path");
     sc_trace(tf, flit.is_output, name + ".is_output");

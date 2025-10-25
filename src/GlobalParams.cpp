@@ -69,3 +69,7 @@ int* GlobalParams::parent_map = nullptr;
 int** GlobalParams::child_map = nullptr;
 int GlobalParams::total_hierarchical_nodes = 0;
 int GlobalParams::num_nodes = 0;
+
+WorkloadConfig GlobalParams::workload;
+
+map<PE_Role,RoleChannelCapabilities> GlobalParams::CapabilityMap;

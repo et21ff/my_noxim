@@ -16,7 +16,8 @@
 #include <utility>
 #include <vector>
 #include <string>
-
+#include <WorkloadStructs.h>
+#include "DataTypes.h" 
 using namespace std;
 
 #define CONFIG_FILENAME        "config.yaml"
@@ -199,6 +200,9 @@ struct GlobalParams {
     static int* parent_map;          // 节点->父节点映射  
     static int** child_map;          // 节点->子节点映射
     static int total_hierarchical_nodes;  // 总层次化节点数
+
+    static WorkloadConfig workload;
+    static map<PE_Role,RoleChannelCapabilities> CapabilityMap;
 
 };
 

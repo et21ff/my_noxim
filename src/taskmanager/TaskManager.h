@@ -8,6 +8,8 @@
 #include "DataStructs.h"
 #include "WorkloadStructs.h"
 #include "ConfigParser.h"  // 用于从 YAML 加载配置
+#include <unordered_set>
+#include <dbg.h>
 //========================================================================
 // 第一部分：核心数据结构定义
 //========================================================================
@@ -17,70 +19,61 @@
  * 包含特定数据类型的分发目标信息
  */
 struct DataDispatchInfo {
+    int id;
+    DataType type; 
     size_t size;                          // 数据大小（字节）
-    std::vector<int> target_ids;          // 目标节点ID列表
+    std::unordered_set<int> target_ids;        // 目标节点ID列表
 
     DataDispatchInfo() : size(0) {}
-    DataDispatchInfo(size_t s, const std::vector<int>& targets)
+    DataDispatchInfo(size_t s, const std::unordered_set<int>& targets)
         : size(s), target_ids(targets) {}
 
-    /**
-     * @brief 检查是否还有未完成的目标
-     * @return 如果所有目标都已完成则返回true
-     */
-    bool is_complete() const {
-        return target_ids.empty();
-    }
 };
 
-/**
- * @brief 分发任务结构体
- * 包含一个时间步的完整分发任务信息
- */
 struct DispatchTask {
-    std::map<DataType, DataDispatchInfo> sub_tasks;  // 子任务映射表
+    // 仍然是子任务的列表
+    std::vector<DataDispatchInfo> sub_tasks;
 
-    /**
-     * @brief 检查任务是否完成
-     * @return 如果所有子任务都已完成则返回true
-     */
     bool is_complete() const {
         return sub_tasks.empty();
     }
 
-    /**
-     * @brief 记录特定类型和目标的完成状态
-     * @param type 数据类型
-     * @param target_id 目标节点ID
-     */
-    void record_completion(DataType type, int target_id) {
-        auto it = sub_tasks.find(type);
-        if (it != sub_tasks.end()) {
-            // 从目标列表中移除已完成的目标
-            auto& targets = it->second.target_ids;
-            auto target_it = std::find(targets.begin(), targets.end(), target_id);
-            if (target_it != targets.end()) {
-                targets.erase(target_it);
-
-                // 如果该数据类型的所有目标都已完成，则移除整个子任务
-                if (targets.empty()) {
-                    sub_tasks.erase(it);
+    void record_completion(DataType type, int target_id, size_t size) {
+        // 遍历列表，找到匹配的子任务
+        for (auto& task : sub_tasks) {
+            // 匹配类型和大小
+            if (task.type == type && task.size == size) {
+                // [关键] 在这个任务的 target set 中检查并删除
+                if (task.target_ids.count(target_id)) {
+                    task.target_ids.erase(target_id);
+                    // 找到并处理后，就可以退出了
+                    // 这个 break 假设了 (type, size, target_id) 的组合是唯一的
+                    break; 
                 }
             }
         }
-    }
 
-    /**
-     * @brief 获取任务描述字符串（用于调试）
-     * @return 任务描述字符串
-     */
+        // [核心] 使用 erase-remove idiom 一次性清理所有已完成的子任务
+        sub_tasks.erase(
+            std::remove_if(sub_tasks.begin(), sub_tasks.end(),
+                           [](const DataDispatchInfo& task) {
+                               return task.target_ids.empty();
+                           }),
+            sub_tasks.end()
+        );
+    }
+/**
+ * @brief 获取任务描述字符串（用于调试）
+ * @return 任务描述字符串
+ */
     std::string to_string() const {
         std::string result = "DispatchTask[";
         bool first = true;
-        for (const auto& pair : sub_tasks) {
+        for (const auto& task : sub_tasks) {
             if (!first) result += ", ";
-            result += std::string(DataType_to_str(pair.first)) + "(" + std::to_string(pair.second.size) + "B, " +
-                     std::to_string(pair.second.target_ids.size()) + " targets)";
+            result += std::string(DataType_to_str(task.type)) + "(" +
+                    std::to_string(task.size) + "B, " +
+                    std::to_string(task.target_ids.size()) + " targets)";
             first = false;
         }
         result += "]";
@@ -103,16 +96,19 @@ private:
     const RoleWorkingSet* role_working_set_; // GLB 角色的工作集
     const RoleProperties* role_properties_; // GLB 角色的属性
     const std::vector<CommandDefinition>* role_commands_; // GLB 角色的命令定义
+    std::map<int,bool> sync_points_; // 同步点列表
 
     // 私有辅助函数
     const DataFlowSpec* find_data_flow_spec(const std::string& role) const;
     const RoleWorkingSet* find_working_set_for_role(const std::string& role) const;
 
-    std::vector<int> resolve_target_group(const std::string& target_group) const;
+    std::unordered_set<int> resolve_target_group(const std::string& target_group) const;
     void create_dispatch_task_from_event(DispatchTask& task, const DeltaEvent& event, int timestep) const;
     bool matches_trigger_condition(const Trigger& trigger, int timestep) const;
 
+
 public:
+    size_t role_output_working_set_size_; // 角色的输出工作集大小
     /**
      * @brief 默认构造函数
      */
@@ -148,6 +144,22 @@ public:
      */
     DispatchTask get_task_for_timestep(int timestep) const;
 
+
+    DataDelta get_command_definition(int command_id) const;
+    int get_command_count() const {
+        return role_commands_ ? static_cast<int>(role_commands_->size()) : 0;
+    }
+
+    bool is_in_sync_points(int timestep) const {
+        return sync_points_.count(timestep) > 0;
+    }
+
+    int get_compute_latency() const
+    {
+        return role_properties_ ? role_properties_->compute_latency : 0;
+    }
+
+    DataDelta get_current_working_set() const;
     /**
      * @brief 获取总任务时间步数
      * @return 总时间步数
