@@ -147,12 +147,13 @@ bool BufferManager::AreDataTypeReady(const DataType& required_types,size_t size)
 }
 bool BufferManager::RemoveData(DataType type, size_t size) {
     // 检查是否有足够的数据可以移除
-    if (current_size_ < size) {
+    if (current_size_ < size || internal_buffer_sizes_[type] < size) {
         return false;
     }
     
     // 简单地减少当前大小，不涉及复杂的驱逐逻辑
     current_size_ -= size;
+    internal_buffer_sizes_[type] -= size;
     
     return true;
 }

@@ -61,8 +61,8 @@ void ProcessingElement::pe_init() {
         max_capacity = 20000; // 假设DRAM容量为64KB
         EvictionSchedule dram_schedule = ScheduleFactory::createDRAMEvictionSchedule();
         buffer_manager_.reset(new BufferManager(max_capacity, dram_schedule));
-        buffer_manager_->OnDataReceived(DataType::WEIGHT, 512);
-        buffer_manager_->OnDataReceived(DataType::INPUT, 512);
+        buffer_manager_->OnDataReceived(DataType::WEIGHT, 96);
+        buffer_manager_->OnDataReceived(DataType::INPUT, 18);
         
         
         // 初始化output buffer manager
@@ -89,6 +89,8 @@ void ProcessingElement::pe_init() {
         max_capacity = GLB_CAPACITY;
         downstream_node_ids.clear();
         downstream_node_ids.push_back(2); // 下游是Buffer
+        upstream_node_ids.clear();
+        upstream_node_ids.push_back(0); // 上游是DRAM
 
         EvictionSchedule glb_schedule = ScheduleFactory::createGLBEvictionSchedule();
         buffer_manager_.reset(new BufferManager(max_capacity, glb_schedule));
@@ -283,11 +285,20 @@ void ProcessingElement::handle_rx_for_port(int port_index) {
         Flit flit = flit_rx[port_index].read();
 
         // --- 4. 处理 HEAD Flit 事件 ---
-        if (flit.flit_type == FLIT_TYPE_HEAD) {
+        if (flit.flit_type == FLIT_TYPE_HEAD && flit.command != -1) {
             pending_commands_[flit.logical_timestamp] = flit.command;
             // dbg("" + sc_time_stamp().to_string(), name(), "[RX_PROCESS] Received HEAD Flit on port " + std::to_string(port_index),
             //     ", Command: " + std::to_string(flit.command) +
             //     ", Logical Timestamp: " + std::to_string(flit.logical_timestamp));
+               std::cout << "@ " << sc_time_stamp() << " [" << name() << "]: "
+              << "[RX_HEAD] Received HEAD Flit!"
+              << " src_id=" << flit.src_id // 来源PE
+              << " dst_id=" << flit.dst_id // 目的地PE (应该是自己)
+              << " packet_type=" << DataType_to_str(flit.data_type) // 包类型
+              << " timestamp=" << flit.logical_timestamp // 逻辑时间戳
+              << " sequence_no=" << flit.sequence_no // 序列号
+              << "payload_size=" << flit.payload_data_size // 负载大小
+              << std::endl;
         }
         
         // --- 5. 处理 TAIL Flit 事件 ---
@@ -295,10 +306,10 @@ void ProcessingElement::handle_rx_for_port(int port_index) {
             if(flit.command == -1)
             {
                 outputs_received_count_+=flit.payload_data_size;
-                dbg("" + sc_time_stamp().to_string(), name(), "[RX_PROCESS] Received TAIL Flit on port " + std::to_string(port_index),
-                    ", Payload Size: " + std::to_string(flit.payload_data_size) +
-                    ", Total Outputs Received: " + std::to_string(outputs_received_count_) +
-                    "/" + std::to_string(outputs_required_count_));
+                // dbg("" + sc_time_stamp().to_string(), name(), "[RX_PROCESS] Received TAIL Flit on port " + std::to_string(port_index),
+                //     ", Payload Size: " + std::to_string(flit.payload_data_size) +
+                //     ", Total Outputs Received: " + std::to_string(outputs_received_count_) +
+                //     "/" + std::to_string(outputs_required_count_));
             }
             else
             {
@@ -308,19 +319,19 @@ void ProcessingElement::handle_rx_for_port(int port_index) {
                     output_buffer_manager_->OnDataReceived(DataType::OUTPUT, 
                         flit.payload_data_size);
                     buffer_state_changed_event.notify(); // 立即在当前delta周期触发
-                dbg("" + sc_time_stamp().to_string(), name(), "[RX_PROCESS] Received TAIL Flit on port " + std::to_string(port_index),
-                    ", Payload Size: " + std::to_string(flit.payload_data_size) +
-                    ", New Buffer Size: " + std::to_string(output_buffer_manager_->GetCurrentSize()) +
-                    "/" + std::to_string(output_buffer_manager_->GetCapacity()));
+                // dbg("" + sc_time_stamp().to_string(), name(), "[RX_PROCESS] Received TAIL Flit on port " + std::to_string(port_index),
+                //     ", Payload Size: " + std::to_string(flit.payload_data_size) +
+                //     ", New Buffer Size: " + std::to_string(output_buffer_manager_->GetCurrentSize()) +
+                //     "/" + std::to_string(output_buffer_manager_->GetCapacity()));
                 }
                 else{
                     buffer_manager_->OnDataReceived(flit.data_type, 
                         flit.payload_data_size);
                     buffer_state_changed_event.notify(); // 立即在当前delta周期触发
-                dbg("" + sc_time_stamp().to_string(), name(), "[RX_PROCESS] Received TAIL Flit on port " + std::to_string(port_index),
-                    ", Payload Size: " + std::to_string(flit.payload_data_size) +
-                    ", New Buffer Size: " + std::to_string(buffer_manager_->GetCurrentSize()) +
-                    "/" + std::to_string(buffer_manager_->GetCapacity()));
+                // dbg("" + sc_time_stamp().to_string(), name(), "[RX_PROCESS] Received TAIL Flit on port " + std::to_string(port_index),
+                //     ", Payload Size: " + std::to_string(flit.payload_data_size) +
+                //     ", New Buffer Size: " + std::to_string(buffer_manager_->GetCurrentSize()) +
+                //     "/" + std::to_string(buffer_manager_->GetCapacity()));
                 }
 
             }
@@ -409,7 +420,7 @@ void ProcessingElement::txProcess() {
 
 void ProcessingElement::reset_logic()
 {
-    if(role==ROLE_DRAM || role==ROLE_GLB)
+    if(role==ROLE_DRAM)
     {
         dbg("All tasks completed quiting simulation");
         sc_stop();
@@ -446,8 +457,14 @@ void ProcessingElement::reset_logic()
             pkt.size = pkt.flit_left = cmd.outputs+2;
             pkt.command = -1; //表示这是一个回送包
             pkt.is_multicast = false;
-            dbg(sc_time_stamp(), name(), "[RESET_LOGIC] Generating output return Packet to PE " + std::to_string(pkt.dst_id) +
-                " for " + std::to_string(cmd.outputs) + " bytes.");
+            pkt.vc_id = randInt(0, GlobalParams::n_virtual_channels - 1);
+            // dbg(sc_time_stamp(), name(), "[RESET_LOGIC] Generating output return Packet to PE " + std::to_string(pkt.dst_id) +
+            //     " for " + std::to_string(cmd.outputs) + " bytes.");
+            std::cout << "@ " << sc_time_stamp() 
+          << " [" << name() << "]: "
+          << "[RESET_LOGIC] Generating output return Packet to PE " << pkt.dst_id
+          << " for " << cmd.outputs << " bytes." 
+          << std::endl;
                 
             packet_queue_2.push(pkt);
 
@@ -456,6 +473,8 @@ void ProcessingElement::reset_logic()
 
         }
         output_buffer_manager_->RemoveData(DataType::OUTPUT, cmd.outputs);
+
+        cout<< sc_time_stamp() << ": PE[" << local_id << "]" << buffer_manager_->GetCurrentSize() << "/" << buffer_manager_->GetCapacity() << " bytes remaining after resetting for timestamp " << logical_timestamp << endl;
         output_buffer_state_changed_event.notify();
     }
 
@@ -522,10 +541,18 @@ void ProcessingElement::handle_tx_for_port(int port_index) {
 
         // --- 8. 处理 HEAD/TAIL 事件 ---
         if (flit.flit_type == FLIT_TYPE_HEAD) {
-            dbg(sc_time_stamp(), name(), "[TX_PORT_" + std::to_string(port_index) + "] Sending HEAD:",
-                "Type=" + packet_type_str,
-                "Target=" + std::to_string(flit.dst_id),
-                "Timestamp=" + std::to_string(flit.logical_timestamp));
+            // dbg(sc_time_stamp(), name(), "[TX_PORT_" + std::to_string(port_index) + "] Sending HEAD:",
+            //     "Type=" + packet_type_str,
+            //     "Target=" + std::to_string(flit.dst_id),
+            //     "Timestamp=" + std::to_string(flit.logical_timestamp));
+            std::cout << "@ " << sc_time_stamp() << " [" << name() << "]: "
+          << "[TX_HEAD] Port " << port_index << ":"
+          << " Type=" << packet_type_str
+          << " dst_id=" << flit.dst_id
+          << " Timestamp=" << flit.logical_timestamp
+          << " PktSize=" << pkt_to_send.payload_data_size << " bytes" // 含义1: 包的总大小
+          << " Buffersize=" << buffer_manager_->GetCurrentSize()  // 含义2: 我的队列积压
+          << std::endl;
         }
 
         if (flit.flit_type == FLIT_TYPE_BODY) {
@@ -538,11 +565,11 @@ void ProcessingElement::handle_tx_for_port(int port_index) {
         if (flit.flit_type == FLIT_TYPE_TAIL) {
             // [核心修改] 不再处理任何高层逻辑，
             // 而是调用事件处理函数，将 packet 的完整信息传递过去。
-            dbg(sc_time_stamp(), name(), "[TX_PORT_" + std::to_string(port_index) + "] Sending TAIL:",
-                "Type=" + packet_type_str,
-                "Target=" + std::to_string(flit.dst_id),
-                "SeqNo=" + std::to_string(flit.sequence_no));
-            process_tail_sent_event(port_index, sent_packet_info);
+            // dbg(sc_time_stamp(), name(), "[TX_PORT_" + std::to_string(port_index) + "] Sending TAIL:",
+            //     "Type=" + packet_type_str,
+            //     "Target=" + std::to_string(flit.dst_id),
+            //     "SeqNo=" + std::to_string(flit.sequence_no));
+            // process_tail_sent_event(port_index, sent_packet_info);
         }
 
         // --- 9. 物理发送 Flit 并更新握手状态 ---
@@ -749,7 +776,10 @@ void  ProcessingElement::run_storage_logic() {
     }
     for(int target_id : selected_task.target_ids)
     {
-         int ready_signal = decode_ready_signal(downstream_ready_in[target_id-1]->read(),port_index);
+         auto it = std::find(downstream_node_ids.begin(), downstream_node_ids.end(), target_id);
+         if (it == downstream_node_ids.end()) continue;
+         int port_num = std::distance(downstream_node_ids.begin(), it);
+         int ready_signal = decode_ready_signal(downstream_ready_in[port_num]->read(),port_index);
          if(ready_signal >= required_capability)
          {
             ready_targets.push_back(target_id);

@@ -22,6 +22,86 @@ using namespace std;
 unsigned int drained_volume;
 NoC *n;
 
+const std::string test_yaml_content = R"(
+workload:
+  working_set:
+    - role: "ROLE_DRAM"
+      data:
+        - { data_space: "Weights", size: 96, reuse_strategy: "resident" }
+        - { data_space: "Inputs", size: 18, reuse_strategy: "resident" }
+        - { data_space: "Outputs", size: 512, reuse_strategy: "resident" }
+    - role: "ROLE_GLB"
+      data:
+        - { data_space: "Weights", size: 96, reuse_strategy: "resident" }
+        - { data_space: "Inputs", size: 18, reuse_strategy: "resident" }
+        - { data_space: "Outputs", size: 512, reuse_strategy: "resident" }
+    - role: "ROLE_BUFFER"
+      data:
+        - { data_space: "Weights", size: 6, reuse_strategy: "temporal" }
+        - { data_space: "Inputs",  size: 3, reuse_strategy: "temporal" }
+        - { data_space: "Outputs", size: 2, reuse_strategy: "temporal" }
+
+  data_flow_specs:
+
+    - role: "ROLE_DRAM"
+      schedule_template:
+        total_timesteps: 1
+        delta_events:
+          - trigger: { on_timestep: "default" }
+            name: "INITIAL_LOAD_TO_GLB"
+            target_group: "1,"
+            delta:
+              - { data_space: "Weights", size: 96 }
+              - { data_space: "Inputs",  size: 18 }
+              - { data_space: "Outputs", size: 512 }
+
+    # -----------------------------------------------------------
+    # 规格 B: 针对 ROLE_GLB
+    # -----------------------------------------------------------
+    - role: "ROLE_GLB"
+      schedule_template:
+        total_timesteps: 256
+        delta_events:
+          - trigger: { on_timestep_modulo: [16, 0] }
+            name: "FILL_TO_PES"
+            target_group: "2,"
+            
+            delta:
+              - { data_space: "Weights", size: 6 }
+              - { data_space: "Inputs",  size: 3 }
+              - { data_space: "Outputs", size: 2 }
+
+          - trigger: { on_timestep: "default" }
+            name: "DELTA_TO_PES"
+            target_group: "2,"
+            
+            delta:
+              - { data_space: "Inputs",  size: 1 }
+              - { data_space: "Outputs", size: 2 }
+
+      command_definitions:
+        - command_id: 0
+          name: "EVICT_AFTER_INIT_LOAD"
+          evict_payload: { Weights: 96, Inputs: 18, Outputs: 512 }
+
+    # -----------------------------------------------------------
+    # 规格 C: 针对 ROLE_COMPUTE
+    # -----------------------------------------------------------
+    - role: "ROLE_BUFFER"
+      properties:
+        compute_latency: 6
+        
+      command_definitions:
+        - command_id: 0
+          name: "EVICT_DELTA"
+
+          evict_payload: { Weights: 0, Inputs: 1, Outputs: 2 }
+          
+        - command_id: 1
+          name: "EVICT_FULL_CONTEXT"
+          evict_payload: { Weights: 6, Inputs: 3, Outputs: 2 } 
+)";
+
 void signalHandler( int signum )
 {
     cout << "\b\b  " << endl;
@@ -50,6 +130,12 @@ int sc_main(int arg_num, char *arg_vet[])
     cout << endl;
 
     configure(arg_num, arg_vet);
+    GlobalParams::workload = loadWorkloadConfigFromString(test_yaml_content);
+
+    GlobalParams::CapabilityMap[ROLE_GLB].main_channel_caps = {0,18,96};
+    GlobalParams::CapabilityMap[ROLE_GLB].output_channel_caps = {0,512};
+    GlobalParams::CapabilityMap[ROLE_BUFFER].main_channel_caps = {0,1,3,6};
+    GlobalParams::CapabilityMap[ROLE_BUFFER].output_channel_caps = {0,2};
 
 
     // Signals
