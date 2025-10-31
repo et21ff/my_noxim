@@ -143,7 +143,7 @@ Tile::Tile(sc_module_name nm, int id, int level): sc_module(nm) {
     
     // pe = new MockPE("MockPE",local_id);
     pe = new ProcessingElement("ProcessingElement");
-    pe -> local_id = local_id;
+    pe->configure(local_id,GlobalParams::node_level_map[local_id],GlobalParams::hierarchical_config);
 
     // pe ->local_id = local_id;
 

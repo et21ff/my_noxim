@@ -22,6 +22,10 @@
 #include <memory>
 #include "dbg.h"
 #include <TaskManager.h>
+#include "GlobalParams.h"
+
+// Hierarchical topology configuration structures
+
 
 using namespace std;
 
@@ -197,15 +201,18 @@ public:
     // --- GLB 逻辑时间戳控制 ---
     int glb_timestep_ = 0;                             // GLB 主逻辑时间戳，只有在一批发送完成后才推进
 
+  // 新增：层次化配置相关成员变量
+    int level_index;  // 当前PE所在的层级索引
+
 public: // 建议将内部状态变量设为私有
     //========================================================================
     // V. 内部状态与辅助变量 (Internal State & Helper Variables)
     //========================================================================
-    
+
     int  incoming_packet_size;   // 用于暂存从HEAD flit读到的包大小
     int  previous_ready_signal;  // 用于减少ready信号的日志打印
     int incoming_payload_sizes[3]; // 用于暂存从HEAD flit读到的包大小
-    int logical_timestamp; 
+    int logical_timestamp;
     // +++ 新增：一个专门用于通知缓冲区状态改变的事件 +++
     sc_event buffer_state_changed_event;
     sc_event output_buffer_state_changed_event; // 新增：output buffer状态改变事件
@@ -248,13 +255,16 @@ public: // 建议将内部状态变量设为私有
     int decode_ready_signal(int combined_ready_value, int port_index) const;
 
     void process_tail_sent_event(int port_index,Packet sent_status);
-    unsigned int getQueueSize() const; 
+    unsigned int getQueueSize() const;
+
+    // 新增：动态配置函数
+    void configure(int id, int level_idx, const HierarchicalConfig& topology_config); 
     // Constructor
     
 
     SC_CTOR(ProcessingElement) {
-    SC_METHOD(pe_init);
-    sensitive << reset;
+    // SC_METHOD(pe_init);
+    // sensitive << reset;
 
 
 	SC_METHOD(rxProcess);

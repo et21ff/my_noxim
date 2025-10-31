@@ -49,5 +49,23 @@ typedef struct  {
     std::vector<int> output_channel_caps;
 } RoleChannelCapabilities;
 
+
+struct LevelConfig {
+    int level;
+    int buffer_size;
+    PE_Role roles;
+
+};
+
+struct HierarchicalConfig {
+    std::vector<LevelConfig> levels;
+
+    HierarchicalConfig() = default;
+    HierarchicalConfig(const std::vector<LevelConfig>& lvl_configs) : levels(lvl_configs) {}
+
+    const LevelConfig& get_level_config(int level_idx) const {
+        return levels[level_idx];
+    }
+};
 #endif // DATATYPES_H
 

@@ -9,20 +9,20 @@ hierarchical_config:
   level_configs:
     - level: 0
       node_type: "DRAM"
-      buffer_size: 64
-      roles: ["ROLE_DRAM"]
+      buffer_size: 512
+      roles: "ROLE_DRAM"
       fanouts: 1  # 该层每个节点连接到下一层的节点数
       
     - level: 1  
       node_type: "GLB" 
-      buffer_size: 32
-      roles: ["ROLE_GLB"]
+      buffer_size: 512
+      roles: "ROLE_GLB"
       fanouts: 1  # 该层每个节点连接到下一层的节点数
       
     - level: 2
       node_type: "COMPUTE"
-      buffer_size: 16  
-      roles: ["ROLE_BUFFER"]
+      buffer_size: 64  
+      roles: "ROLE_BUFFER"
       fanouts: 0
       
 
@@ -56,7 +56,7 @@ detailed: false
 # stop after a given amount of load has been processed
 max_volume_to_be_drained: 0
 show_buffer_stats: false
-# ... (detailed, max_volume_to_be_drained 等保持不变) ...
+# ... (detailed, max_volume_to_beROLE_DRAM_drained 等保持不变) ...
 
 # Verbosity level:
 verbose_mode: VERBOSE_OFF # <--- [关键修改] 设置为LOW，可以看到一些基本的网络活动日志
@@ -77,3 +77,81 @@ probability_of_retransmission: 0.1 # <--- [关键修改] 设为0！
 # 将其设置为TABLE_BASED，但提供一个空文件，确保它不会产生任何随机流量。
 traffic_distribution: TRAFFIC_TABLE_BASED # <--- [关键修改]
 traffic_table_filename: "empty_traffic.txt" # <--- 创建一个空的txt文件
+
+workload:
+  working_set:
+    - role: "ROLE_DRAM"
+      data:
+        - { data_space: "Weights", size: 96, reuse_strategy: "resident" }
+        - { data_space: "Inputs", size: 18, reuse_strategy: "resident" }
+        - { data_space: "Outputs", size: 512, reuse_strategy: "resident" }
+    - role: "ROLE_GLB"
+      data:
+        - { data_space: "Weights", size: 96, reuse_strategy: "resident" }
+        - { data_space: "Inputs", size: 18, reuse_strategy: "resident" }
+        - { data_space: "Outputs", size: 512, reuse_strategy: "resident" }
+    - role: "ROLE_BUFFER"
+      data:
+        - { data_space: "Weights", size: 6, reuse_strategy: "temporal" }
+        - { data_space: "Inputs",  size: 3, reuse_strategy: "temporal" }
+        - { data_space: "Outputs", size: 2, reuse_strategy: "temporal" }
+
+  data_flow_specs:
+
+    - role: "ROLE_DRAM"
+      schedule_template:
+        total_timesteps: 1
+        delta_events:
+          - trigger: { on_timestep: "default" }
+            name: "INITIAL_LOAD_TO_GLB"
+            target_group: "1,"
+            delta:
+              - { data_space: "Weights", size: 96 }
+              - { data_space: "Inputs",  size: 18 }
+              - { data_space: "Outputs", size: 512 }
+
+    # -----------------------------------------------------------
+    # 规格 B: 针对 ROLE_GLB
+    # -----------------------------------------------------------
+    - role: "ROLE_GLB"
+      schedule_template:
+        total_timesteps: 256
+        delta_events:
+          - trigger: { on_timestep_modulo: [16, 0] }
+            name: "FILL_TO_PES"
+            target_group: "2,"
+            
+            delta:
+              - { data_space: "Weights", size: 6 }
+              - { data_space: "Inputs",  size: 3 }
+              - { data_space: "Outputs", size: 2 }
+
+          - trigger: { on_timestep: "default" }
+            name: "DELTA_TO_PES"
+            target_group: "2,"
+            
+            delta:
+              - { data_space: "Inputs",  size: 1 }
+              - { data_space: "Outputs", size: 2 }
+
+      command_definitions:
+        - command_id: 0
+          name: "EVICT_AFTER_INIT_LOAD"
+          evict_payload: { Weights: 96, Inputs: 18, Outputs: 512 }
+
+    # -----------------------------------------------------------
+    # 规格 C: 针对 ROLE_COMPUTE
+    # -----------------------------------------------------------
+    - role: "ROLE_BUFFER"
+      properties:
+        compute_latency: 6
+        
+      command_definitions:
+        - command_id: 0
+          name: "EVICT_DELTA"
+
+          evict_payload: { Weights: 0, Inputs: 1, Outputs: 2 }
+          
+        - command_id: 1
+          name: "EVICT_FULL_CONTEXT"
+          evict_payload: { Weights: 6, Inputs: 3, Outputs: 2 } 

@@ -197,12 +197,15 @@ struct GlobalParams {
 
     // Hierarchical topology mapping
     static int* node_level_map;      // 节点->层级映射
-    static int* parent_map;          // 节点->父节点映射  
+    static int* parent_map;          // 节点->父节点映射
     static int** child_map;          // 节点->子节点映射
+    static int* child_map_size;      // 记录每个节点的子节点数量
     static int total_hierarchical_nodes;  // 总层次化节点数
 
     static WorkloadConfig workload;
     static map<PE_Role,RoleChannelCapabilities> CapabilityMap;
+
+    static HierarchicalConfig hierarchical_config;
 
 };
 

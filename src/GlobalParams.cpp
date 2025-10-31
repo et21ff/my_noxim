@@ -73,3 +73,4 @@ int GlobalParams::num_nodes = 0;
 WorkloadConfig GlobalParams::workload;
 
 map<PE_Role,RoleChannelCapabilities> GlobalParams::CapabilityMap;
+HierarchicalConfig GlobalParams::hierarchical_config;

@@ -1,40 +1,37 @@
-# =================================================================
-# WORKLOAD CONFIGURATION (Final, Complete & Corrected Version)
-# =================================================================
 workload:
-  # --- 1. 角色工作集 (定义每个角色需要维持的稳态数据) ---
   working_set:
-    # GLB 的目标是持有完整的 W, I, O 工作集
+    - role: "ROLE_DRAM"
+      data:
+        - { data_space: "Weights", size: 96, reuse_strategy: "resident" }
+        - { data_space: "Inputs", size: 18, reuse_strategy: "resident" }
+        - { data_space: "Outputs", size: 512, reuse_strategy: "resident" }
     - role: "ROLE_GLB"
       data:
-        - { data_space: "Weights", size: 96 }
-        - { data_space: "Inputs",  size: 18 }
-        - { data_space: "Outputs", size: 512 }
-    
-    # PE/COMPUTE 的稳态工作集
-    - role: "ROLE_COMPUTE"
+        - { data_space: "Weights", size: 96, reuse_strategy: "resident" }
+        - { data_space: "Inputs", size: 18, reuse_strategy: "resident" }
+        - { data_space: "Outputs", size: 512, reuse_strategy: "resident" }
+    - role: "ROLE_BUFFER"
       data:
-        - { data_space: "Weights", size: 6 }
-        - { data_space: "Inputs",  size: 3 }
-        - { data_space: "Outputs", size: 2 }
+        - { data_space: "Weights", size: 6, reuse_strategy: "temporal" }
+        - { data_space: "Inputs",  size: 3, reuse_strategy: "temporal" }
+        - { data_space: "Outputs", size: 2, reuse_strategy: "temporal" }
 
-  # --- 2. 每个角色的数据流/行为规格 ---
   data_flow_specs:
 
-    # -----------------------------------------------------------
-    # 规格 A: 针对 DRAM (一次性的主动数据 PUSH)
-    # -----------------------------------------------------------
     - role: "ROLE_DRAM"
       schedule_template:
         total_timesteps: 1
         delta_events:
           - trigger: { on_timestep: "default" }
             name: "INITIAL_LOAD_TO_GLB"
-            delta: { Weights: 96, Inputs: 18, Outputs: 512 }
-            target_group: "ALL_GLBS" # 目标是所有 GLB 节点
+            target_group: "1,"
+            delta:
+              - { data_space: "Weights", size: 96 }
+              - { data_space: "Inputs",  size: 18 }
+              - { data_space: "Outputs", size: 512 }
 
     # -----------------------------------------------------------
-    # 规格 B: 针对 GLB (指挥官)
+    # 规格 B: 针对 ROLE_GLB
     # -----------------------------------------------------------
     - role: "ROLE_GLB"
       schedule_template:
@@ -42,33 +39,39 @@ workload:
         delta_events:
           - trigger: { on_timestep_modulo: [16, 0] }
             name: "FILL_TO_PES"
-            delta: { Weights: 6, Inputs: 3, Outputs: 2 }
-            target_group: "ALL_COMPUTE_PES" # [修正] FILL 也需要目标
+            target_group: "2,"
+            
+            delta:
+              - { data_space: "Weights", size: 6 }
+              - { data_space: "Inputs",  size: 3 }
+              - { data_space: "Outputs", size: 2 }
 
           - trigger: { on_timestep: "default" }
             name: "DELTA_TO_PES"
-            delta: { Weights: 0, Inputs: 1, Outputs: 2 }
-            target_group: "ALL_COMPUTE_PES"
+            target_group: "2,"
+            
+            delta:
+              - { data_space: "Inputs",  size: 1 }
+              - { data_space: "Outputs", size: 2 }
 
-      # [核心修正] GLB 定义了自己需要驱逐的数据量，供 DRAM "借用"
       command_definitions:
-        # 这个命令描述了 DRAM 发送完初始数据后，需要从自己缓冲区移除的数据量
-        - command_id: 0 
+        - command_id: 0
           name: "EVICT_AFTER_INIT_LOAD"
           evict_payload: { Weights: 96, Inputs: 18, Outputs: 512 }
-      
+
     # -----------------------------------------------------------
-    # 规格 C: 针对 COMPUTE PE (执行者)
+    # 规格 C: 针对 ROLE_COMPUTE
     # -----------------------------------------------------------
-    - role: "ROLE_COMPUTE"
+    - role: "ROLE_BUFFER"
       properties:
         compute_latency: 6
-      
+        
       command_definitions:
         - command_id: 0
           name: "EVICT_DELTA"
+
           evict_payload: { Weights: 0, Inputs: 1, Outputs: 2 }
-        
+          
         - command_id: 1
           name: "EVICT_FULL_CONTEXT"
-          evict_payload: { Weights: 6, Inputs: 3, Outputs: 2 }
+          evict_payload: { Weights: 6, Inputs: 3, Outputs: 2 } 

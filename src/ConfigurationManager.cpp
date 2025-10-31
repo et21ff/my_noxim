@@ -11,9 +11,92 @@
 #include "ConfigurationManager.h"
 #include <systemc.h> //Included for the function time() 
 #include <dbg.h>
+#include <DataStructs.h>
+#include <GlobalParams.h>
 
 YAML::Node config;
 YAML::Node power_config;
+
+void infer_capabilities_from_workload(const WorkloadConfig& workload) {
+    // 准备阶段：创建临时 map 用于收集唯一的能力值
+    std::map<PE_Role, std::set<int>> temp_main_caps;
+    std::map<PE_Role, std::set<int>> temp_output_caps;
+
+    // 主循环：遍历所有数据流规格
+    for (const auto& spec : workload.data_flow_specs) {
+        // 将字符串角色转换为枚举
+        PE_Role source_role = stringToRole(spec.role);
+
+        // 跳过无效角色
+        if (source_role == ROLE_UNUSED) {
+            continue;
+        }
+
+        if(spec.has_schedule()==false){
+            continue;
+        }
+
+        // 确定目标角色与边界检查
+        int next_role_int = static_cast<int>(source_role) + 1;
+
+        // 严格的边界检查
+        assert(next_role_int <= ROLE_BUFFER && "源角色是层级中的最后一级，不能有目标！");
+
+        PE_Role target_role = static_cast<PE_Role>(next_role_int);
+
+        // 内层循环：遍历所有 delta_events 和 actions
+        if (spec.has_schedule()) {
+            for (const auto& delta_event : spec.schedule_template->delta_events) {
+                for (const auto& action : delta_event.actions) {
+                    // 忽略 size 为 0 的 action
+                    if (action.size == 0) {
+                        continue;
+                    }
+
+                    // 将字符串 data_space 转换为 DataType
+                    DataType data_type = stringToDataType(action.data_space);
+
+                    // 根据数据类型分配到相应的缓冲区
+                    if (data_type == DataType::INPUT || data_type == DataType::WEIGHT) {
+                        // 数据进入 target_role 的主缓冲区
+                        temp_main_caps[target_role].insert(static_cast<int>(action.size));
+                    } else if (data_type == DataType::OUTPUT) {
+                        // 数据与 target_role 的输出缓冲区相关
+                        temp_output_caps[target_role].insert(static_cast<int>(action.size));
+                    }
+                    // 忽略 UNKNOWN 数据类型
+                }
+            }
+        }
+    }
+
+    // 最终填充：清空并填充 GlobalParams::CapabilityMap
+    GlobalParams::CapabilityMap.clear();
+
+    // 遍历所有已知的有效 PE_Role
+    for (int role_int = ROLE_DRAM; role_int <= ROLE_BUFFER; ++role_int) {
+        PE_Role role = static_cast<PE_Role>(role_int);
+
+        // 创建 Capability 对象
+        RoleChannelCapabilities capability;
+
+        // 始终将 0 作为基础能力添加
+        capability.main_channel_caps.push_back(0);
+        capability.output_channel_caps.push_back(0);
+
+        // 复制临时 map 中的能力值到 vector
+        for (int cap : temp_main_caps[role]) {
+            capability.main_channel_caps.push_back(cap);
+        }
+
+        for (int cap : temp_output_caps[role]) {
+            capability.output_channel_caps.push_back(cap);
+        }
+
+        // 将 Capability 对象赋值给 GlobalParams::CapabilityMap
+        GlobalParams::CapabilityMap[role] = capability;
+    }
+}
 
 void loadConfiguration() {
 
@@ -79,9 +162,38 @@ if (GlobalParams::topology == TOPOLOGY_HIERARCHICAL){
     for (int i = 0; i < GlobalParams::num_levels; i++) {
         GlobalParams::fanouts_per_level[i] = level_configs[i]["fanouts"].as<int>();
     }
-    
-}
 
+    if (level_configs && level_configs.IsSequence()) {
+        
+        // 遍历 YAML 序列中的每一个层级配置
+        for (const auto& node : level_configs) {
+            
+            // 4. 创建一个临时的 C++ 对象来存储当前层的数据
+            LevelConfig current_level_data; 
+
+            // 5. 从 YAML 节点中解析每个字段，并填充 C++ 对象
+            //    我们使用 .as<Type>() 来进行类型转换
+            current_level_data.level = node["level"].as<int>();
+            current_level_data.buffer_size = node["buffer_size"].as<int>();
+            
+            // 解析 'roles' 数组
+            YAML::Node roles_node = node["roles"];
+
+                    std::string role_str = roles_node.as<std::string>();
+                    current_level_data.roles=stringToRole(role_str); // 假设你有一个 stringToRole 函数
+
+            // 6. 将填充好的当前层数据存入全局的 vector 中
+            GlobalParams::hierarchical_config.levels.push_back(current_level_data);
+        }
+        
+        cout << "成功加载并解析了 " << GlobalParams::hierarchical_config.levels.size() << " 个层级配置。" << endl;
+
+    } else {
+        cerr << "错误: 在 'hierarchical_config' 中缺少 'level_configs' 或者它不是一个序列。" << endl;
+        exit(1);
+    }
+}
+    
     GlobalParams::r2r_link_length = readParam<double>(config, "r2r_link_length");
     GlobalParams::r2h_link_length = readParam<double>(config, "r2h_link_length");
     GlobalParams::buffer_depth = readParam<int>(config, "buffer_depth");
@@ -689,6 +801,8 @@ void configure(int arg_num, char *arg_vet[]) {
     }
 
     loadConfiguration();
+    GlobalParams::workload = loadWorkloadConfigFromFile(GlobalParams::config_filename);
+    infer_capabilities_from_workload(GlobalParams::workload);
     parseCmdLine(arg_num, arg_vet);
 
     checkConfiguration();

@@ -159,6 +159,7 @@ inline void sc_trace(sc_core::sc_trace_file* tf, const TBufferFullStatus& bfs, c
 }
 
 
+
 // Flit -- Flit definition
 struct Flit {
     int payload_data_size; 

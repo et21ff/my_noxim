@@ -20,157 +20,290 @@ int ProcessingElement::randInt(int min, int max)
 // 引入ScheduleFactory来创建驱逐计划
 #include "smartbuffer/ScheduleFactory.h"
 
-void ProcessingElement::pe_init() {
+// 新增：动态配置函数实现
+void ProcessingElement::configure(int id, int level_idx, const HierarchicalConfig& topology_config) {
     //========================================================================
-    // I. 黄金参数定义 (Golden Parameters)
-    //    - 源自Timeloop的逻辑分析和Accelergy的物理定义
+    // I. 保存基础信息
     //========================================================================
-     logical_timestamp = 0;
-    // ---- 逻辑循环结构 (from Timeloop) ----
-    const int K2_LOOPS = 16;
-    const int P1_LOOPS = 16;
-    
-    // ---- 数据需求 (from Timeloop, 单位: Bytes) ----
-    const int FILL_DATA_SIZE = 9;  // W(6) + I(3)
-    const int DELTA_DATA_SIZE = 1; // I(1)
-    
-    // ---- 物理容量 (from Accelergy, 单位: Bytes) ----
-    const int GLB_CAPACITY = 262144;
-    const int BUFFER_CAPACITY = 64;
-    
+    this->local_id = id;
+    this->level_index = level_idx;
+
     //========================================================================
-    // II. 通用状态初始化
-    //     - 对所有PE都适用的默认值
+    // II. 根据层级确定角色和基础配置
     //========================================================================
-    role = ROLE_UNUSED;
-    current_data_size = 0;
-    previous_ready_signal = -1; // 确保第一次ready信号变化时会打印日志
-    all_receive_tasks_finished = false;
-    all_transfer_tasks_finished = false;
-    current_receive_loop_level = -1; // -1 表示没有任务
-    current_transfer_loop_level = -1;
-    outputs_received_count_ = 0;
-    
+    assert(level_idx < topology_config.levels.size());
+    const LevelConfig& level_config = topology_config.get_level_config(level_idx);
+
+    // 设置角色（假设每层只有一个主要角色）
+    this->role = level_config.roles;
+
+    // 设置缓冲区容量
+    this->max_capacity = level_config.buffer_size;
+
     //========================================================================
-    // III. 基于角色的专属初始化
+    // III. 配置上游/下游连接
     //========================================================================
+    // 清空现有连接
+    this->upstream_node_ids.clear();
+    this->downstream_node_ids.clear();
 
-    if (local_id == 0) {
-        // --- ROLE_DRAM: 理想化的、一次性任务的生产者 ---
-        role = ROLE_DRAM;
-        max_capacity = 20000; // 假设DRAM容量为64KB
-        EvictionSchedule dram_schedule = ScheduleFactory::createDRAMEvictionSchedule();
-        buffer_manager_.reset(new BufferManager(max_capacity, dram_schedule));
-        buffer_manager_->OnDataReceived(DataType::WEIGHT, 96);
-        buffer_manager_->OnDataReceived(DataType::INPUT, 18);
-        
-        
-        // 初始化output buffer manager
-        EvictionSchedule dram_output_schedule = ScheduleFactory::createDRAMEvictionSchedule();
-        output_buffer_manager_.reset(new BufferManager(max_capacity, dram_output_schedule));
-        output_buffer_manager_->OnDataReceived(DataType::OUTPUT, 512);
-        max_capacity = -1;
-        downstream_node_ids.clear();
-        downstream_node_ids.push_back(1); // 下游是GLB
-        upstream_node_ids.clear(); // DRAM没有上游
-
-        task_manager_ = std::unique_ptr<TaskManager>(new TaskManager());
-        task_manager_->Configure(GlobalParams::workload, "ROLE_DRAM");
-        outputs_required_count_ = task_manager_->role_output_working_set_size_;
-
-        dispatch_in_progress_ = false;
-        logical_timestamp = 0; // 初始化TaskManager
-
-        
-    } else if (local_id == 1) {
-        // --- ROLE_GLB: 智能的、任务驱动的中间商 ---
-        // current_data_size.write(0); // 初始为空
-        role = ROLE_GLB;
-        max_capacity = GLB_CAPACITY;
-        downstream_node_ids.clear();
-        downstream_node_ids.push_back(2); // 下游是Buffer
-        upstream_node_ids.clear();
-        upstream_node_ids.push_back(0); // 上游是DRAM
-
-        EvictionSchedule glb_schedule = ScheduleFactory::createGLBEvictionSchedule();
-        buffer_manager_.reset(new BufferManager(max_capacity, glb_schedule));
-        current_data_size.write(buffer_manager_->GetCurrentSize()); // 用manager的状态初始化信号
-        
-        task_manager_ = std::unique_ptr<TaskManager>(new TaskManager());
-        task_manager_->Configure(GlobalParams::workload, "ROLE_GLB");
-        outputs_required_count_ = task_manager_->role_output_working_set_size_;
-        // 初始化output buffer manager
-        EvictionSchedule glb_output_schedule = ScheduleFactory::createGLBEvictionSchedule();
-        output_buffer_manager_.reset(new BufferManager(max_capacity, glb_output_schedule));
-        // GLB的接收任务：从DRAM接收1次大的数据块
-         transfer_task_queue.clear();
-        receive_task_queue.push_back({1});
-        receive_loop_counters.resize(1, 0);
-        current_receive_loop_level = 0;
-        
-        // GLB的发送任务：向Buffer进行16x16的供应
-        transfer_task_queue.clear();
-        transfer_task_queue.push_back({K2_LOOPS});  // 16
-        transfer_task_queue.push_back({P1_LOOPS});  // 16
-        transfer_loop_counters.resize(2, 0);
-        current_transfer_loop_level = 1; // 从最内层(P1)循环开始
-
-        // GLB的发送块大小
-        transfer_fill_size = FILL_DATA_SIZE;
-        transfer_delta_size = DELTA_DATA_SIZE;
-
-        // GLB的阶段控制 (由其发送任务驱动)
-        current_stage = STAGE_FILL;
-
-        required_data_on_fill =  18; // FILL阶段需要的输入数据大小
-        required_data_on_delta = 18; // DELTA阶段需要的输入数据大小
-
-    } else if (local_id == 2) {
-        // --- ROLE_BUFFER: 带抽象消耗的最终目的地 ---
-        // current_data_size.write(0); // 初始为空
-
-        role = ROLE_BUFFER;
-        max_capacity = BUFFER_CAPACITY;
-        task_manager_ = std::unique_ptr<TaskManager>(new TaskManager());
-        task_manager_->Configure(GlobalParams::workload, "ROLE_BUFFER");
-        outputs_required_count_ = 0; 
-        EvictionSchedule buffer_schedule = ScheduleFactory::createBufferPESchedule();
-        buffer_manager_.reset(new BufferManager(max_capacity, buffer_schedule));
-        current_data_size.write(buffer_manager_->GetCurrentSize()); // 用manager的状态初始
-        
-        // 初始化output buffer manager
-        EvictionSchedule buffer_output_schedule = ScheduleFactory::createOutputBufferSchedule();
-        output_buffer_manager_.reset(new BufferManager(max_capacity, buffer_output_schedule));
-        downstream_node_ids.clear(); // 是终点
-        upstream_node_ids.push_back(1); // 上游是GLB
-        
-        receive_task_queue.clear();
-        receive_task_queue.push_back(K2_LOOPS);
-        receive_task_queue.push_back(P1_LOOPS);
-        receive_loop_counters.resize(2, 0);
-        current_receive_loop_level = 1;
-
-        // Buffer的消耗需求 (用于驱动抽象消耗和ready信号)
-        required_data_on_fill = FILL_DATA_SIZE;
-        required_data_on_delta = DELTA_DATA_SIZE;
-
-        required_output_data_on_delta = 2;
-        required_output_data_on_fill = 2;
-
-
-        
-        // 抽象消耗状态
-        is_consuming = false;
-        consume_cycles_left = 0;
-        is_stalled_waiting_for_data = true; // 初始时等待数据
-
-        // Buffer的阶段控制 (由其消耗/接收任务驱动)
-        current_stage = STAGE_FILL;
+    // 配置上游
+    int parent_id = GlobalParams::parent_map[this->local_id];
+    if (parent_id != -1) {
+        this->upstream_node_ids.push_back(parent_id);
     }
-    // 可以在这里加一个调试日志来确认初始化结果
-    cout << sc_time_stamp() << ": PE[" << local_id << "] initialized as " << role_to_str(role);
-    transmittedAtPreviousCycle = false;
+
+    // 配置下游
+    int num_children = GlobalParams::fanouts_per_level[level_idx];
+    int* children = GlobalParams::child_map[this->local_id];
+    for (int i = 0; i < num_children; i++) {
+        this->downstream_node_ids.push_back(children[i]);
+    }
+
+    //========================================================================
+    // IV. 执行角色专属的初始化
+    //========================================================================
+    switch (this->role) {
+        case ROLE_DRAM: {
+            // 黄金参数定义
+            const int GLB_CAPACITY = 262144;
+            const int BUFFER_CAPACITY = 64;
+
+            // 配置BufferManager
+            EvictionSchedule dram_schedule = ScheduleFactory::createDRAMEvictionSchedule();
+            buffer_manager_.reset(new BufferManager(max_capacity, dram_schedule));
+            buffer_manager_->OnDataReceived(DataType::WEIGHT, 96);
+            buffer_manager_->OnDataReceived(DataType::INPUT, 18);
+
+            // 配置output buffer manager
+            EvictionSchedule dram_output_schedule = ScheduleFactory::createDRAMEvictionSchedule();
+            output_buffer_manager_.reset(new BufferManager(max_capacity, dram_output_schedule));
+            output_buffer_manager_->OnDataReceived(DataType::OUTPUT, 512);
+
+            // 配置TaskManager
+            task_manager_ = std::unique_ptr<TaskManager>(new TaskManager());
+            task_manager_->Configure(GlobalParams::workload, "ROLE_DRAM");
+            outputs_required_count_ = task_manager_->role_output_working_set_size_;
+            outputs_received_count_ = 0;
+
+            // 状态初始化
+            dispatch_in_progress_ = false;
+            logical_timestamp = 0;
+            break;
+        }
+
+        case ROLE_GLB: {
+            // 黄金参数定义
+            const int K2_LOOPS = 16;
+            const int P1_LOOPS = 16;
+            const int FILL_DATA_SIZE = 9;  // W(6) + I(3)
+            const int DELTA_DATA_SIZE = 1; // I(1)
+
+            // 配置BufferManager
+            EvictionSchedule glb_schedule = ScheduleFactory::createGLBEvictionSchedule();
+            buffer_manager_.reset(new BufferManager(max_capacity, glb_schedule));
+            current_data_size.write(buffer_manager_->GetCurrentSize());
+
+            // 配置output buffer manager
+            EvictionSchedule glb_output_schedule = ScheduleFactory::createGLBEvictionSchedule();
+            output_buffer_manager_.reset(new BufferManager(max_capacity, glb_output_schedule));
+
+            // 配置TaskManager
+            task_manager_ = std::unique_ptr<TaskManager>(new TaskManager());
+            task_manager_->Configure(GlobalParams::workload, "ROLE_GLB");
+            outputs_required_count_ = task_manager_->role_output_working_set_size_;
+            outputs_received_count_ = 0;
+
+            break;
+        }
+
+        case ROLE_BUFFER: {
+            // 配置BufferManager
+            EvictionSchedule buffer_schedule = ScheduleFactory::createBufferPESchedule();
+            buffer_manager_.reset(new BufferManager(max_capacity, buffer_schedule));
+            current_data_size.write(buffer_manager_->GetCurrentSize());
+
+            // 配置output buffer manager
+            EvictionSchedule buffer_output_schedule = ScheduleFactory::createOutputBufferSchedule();
+            output_buffer_manager_.reset(new BufferManager(max_capacity, buffer_output_schedule));
+
+            // 配置TaskManager
+            task_manager_ = std::unique_ptr<TaskManager>(new TaskManager());
+            task_manager_->Configure(GlobalParams::workload, "ROLE_BUFFER");
+            outputs_required_count_ = 0;
+            outputs_received_count_ = 0;
+            compute_cycles = 0;
+
+            break;
+        }
+
+        default:
+            // 未处理的角色类型
+            assert(false && "Unknown PE_Role in configure function");
+            break;
+    }
+
+    //========================================================================
+    // V. 通用状态初始化
+    //========================================================================
+    logical_timestamp = 0;
+
+    // 调试日志
+    cout << sc_time_stamp() << ": PE[" << local_id << "] configured as " << role_to_str(role)
+         << " at level " << level_idx << endl;
 }
+
+void ProcessingElement::pe_init() {};
+//     //========================================================================
+//     // I. 黄金参数定义 (Golden Parameters)
+//     //    - 源自Timeloop的逻辑分析和Accelergy的物理定义
+//     //========================================================================
+//      logical_timestamp = 0;
+//     // ---- 逻辑循环结构 (from Timeloop) ----
+//     const int K2_LOOPS = 16;
+//     const int P1_LOOPS = 16;
+    
+//     // ---- 数据需求 (from Timeloop, 单位: Bytes) ----
+//     const int FILL_DATA_SIZE = 9;  // W(6) + I(3)
+//     const int DELTA_DATA_SIZE = 1; // I(1)
+    
+//     // ---- 物理容量 (from Accelergy, 单位: Bytes) ----
+//     const int GLB_CAPACITY = 262144;
+//     const int BUFFER_CAPACITY = 64;
+    
+//     //========================================================================
+//     // II. 通用状态初始化
+//     //     - 对所有PE都适用的默认值
+//     //========================================================================
+//     role = ROLE_UNUSED;
+//     current_data_size = 0;
+//     previous_ready_signal = -1; // 确保第一次ready信号变化时会打印日志
+//     all_receive_tasks_finished = false;
+//     all_transfer_tasks_finished = false;
+//     current_receive_loop_level = -1; // -1 表示没有任务
+//     current_transfer_loop_level = -1;
+//     outputs_received_count_ = 0;
+    
+//     //========================================================================
+//     // III. 基于角色的专属初始化
+//     //========================================================================
+
+//     if (local_id == 0) {
+//         // --- ROLE_DRAM: 理想化的、一次性任务的生产者 ---
+//         role = ROLE_DRAM;
+//         max_capacity = 20000; // 假设DRAM容量为64KB
+//         EvictionSchedule dram_schedule = ScheduleFactory::createDRAMEvictionSchedule();
+//         buffer_manager_.reset(new BufferManager(max_capacity, dram_schedule));
+//         buffer_manager_->OnDataReceived(DataType::WEIGHT, 96);
+//         buffer_manager_->OnDataReceived(DataType::INPUT, 18);
+        
+        
+//         // 初始化output buffer manager
+//         EvictionSchedule dram_output_schedule = ScheduleFactory::createDRAMEvictionSchedule();
+//         output_buffer_manager_.reset(new BufferManager(max_capacity, dram_output_schedule));
+//         output_buffer_manager_->OnDataReceived(DataType::OUTPUT, 512);
+//         max_capacity = -1;
+//         downstream_node_ids.clear();
+//         downstream_node_ids.push_back(1); // 下游是GLB
+//         upstream_node_ids.clear(); // DRAM没有上游
+
+//         task_manager_ = std::unique_ptr<TaskManager>(new TaskManager());
+//         task_manager_->Configure(GlobalParams::workload, "ROLE_DRAM");
+//         outputs_required_count_ = task_manager_->role_output_working_set_size_;
+
+//         dispatch_in_progress_ = false;
+//         logical_timestamp = 0; // 初始化TaskManager
+
+        
+//     } else if (local_id == 1) {
+//         // --- ROLE_GLB: 智能的、任务驱动的中间商 ---
+//         // current_data_size.write(0); // 初始为空
+//         role = ROLE_GLB;
+//         max_capacity = GLB_CAPACITY;
+//         downstream_node_ids.clear();
+//         downstream_node_ids.push_back(2); // 下游是Buffer
+//         upstream_node_ids.clear();
+//         upstream_node_ids.push_back(0); // 上游是DRAM
+
+//         EvictionSchedule glb_schedule = ScheduleFactory::createGLBEvictionSchedule();
+//         buffer_manager_.reset(new BufferManager(max_capacity, glb_schedule));
+//         current_data_size.write(buffer_manager_->GetCurrentSize()); // 用manager的状态初始化信号
+        
+//         task_manager_ = std::unique_ptr<TaskManager>(new TaskManager());
+//         task_manager_->Configure(GlobalParams::workload, "ROLE_GLB");
+//         outputs_required_count_ = task_manager_->role_output_working_set_size_;
+//         // 初始化output buffer manager
+//         EvictionSchedule glb_output_schedule = ScheduleFactory::createGLBEvictionSchedule();
+//         output_buffer_manager_.reset(new BufferManager(max_capacity, glb_output_schedule));
+//         // GLB的接收任务：从DRAM接收1次大的数据块
+//          transfer_task_queue.clear();
+//         receive_task_queue.push_back({1});
+//         receive_loop_counters.resize(1, 0);
+//         current_receive_loop_level = 0;
+        
+//         // GLB的发送任务：向Buffer进行16x16的供应
+//         transfer_task_queue.clear();
+//         transfer_task_queue.push_back({K2_LOOPS});  // 16
+//         transfer_task_queue.push_back({P1_LOOPS});  // 16
+//         transfer_loop_counters.resize(2, 0);
+//         current_transfer_loop_level = 1; // 从最内层(P1)循环开始
+
+//         // GLB的发送块大小
+//         transfer_fill_size = FILL_DATA_SIZE;
+//         transfer_delta_size = DELTA_DATA_SIZE;
+
+//         // GLB的阶段控制 (由其发送任务驱动)
+//         current_stage = STAGE_FILL;
+
+//         required_data_on_fill =  18; // FILL阶段需要的输入数据大小
+//         required_data_on_delta = 18; // DELTA阶段需要的输入数据大小
+
+//     } else if (local_id == 2) {
+//         // --- ROLE_BUFFER: 带抽象消耗的最终目的地 ---
+//         // current_data_size.write(0); // 初始为空
+
+//         role = ROLE_BUFFER;
+//         max_capacity = BUFFER_CAPACITY;
+//         task_manager_ = std::unique_ptr<TaskManager>(new TaskManager());
+//         task_manager_->Configure(GlobalParams::workload, "ROLE_BUFFER");
+//         outputs_required_count_ = 0; 
+//         EvictionSchedule buffer_schedule = ScheduleFactory::createBufferPESchedule();
+//         buffer_manager_.reset(new BufferManager(max_capacity, buffer_schedule));
+//         current_data_size.write(buffer_manager_->GetCurrentSize()); // 用manager的状态初始
+        
+//         // 初始化output buffer manager
+//         EvictionSchedule buffer_output_schedule = ScheduleFactory::createOutputBufferSchedule();
+//         output_buffer_manager_.reset(new BufferManager(max_capacity, buffer_output_schedule));
+//         downstream_node_ids.clear(); // 是终点
+//         upstream_node_ids.push_back(1); // 上游是GLB
+        
+//         receive_task_queue.clear();
+//         receive_task_queue.push_back(K2_LOOPS);
+//         receive_task_queue.push_back(P1_LOOPS);
+//         receive_loop_counters.resize(2, 0);
+//         current_receive_loop_level = 1;
+
+//         // Buffer的消耗需求 (用于驱动抽象消耗和ready信号)
+//         required_data_on_fill = FILL_DATA_SIZE;
+//         required_data_on_delta = DELTA_DATA_SIZE;
+
+//         required_output_data_on_delta = 2;
+//         required_output_data_on_fill = 2;
+
+
+        
+//         // 抽象消耗状态
+//         is_consuming = false;
+//         consume_cycles_left = 0;
+//         is_stalled_waiting_for_data = true; // 初始时等待数据
+
+//         // Buffer的阶段控制 (由其消耗/接收任务驱动)
+//         current_stage = STAGE_FILL;
+//     }
+//     // 可以在这里加一个调试日志来确认初始化结果
+//     cout << sc_time_stamp() << ": PE[" << local_id << "] initialized as " << role_to_str(role);
+//     transmittedAtPreviousCycle = false;
+// }
 
 int ProcessingElement::find_child_id(int id)
 {

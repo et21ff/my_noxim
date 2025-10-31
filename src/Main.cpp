@@ -130,12 +130,12 @@ int sc_main(int arg_num, char *arg_vet[])
     cout << endl;
 
     configure(arg_num, arg_vet);
-    GlobalParams::workload = loadWorkloadConfigFromString(test_yaml_content);
+    // GlobalParams::workload = loadWorkloadConfigFromString(test_yaml_content);
 
-    GlobalParams::CapabilityMap[ROLE_GLB].main_channel_caps = {0,18,96};
-    GlobalParams::CapabilityMap[ROLE_GLB].output_channel_caps = {0,512};
-    GlobalParams::CapabilityMap[ROLE_BUFFER].main_channel_caps = {0,1,3,6};
-    GlobalParams::CapabilityMap[ROLE_BUFFER].output_channel_caps = {0,2};
+    // GlobalParams::CapabilityMap[ROLE_GLB].main_channel_caps = {0,18,96};
+    // GlobalParams::CapabilityMap[ROLE_GLB].output_channel_caps = {0,512};
+    // GlobalParams::CapabilityMap[ROLE_BUFFER].main_channel_caps = {0,1,3,6};
+    // GlobalParams::CapabilityMap[ROLE_BUFFER].output_channel_caps = {0,2};
 
 
     // Signals

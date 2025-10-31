@@ -2,7 +2,10 @@
 #include "catch.hpp"
 #include "ConfigParser.h" // 假设的路径
 #include "dbg.h"          // 用于调试输出
+#include <set>
+#include <cassert>
 
+std::map<PE_Role, RoleChannelCapabilities> CapabilityMap;
 // --- 准备一个用于测试的 YAML 字符串（完整的多角色配置）---
 const std::string test_yaml_content = R"(
 workload:
@@ -111,6 +114,84 @@ workload:
               Inputs: 1
               Outputs: 2
 )";
+
+// --- infer_capabilities_from_workload 函数实现 ---
+void infer_capabilities_from_workload(const WorkloadConfig& workload) {
+    // 准备阶段：创建临时 map 用于收集唯一的能力值
+    std::map<PE_Role, std::set<int>> temp_main_caps;
+    std::map<PE_Role, std::set<int>> temp_output_caps;
+
+    // 主循环：遍历所有数据流规格
+    for (const auto& spec : workload.data_flow_specs) {
+        // 将字符串角色转换为枚举
+        PE_Role source_role = stringToRole(spec.role);
+
+        // 跳过无效角色
+        if (source_role == ROLE_UNUSED) {
+            continue;
+        }
+
+        // 确定目标角色与边界检查
+        int next_role_int = static_cast<int>(source_role) + 1;
+
+        // 严格的边界检查
+        assert(next_role_int <= ROLE_BUFFER && "源角色是层级中的最后一级，不能有目标！");
+
+        PE_Role target_role = static_cast<PE_Role>(next_role_int);
+
+        // 内层循环：遍历所有 delta_events 和 actions
+        if (spec.has_schedule()) {
+            for (const auto& delta_event : spec.schedule_template->delta_events) {
+                for (const auto& action : delta_event.actions) {
+                    // 忽略 size 为 0 的 action
+                    if (action.size == 0) {
+                        continue;
+                    }
+
+                    // 将字符串 data_space 转换为 DataType
+                    DataType data_type = stringToDataType(action.data_space);
+
+                    // 根据数据类型分配到相应的缓冲区
+                    if (data_type == DataType::INPUT || data_type == DataType::WEIGHT) {
+                        // 数据进入 target_role 的主缓冲区
+                        temp_main_caps[target_role].insert(static_cast<int>(action.size));
+                    } else if (data_type == DataType::OUTPUT) {
+                        // 数据与 target_role 的输出缓冲区相关
+                        temp_output_caps[target_role].insert(static_cast<int>(action.size));
+                    }
+                    // 忽略 UNKNOWN 数据类型
+                }
+            }
+        }
+    }
+
+    // 最终填充：清空并填充 GlobalParams::CapabilityMap
+    CapabilityMap.clear();
+
+    // 遍历所有已知的有效 PE_Role
+    for (int role_int = ROLE_DRAM; role_int <= ROLE_BUFFER; ++role_int) {
+        PE_Role role = static_cast<PE_Role>(role_int);
+
+        // 创建 Capability 对象
+        RoleChannelCapabilities capability;
+
+        // 始终将 0 作为基础能力添加
+        capability.main_channel_caps.push_back(0);
+        capability.output_channel_caps.push_back(0);
+
+        // 复制临时 map 中的能力值到 vector
+        for (int cap : temp_main_caps[role]) {
+            capability.main_channel_caps.push_back(cap);
+        }
+
+        for (int cap : temp_output_caps[role]) {
+            capability.output_channel_caps.push_back(cap);
+        }
+
+        // 将 Capability 对象赋值给 GlobalParams::CapabilityMap
+        CapabilityMap[role] = capability;
+    }
+}
 
 // --- 开始测试 ---
 
@@ -258,6 +339,75 @@ workload:
         WorkloadConfig config = loadWorkloadConfigFromString(incomplete_yaml);
         REQUIRE(validateWorkloadConfig(config) == false);
     }
+}
+
+TEST_CASE("infer_capabilities_from_workload function works correctly", "[ConfigParser][CapabilityInference]") {
+    WorkloadConfig config;
+
+    // 加载测试配置
+    REQUIRE_NOTHROW(config = loadWorkloadConfigFromString(test_yaml_content));
+    REQUIRE(validateWorkloadConfig(config) == true);
+
+    SECTION("Capability inference matches expected results") {
+        // 调用推断函数
+        REQUIRE_NOTHROW(infer_capabilities_from_workload(config));
+
+        // 验证 GlobalParams::CapabilityMap 已被填充
+        REQUIRE(CapabilityMap.size() == 3); // ROLE_DRAM, ROLE_GLB, ROLE_BUFFER
+
+        // 验证 ROLE_GLB 的能力（从 ROLE_DRAM 推断）
+        const auto& glb_caps = CapabilityMap[ROLE_GLB];
+        REQUIRE(glb_caps.main_channel_caps.size() >= 1); // 至少包含基础能力 0
+        REQUIRE(glb_caps.output_channel_caps.size() >= 1); // 至少包含基础能力 0
+
+        // 检查基础能力
+        REQUIRE(glb_caps.main_channel_caps[0] == 0);
+        REQUIRE(glb_caps.output_channel_caps[0] == 0);
+
+        // 验证 ROLE_BUFFER 的能力（从 ROLE_GLB 推断）
+        const auto& buffer_caps = CapabilityMap[ROLE_BUFFER];
+        REQUIRE(buffer_caps.main_channel_caps.size() >= 1); // 至少包含基础能力 0
+        REQUIRE(buffer_caps.output_channel_caps.size() >= 1); // 至少包含基础能力 0
+
+        // 检查基础能力
+        REQUIRE(buffer_caps.main_channel_caps[0] == 0);
+        REQUIRE(buffer_caps.output_channel_caps[0] == 0);
+
+        // 验证从测试配置推断出的具体能力值
+        // 从 ROLE_GLB 的 FILL_TO_PES 事件推断：Weights=6, Inputs=3 -> main_channel_caps
+        // 从 ROLE_GLB 的 DELTA_TO_PES 事件推断：Inputs=1, Outputs=2
+        bool found_weights_6 = false, found_inputs_3 = false, found_inputs_1 = false, found_outputs_2 = false;
+
+        for (int cap : buffer_caps.main_channel_caps) {
+            if (cap == 6) found_weights_6 = true;
+            if (cap == 3) found_inputs_3 = true;
+            if (cap == 1) found_inputs_1 = true;
+        }
+
+        for (int cap : buffer_caps.output_channel_caps) {
+            if (cap == 2) found_outputs_2 = true;
+        }
+
+        REQUIRE(found_weights_6);
+        REQUIRE(found_inputs_3);
+        REQUIRE(found_inputs_1);
+        REQUIRE(found_outputs_2);
+    }
+
+    // SECTION("Function handles edge cases gracefully") {
+    //     // 清空能力映射
+    //     CapabilityMap.clear();
+
+    //     // 使用简化的测试配置
+    //     WorkloadConfig simple_config;
+    //     REQUIRE_NOTHROW(simple_config = loadWorkloadConfigFromString(simple_test_yaml_content));
+
+    //     // 调用推断函数
+    //     REQUIRE_NOTHROW(infer_capabilities_from_workload(simple_config));
+
+    //     // 验证映射仍然被正确初始化
+    //     REQUIRE(CapabilityMap.size() == 3);
+    // }
 }
 
 int sc_main(int argc, char* argv[]) {
