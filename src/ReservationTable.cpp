@@ -9,6 +9,7 @@
  */
 
 #include "ReservationTable.h"
+#include <set>
 
 ReservationTable::ReservationTable()
 {
@@ -35,20 +36,25 @@ bool ReservationTable::isNotReserved(const int port_out)
 /* For a given input, returns the set of output/vc reserved from that input.
  * An index is required for each output entry, to avoid that multiple invokations
  * with different inputs returns the same output in the same clock cycle. */
-vector<pair<int,int> > ReservationTable::getReservations(const int port_in)
+std::map<int, std::vector<int>> ReservationTable::getReservations(const int port_in)
 {
-    vector<pair<int,int> > reservations;
+    std::map<int, std::vector<int>> result_map;
 
-    for (int o = 0;o<n_outputs;o++)
+    for (int o = 0; o < n_outputs; o++)
     {
-	if (rtable[o].reservations.size()>0)
-	{
-	    int current_index = rtable[o].index;
-	    if (rtable[o].reservations[current_index].input == port_in)
-		reservations.push_back(pair<int,int>(o,rtable[o].reservations[current_index].vc));
-	}
+        if (!rtable[o].reservations.empty())
+        {
+            int winner_index = rtable[o].index;
+            const TReservation& winner_reservation = rtable[o].reservations[winner_index];
+
+            if (winner_reservation.input == port_in)
+            {
+                int winner_vc = winner_reservation.vc;
+                result_map[winner_vc].push_back(o);
+            }
+        }
     }
-    return reservations;
+    return result_map;
 }
 
 int ReservationTable::checkReservation(const TReservation r, const int port_out)
@@ -118,7 +124,7 @@ void ReservationTable::release(const TReservation r, const int port_out)
 {
     assert(port_out < n_outputs);
 
-    for (vector<TReservation>::iterator i=rtable[port_out].reservations.begin(); 
+    for (vector<TReservation>::iterator i=rtable[port_out].reservations.begin();
 	    i != rtable[port_out].reservations.end(); i++)
     {
 	if (*i == r)
@@ -138,6 +144,95 @@ void ReservationTable::release(const TReservation r, const int port_out)
     assert(false); //trying to release a never made reservation  ?
 }
 
+// 重载方法：检查多个输出端口的预留状态
+int ReservationTable::checkReservation(const TReservation& r, const std::vector<int>& outputs)
+{
+    // 步骤 1: 查找并收集 r 当前被预留的所有端口
+    std::vector<int> existing_ports;
+    for (int o = 0; o < n_outputs; ++o) 
+    {
+        for (const auto& reservation : rtable[o].reservations) 
+        {
+            if (reservation == r) 
+            {
+                existing_ports.push_back(o);
+                // 优化：每个输出端口的预留列表中，r 最多出现一次，找到即可跳出内层循环
+                break; 
+            }
+        }
+    }
+
+    // 步骤 2: 根据 existing_ports 的状态进行决策
+    
+    // 情况 A: 预留 r 完全不存在（全新预留）
+    if (existing_ports.empty()) 
+    {
+        // 检查所有目标端口的 VC 资源是否被其他输入占用了
+        for (int port_out : outputs) 
+        {
+            assert(port_out < n_outputs);
+            for (const auto& res : rtable[port_out].reservations) 
+            {
+                // 检查 VC 冲突
+                if (res.input != r.input && res.vc == r.vc) 
+                {
+                    return RT_OUTVC_BUSY;
+                }
+            }
+        }
+        // 所有目标端口都可用
+        return RT_AVAILABLE;
+    } 
+    // 情况 B: 预留 r 已经存在
+    else 
+    {
+        // 将现有端口和请求端口都转换为 set 以便进行严格、无序的比较
+        std::set<int> existing_ports_set(existing_ports.begin(), existing_ports.end());
+        std::set<int> requested_ports_set(outputs.begin(), outputs.end());
+
+        // 检查两个集合是否完全相同
+        if (existing_ports_set == requested_ports_set) 
+        {
+            // 完全匹配，这是一个幂等的重复请求
+            return RT_ALREADY_SAME;
+        } 
+        else 
+        {
+            // 只要不完全匹配，无论是单播vs多播，还是多播vs不同的多播，
+            // 都视为资源已被一个“其他”的配置所占用。
+            // 这是最清晰、最统一的冲突定义。
+            return RT_ALREADY_OTHER_OUT;
+        }
+    }
+}
+
+// 重载方法：原子性地预留多个输出端口
+void ReservationTable::reserve(const TReservation& r, const vector<int>& outputs)
+{
+    assert(checkReservation(r, outputs)==RT_AVAILABLE ); // 断言检查
+
+    // 提交阶段：预留所有端口（直接操作，避免重复检查）
+    for (vector<int>::const_iterator it = outputs.begin(); it != outputs.end(); ++it)
+    {
+        int port_out = *it;
+        // 直接预留，避免重复的断言检查
+        rtable[port_out].reservations.push_back(r);
+    }
+}
+
+// 重载方法：释放多个输出端口的预留
+void ReservationTable::release(const TReservation& r, const vector<int>& outputs)
+{
+    for (vector<int>::const_iterator it = outputs.begin(); it != outputs.end(); ++it)
+    {
+        int port_out = *it;
+        assert(port_out < n_outputs);
+
+        // 调用原始的单端口release方法
+        release(r, port_out);
+    }
+}
+
 void ReservationTable::updateIndex()
 {
     for (int o=0;o<n_outputs;o++)
@@ -147,4 +242,32 @@ void ReservationTable::updateIndex()
     }
 }
 
+/**
+ * @brief Resets the reservation table to a clean state.
+ *
+ * This function clears all reservations from all output ports and resets the
+ * priority index for each port. It effectively brings the table to the same
+ * state it was in immediately after being initialized by setSize().
+ */
+void ReservationTable::reset()
+{
+    // A safety check to ensure the table has been allocated.
+    // If setSize() has not been called, rtable will be null.
+    if (rtable == nullptr) {
+        return;
+    }
+
+    // Iterate over every output port in the reservation table.
+    for (int i = 0; i < n_outputs; ++i) {
+        // For each output port i:
+        
+        // 1. Clear the vector of active reservations.
+        // The .clear() method removes all elements from the std::vector.
+        rtable[i].reservations.clear();
+
+        // 2. Reset the priority index to its starting position (0).
+        // This is important for fair arbitration in subsequent cycles.
+        rtable[i].index = 0;
+    }
+}
 

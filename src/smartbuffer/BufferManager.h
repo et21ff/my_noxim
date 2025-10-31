@@ -5,6 +5,7 @@
 #include <map>
 #include <cstddef> // for size_t
 #include <algorithm> // for std::min
+#include "DataStructs.h"
 
 /**
  * @file BufferManager.h
@@ -16,11 +17,11 @@
 
 // --- 核心类型定义 ---
 
-enum class DataType {
-    INPUT,
-    WEIGHT,
-    OUTPUT,
-};
+// enum class DataType {
+//     INPUT,
+//     WEIGHT,
+//     OUTPUT,
+// };
 
 /**
  * @using EvictionSchedule
@@ -49,8 +50,8 @@ public:
      * @param required_types 一个包含所有必需数据类型的列表。
      * @return 如果所有必需类型的数据都存在，返回true；否则返回false。
      */
-    bool AreDataTypesReady(const std::vector<DataType>& required_types) const;
-
+    bool AreDataTypesReady(const std::vector<DataType>& required_types , size_t size) const;
+    bool AreDataTypeReady(const DataType& required_types,size_t size) const;
     bool RemoveData(DataType type, size_t size);
 
 

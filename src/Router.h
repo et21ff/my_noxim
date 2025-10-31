@@ -10,6 +10,7 @@
 
 #ifndef __NOXIMROUTER_H__
 #define __NOXIMROUTER_H__
+#define NUM_LOCAL_PORTS 2
 
 #include <systemc.h>
 #include "DataStructs.h"
@@ -21,10 +22,6 @@
 #include "Utils.h"
 #include "routingAlgorithms/RoutingAlgorithm.h"
 #include "routingAlgorithms/RoutingAlgorithms.h"
-#include "selectionStrategies/SelectionStrategy.h"
-#include "selectionStrategies/SelectionStrategy.h"
-#include "selectionStrategies/Selection_NOP.h"
-#include "selectionStrategies/Selection_BUFFER_LEVEL.h"
 
 using namespace std;
 
@@ -32,46 +29,84 @@ extern unsigned int drained_volume;
 
 SC_MODULE(Router)
 {
-    friend class Selection_NOP;
-    friend class Selection_BUFFER_LEVEL;
+
 
     // I/O Ports
     sc_in_clk clock;		                  // The input clock for the router
     sc_in <bool> reset;                           // The reset signal for the router
 
-    // number of ports: 4 mesh directions + local + local_2 + hub + wireless 
-    sc_in <Flit> flit_rx[DIRECTIONS + 3];	  // The input channels 
-    sc_in <bool> req_rx[DIRECTIONS + 3];	  // The requests associated with the input channels
-    sc_out <bool> ack_rx[DIRECTIONS + 3];	  // The outgoing ack signals associated with the input channels
-    sc_out <TBufferFullStatus> buffer_full_status_rx[DIRECTIONS+3];
+    // Hierarchical Dynamic Ports
+    // UP ports (parent connection)
+    sc_in<Flit>* h_flit_rx_up;
+    sc_in<bool>* h_req_rx_up;
+    sc_out<bool>* h_ack_rx_up;
+    sc_out<TBufferFullStatus>* h_buffer_full_status_rx_up;
 
-    sc_out <Flit> flit_tx[DIRECTIONS + 3];   // The output channels
-    sc_out <bool> req_tx[DIRECTIONS + 3];	  // The requests associated with the output channels
-    sc_in <bool> ack_tx[DIRECTIONS + 3];	  // The outgoing ack signals associated with the output channels
-    sc_in <TBufferFullStatus> buffer_full_status_tx[DIRECTIONS+3];
+    sc_out<Flit>* h_flit_tx_up;
+    sc_out<bool>* h_req_tx_up;
+    sc_in<bool>* h_ack_tx_up;
+    sc_in<TBufferFullStatus>* h_buffer_full_status_tx_up;
 
-    sc_out <int> free_slots[DIRECTIONS + 3];
-    sc_in <int> free_slots_neighbor[DIRECTIONS + 3];
+    // DOWN ports (child connections)
+    vector<sc_out<Flit>*> h_flit_tx_down;
+    vector<sc_out<bool>*> h_req_tx_down;
+    vector<sc_in<bool>*> h_ack_tx_down;
+    vector<sc_in<TBufferFullStatus>*> h_buffer_full_status_tx_down;
 
-    // Neighbor-on-Path related I/O
-    sc_out < NoP_data > NoP_data_out[DIRECTIONS];
-    sc_in < NoP_data > NoP_data_in[DIRECTIONS];
+    vector<sc_in<Flit>*> h_flit_rx_down;
+    vector<sc_in<bool>*> h_req_rx_down;
+    vector<sc_out<bool>*> h_ack_rx_down;
+    vector<sc_out<TBufferFullStatus>*> h_buffer_full_status_rx_down;
+
+    // LOCAL ports (PE connection)
+    sc_in<Flit>* h_flit_rx_local[NUM_LOCAL_PORTS];
+    sc_in<bool>* h_req_rx_local[NUM_LOCAL_PORTS];
+    sc_out<bool>* h_ack_rx_local[NUM_LOCAL_PORTS];
+    sc_out<TBufferFullStatus>* h_buffer_full_status_rx_local[NUM_LOCAL_PORTS];
+
+    sc_out<Flit>* h_flit_tx_local[NUM_LOCAL_PORTS];
+    sc_out<bool>* h_req_tx_local[NUM_LOCAL_PORTS];
+    sc_in<bool>* h_ack_tx_local[NUM_LOCAL_PORTS];
+    sc_in<TBufferFullStatus>* h_buffer_full_status_tx_local[NUM_LOCAL_PORTS];
+
+    // Logical port type enumeration
+    enum LogicalPortType { PORT_UP, PORT_LOCAL, PORT_DOWN };
+
+    struct PortInfo {
+        LogicalPortType type;
+        int instance_index; 
+        std::string name;
+    };
+
+    // Unified Interface Adapter
+    vector<sc_in<Flit>*> all_flit_rx;
+    vector<sc_in<bool>*> all_req_rx;
+    vector<sc_out<bool>*> all_ack_rx;
+    vector<sc_out<TBufferFullStatus>*> all_buffer_full_status_rx;
+
+    vector<sc_out<Flit>*> all_flit_tx;
+    vector<sc_out<bool>*> all_req_tx;
+    vector<sc_in<bool>*> all_ack_tx;
+    vector<sc_in<TBufferFullStatus>*> all_buffer_full_status_tx;
+
+    vector<BufferBank*> buffers;
+    vector<PortInfo> port_info_map;
+    vector<bool> current_level_rx;
+    vector<bool> current_level_tx;
+    vector<int> start_from_vc;
 
     // Registers
 
     int local_id;		                // Unique ID
+    int local_level;		              // Hierarchical level
     int routing_type;		                // Type of routing algorithm
     int selection_type;
-    BufferBank buffer[DIRECTIONS + 3];		// buffer[direction][virtual_channel] 
-    bool current_level_rx[DIRECTIONS + 3];	// Current level for Alternating Bit Protocol (ABP)
-    bool current_level_tx[DIRECTIONS + 3];	// Current level for Alternating Bit Protocol (ABP)
     Stats stats;		                // Statistics
     Power power;
     LocalRoutingTable routing_table;		// Routing table
     ReservationTable reservation_table;		// Switch reservation table
     unsigned long routed_flits;
-    RoutingAlgorithm * routingAlgorithm; 
-    SelectionStrategy * selectionStrategy; 
+    RoutingAlgorithm * routingAlgorithm;
     
     // Functions
 
@@ -79,61 +114,46 @@ SC_MODULE(Router)
     void rxProcess();		// The receiving process
     void txProcess();		// The transmitting process
     void perCycleUpdate();
-    void configure(const int _id, const double _warm_up_time,
+    void configure(const int _id, const int _level, const double _warm_up_time,
 		   const unsigned int _max_buffer_size,
 		   GlobalRoutingTable & grt);
 
     unsigned long getRoutedFlits();	// Returns the number of routed flits 
+    SC_HAS_PROCESS(Router);
+    Router(sc_module_name nm); 
+        void initPorts();
+    void buildUnifiedInterface();
+    ~Router();
 
-    // Constructor
-
-    SC_CTOR(Router) {
-        SC_METHOD(process);
-        sensitive << reset;
-        sensitive << clock.pos();
-
-        SC_METHOD(perCycleUpdate);
-        sensitive << reset;
-        sensitive << clock.pos();
-
-        routingAlgorithm = RoutingAlgorithms::get(GlobalParams::routing_algorithm);
-
-        if (routingAlgorithm == 0)
-        {
-            cerr << " FATAL: invalid routing -routing " << GlobalParams::routing_algorithm << ", check with noxim -help" << endl;
-            exit(-1);
-        }
-
-        selectionStrategy = SelectionStrategies::get(GlobalParams::selection_strategy);
-
-        if (selectionStrategy == 0)
-        {
-            cerr << " FATAL: invalid selection strategy -sel " << GlobalParams::selection_strategy << ", check with noxim -help" << endl;
-            exit(-1);
-        }
-    }
+    vector<int> routeMulticast(const MulticastRouteData & route_data);
+    vector<int> getMulticastChildren(const vector<int>& dst_ids);
+    bool isMulticastToLocalOnly(const vector<int>& dst_ids);
 
   private:
 
+    // Dynamic port management
+
+    void cleanupPorts();
+    
+
+    public:
     // performs actual routing + selection
     int route(const RouteData & route_data);
+private:
 
     // wrappers
     int selectionFunction(const vector <int> &directions,
 			  const RouteData & route_data);
     vector < int >routingFunction(const RouteData & route_data);
- 
+
     NoP_data getCurrentNoPData();
     void NoP_report() const;
     int NoPScore(const NoP_data & nop_data, const vector <int> & nop_channels) const;
     int reflexDirection(int direction) const;
     int getNeighborId(int _id, int direction) const;
-   
+
     vector<int> getNextHops(int src, int dst);
     int start_from_port;	     // Port from which to start the reservation cycle
-    int start_from_vc[DIRECTIONS+3]; // VC from which to start the reservation cycle for the specific port
-
-    vector<int> nextDeltaHops(RouteData rd);
   public:
     unsigned int local_drained;
 
@@ -141,6 +161,9 @@ SC_MODULE(Router)
     void ShowBuffersStats(std::ostream & out);
 
     bool connectedHubs(int src_hub, int dst_hub);
+    bool isDescendant(int dst_id) const;
+    int getNextHopNode(int dst_id) const;
+    int getLogicalPortIndex(LogicalPortType type, int down_index = -1) const;
 };
 
 #endif

@@ -16,7 +16,8 @@
 #include <utility>
 #include <vector>
 #include <string>
-
+#include <WorkloadStructs.h>
+#include "DataTypes.h" 
 using namespace std;
 
 #define CONFIG_FILENAME        "config.yaml"
@@ -54,6 +55,8 @@ using namespace std;
 #define TOPOLOGY_BASELINE      "BASELINE"
 #define TOPOLOGY_BUTTERFLY     "BUTTERFLY"
 #define TOPOLOGY_OMEGA         "OMEGA"
+//Hierarchical Topology
+#define TOPOLOGY_HIERARCHICAL  "HIERARCHICAL"
 
 // Routing algorithms
 #define ROUTING_DYAD           "DYAD"
@@ -90,6 +93,7 @@ using namespace std;
 #define TOKEN_HOLD             "TOKEN_HOLD"
 #define TOKEN_MAX_HOLD         "TOKEN_MAX_HOLD"
 #define TOKEN_PACKET           "TOKEN_PACKET"
+
 
 typedef struct {
     pair<double, double> ber;
@@ -186,6 +190,23 @@ struct GlobalParams {
     // out of yaml configuration
     static bool ascii_monitor;
     static int channel_selection;
+
+    static int num_levels;
+    static int* fanouts_per_level;
+    static int num_nodes;
+
+    // Hierarchical topology mapping
+    static int* node_level_map;      // 节点->层级映射
+    static int* parent_map;          // 节点->父节点映射
+    static int** child_map;          // 节点->子节点映射
+    static int* child_map_size;      // 记录每个节点的子节点数量
+    static int total_hierarchical_nodes;  // 总层次化节点数
+
+    static WorkloadConfig workload;
+    static map<PE_Role,RoleChannelCapabilities> CapabilityMap;
+
+    static HierarchicalConfig hierarchical_config;
+
 };
 
 #endif

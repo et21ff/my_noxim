@@ -12,7 +12,9 @@
 #define _DATASTRUCS_H__
 
 #include <systemc.h>
+#include <vector>
 #include "GlobalParams.h"
+#include <DataTypes.h>
 
 // Coord -- XY coordinates type of the Tile inside the Mesh
 class Coord {
@@ -42,15 +44,21 @@ struct Packet {
     int src_id;
     int dst_id;
     int vc_id;
-    double timestamp;		// SC timestamp at packet generation
+    int logical_timestamp;		// SC timestamp at packet generation
     int size;
     int flit_left;		// Number of remaining flits inside the packet
     bool use_low_voltage_path;
+    vector<int> multicast_dst_ids;
+    bool is_multicast; // true if this packet is a multicast packet
 
 
     int payload_data_size; //用来表示整个Packet的真实数据大小（以字节为单位）
     int payload_sizes[3]; // 索引0: INPUT, 1: WEIGHT, 2: OUTPUT
+    DataType data_type; // Packet的数据类型（FILL或DELTA）
+    int command; // 用于存储来自txprocess的命令 (timestamp,command)
 
+    Packet(const Packet& other) = default;
+    Packet& operator=(const Packet& other) = default;
     // Constructors
     Packet() { }
 
@@ -58,11 +66,11 @@ struct Packet {
 	make(s, d, vc, ts, sz);
     }
 
-    void make(const int s, const int d, const int vc, const double ts, const int sz) {
+    void make(const int s, const int d, const int vc, const int ts, const int sz) {
 	src_id = s;
 	dst_id = d;
 	vc_id = vc;
-	timestamp = ts;
+	logical_timestamp = ts;
 	size = sz;
 	flit_left = sz;
 	use_low_voltage_path = false;
@@ -82,6 +90,15 @@ struct RouteData {
     int dir_in;			// direction from which the packet comes from
     int vc_id;
     bool is_output;        // true if the packet is an output packet
+};
+
+struct MulticastRouteData {
+      int current_id;
+      int src_id;
+      vector<int> dst_ids;      // 多个目标节点
+      int dir_in;               // 输入方向
+      int vc_id;
+      bool is_output;
 };
 
 struct ChannelStatus {
@@ -125,6 +142,24 @@ struct TBufferFullStatus {
     bool mask[MAX_VIRTUAL_CHANNELS];
 };
 
+inline std::ostream& operator<<(std::ostream& os, const TBufferFullStatus& bfs) {
+    os << "[ ";
+    for (int i = 0; i < MAX_VIRTUAL_CHANNELS; ++i) {
+        os << (bfs.mask[i] ? "T" : "F") << " ";
+    }
+    os << "]";
+    return os;
+}
+
+inline void sc_trace(sc_core::sc_trace_file* tf, const TBufferFullStatus& bfs, const std::string& name) {
+    for (int i = 0; i < MAX_VIRTUAL_CHANNELS; ++i) {
+        // Creamos un nombre de señal único para cada booleano en el VCD, ej. "mi_señal_mask_0"
+        sc_trace(tf, bfs.mask[i], name + ".mask[" + std::to_string(i) + "]");
+    }
+}
+
+
+
 // Flit -- Flit definition
 struct Flit {
     int payload_data_size; 
@@ -132,25 +167,37 @@ struct Flit {
     int payload_sizes[3]; // 索引0: INPUT, 1: WEIGHT, 2: OUTPUT
     int src_id;
     int dst_id;
+    bool is_multicast; // true if this flit belongs to a multicast packet
+    vector<int> multicast_dst_ids; // multiple destination nodes for multicast
     int vc_id; // Virtual Channel
     FlitType flit_type;	// The flit type (FLIT_TYPE_HEAD, FLIT_TYPE_BODY, FLIT_TYPE_TAIL)
     int sequence_no;		// The sequence number of the flit inside the packet
     int sequence_length;
     Payload payload;	// Optional payload
-    double timestamp;		// Unix timestamp at packet generation
     int hop_no;			// Current number of hops from source to destination
     bool use_low_voltage_path;
     bool is_output; // true if the flit belongs to an output packet
+    int logical_timestamp;
+    DataType data_type; // flit携带的数据种类
+    int command; // 用于存储来自txprocess的命令 (timestamp,command)
 
     int hub_relay_node;
 
+    Flit():
+        multicast_dst_ids()
+        {
+            is_multicast = false;
+        }
+
     inline bool operator ==(const Flit & flit) const {
 	return (flit.src_id == src_id && flit.dst_id == dst_id
+		&& flit.is_multicast == is_multicast
+		&& flit.multicast_dst_ids == multicast_dst_ids
 		&& flit.flit_type == flit_type
 		&& flit.vc_id == vc_id
 		&& flit.sequence_no == sequence_no
 		&& flit.sequence_length == sequence_length
-		&& flit.payload == payload && flit.timestamp == timestamp
+		&& flit.payload == payload && flit.logical_timestamp == logical_timestamp
 		&& flit.hop_no == hop_no
 		&& flit.use_low_voltage_path == use_low_voltage_path);
 }};

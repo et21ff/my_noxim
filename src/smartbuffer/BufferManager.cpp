@@ -130,11 +130,11 @@ size_t BufferManager::OnComputeFinished(int timestep) {
 }
 
 
-bool BufferManager::AreDataTypesReady(const std::vector<DataType>& required_types) const {
+bool BufferManager::AreDataTypesReady(const std::vector<DataType>& required_types,size_t size) const {
     // 遍历所有必需的数据类型
     for (const DataType& type : required_types) {
         // 只要发现有一种所需的数据不存在 (大小为0)，就立刻返回 false
-        if (GetDataSize(type) == 0) {
+        if (GetDataSize(type) < size) {
             return false;
         }
     }
@@ -142,14 +142,18 @@ bool BufferManager::AreDataTypesReady(const std::vector<DataType>& required_type
     return true;
 }
 
+bool BufferManager::AreDataTypeReady(const DataType& required_types,size_t size) const {
+    return GetDataSize(required_types) >= size;
+}
 bool BufferManager::RemoveData(DataType type, size_t size) {
     // 检查是否有足够的数据可以移除
-    if (current_size_ < size) {
+    if (current_size_ < size || internal_buffer_sizes_[type] < size) {
         return false;
     }
     
     // 简单地减少当前大小，不涉及复杂的驱逐逻辑
     current_size_ -= size;
+    internal_buffer_sizes_[type] -= size;
     
     return true;
 }

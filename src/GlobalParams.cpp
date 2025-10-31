@@ -60,3 +60,17 @@ PowerConfig GlobalParams::power_configuration;
 // out of yaml configuration
 bool GlobalParams::ascii_monitor;
 int GlobalParams::channel_selection;
+
+int GlobalParams::num_levels;
+int* GlobalParams::fanouts_per_level;
+
+int* GlobalParams::node_level_map = nullptr;
+int* GlobalParams::parent_map = nullptr;
+int** GlobalParams::child_map = nullptr;
+int GlobalParams::total_hierarchical_nodes = 0;
+int GlobalParams::num_nodes = 0;
+
+WorkloadConfig GlobalParams::workload;
+
+map<PE_Role,RoleChannelCapabilities> GlobalParams::CapabilityMap;
+HierarchicalConfig GlobalParams::hierarchical_config;

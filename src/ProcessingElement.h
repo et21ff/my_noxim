@@ -13,12 +13,19 @@
 
 #include <queue>
 #include <systemc.h>
+#include <map>
 
 #include "DataStructs.h"
 #include "GlobalTrafficTable.h"
 #include "Utils.h"
-#include "BufferManager.h" 
-#include <memory> 
+#include "BufferManager.h"
+#include <memory>
+#include "dbg.h"
+#include <TaskManager.h>
+#include "GlobalParams.h"
+
+// Hierarchical topology configuration structures
+
 
 using namespace std;
 
@@ -28,43 +35,30 @@ SC_MODULE(ProcessingElement)
     // I/O Ports
 
     // **** 我们新增的、用于握手的端口 ****
-    sc_in<int> downstream_ready_in; // 从下游PE接收的"ready"信号
+    vector<sc_in<int>*> downstream_ready_in; // 从下游PE接收的"ready"信号
     sc_out<int> downstream_ready_out; // 向上游PE发送的"ready"信号
 
     sc_in_clk clock;		// The input clock for the PE
     sc_in < bool > reset;	// The reset signal for the PE
 
-    sc_in < Flit > flit_rx;	// The input channel (Primary - LOCAL)
-    sc_in < bool > req_rx;	// The request associated with the input channel
-    sc_out < bool > ack_rx;	// The outgoing ack signal associated with the input channel
-    sc_out < TBufferFullStatus > buffer_full_status_rx;	
+    // Primary and Secondary connections as arrays
+    sc_in < Flit > flit_rx[2];	// The input channels [0: PRIMARY, 1: SECONDARY]
+    sc_in < bool > req_rx[2];	// The request signals associated with input channels
+    sc_out < bool > ack_rx[2];	// The outgoing ack signals associated with input channels
+    sc_out < TBufferFullStatus > buffer_full_status_rx[2];	
 
-    sc_out < Flit > flit_tx;	// The output channel (Primary - LOCAL)
-    sc_out < bool > req_tx;	// The request associated with the output channel
-    sc_in < bool > ack_tx;	// The outgoing ack signal associated with the output channel
-    sc_in < TBufferFullStatus > buffer_full_status_tx;
+    sc_out < Flit > flit_tx[2];	// The output channels [0: PRIMARY, 1: SECONDARY]
+    sc_out < bool > req_tx[2];	// The request signals associated with output channels
+    sc_in < bool > ack_tx[2];	// The incoming ack signals associated with output channels
+    sc_in < TBufferFullStatus > buffer_full_status_tx[2];
 
-    // Secondary connection for output data (LOCAL_2)
-    sc_in < Flit > flit_rx_2;	// The input channel (Secondary - LOCAL_2)
-    sc_in < bool > req_rx_2;	// The request associated with the input channel
-    sc_out < bool > ack_rx_2;	// The outgoing ack signal associated with the input channel
-    sc_out < TBufferFullStatus > buffer_full_status_rx_2;	
-
-    sc_out < Flit > flit_tx_2;	// The output channel (Secondary - LOCAL_2)
-    sc_out < bool > req_tx_2;	// The request associated with the output channel
-    sc_in < bool > ack_tx_2;	// The outgoing ack signal associated with the output channel
-    sc_in < TBufferFullStatus > buffer_full_status_tx_2;
-
-    sc_in < int >free_slots_neighbor;
 
     // Registers
     int local_id;		// Unique identification number
-    bool current_level_rx;	// Current level for Alternating Bit Protocol (ABP)
-    bool current_level_tx;	// Current level for Alternating Bit Protocol (ABP)
+    bool current_level_rx[2];	// Current level for Alternating Bit Protocol (ABP)
+    bool current_level_tx[2];	// Current level for Alternating Bit Protocol (ABP)
     queue < Packet > packet_queue;	// Local queue of packets
     bool transmittedAtPreviousCycle;	// Used for distributions with memory
-    bool current_level_rx_2;	// Current level for Alternating Bit Protocol (ABP)
-    bool current_level_tx_2;	// Current level for Alternating Bit Protocol (ABP)
     queue < Packet > packet_queue_2;
 
     // Functions
@@ -106,7 +100,7 @@ public:
     // I. 核心身份与物理属性 (Core Identity & Physical Attributes)
     //========================================================================
     
-    enum PE_Role { ROLE_UNUSED, ROLE_DRAM, ROLE_GLB, ROLE_BUFFER };
+    
     PE_Role role;
 
     int max_capacity;     // 单位: Bytes
@@ -115,6 +109,10 @@ public:
     // --- 新增：LivenessAwareBuffer 现在是缓冲区管理的核心 ---
     std::unique_ptr<BufferManager> buffer_manager_; // <--- 3. 添加 BufferManager 实例
     std::unique_ptr<BufferManager> output_buffer_manager_; // <--- 新增：output smartbuffer
+    std::unique_ptr<TaskManager> task_manager_;   // 任务管理器实例
+    DispatchTask current_dispatch_task_; // 当前任务
+    size_t outputs_received_count_;
+    size_t outputs_required_count_;
     
     //========================================================================
     // II. 网络接口与通信 (Network Interface & Communication)
@@ -164,24 +162,66 @@ public:
     bool is_stalled_waiting_for_data;  // 是否因数据不足而停顿
     int  required_data_on_fill;  // 消耗一个FILL任务所需数据 (Bytes)
     int  required_data_on_delta; // 消耗一个DELTA任务所需数据 (Bytes)
+
+    int required_output_data_on_fill;  // 消耗一个输出FILL任务所需数据 (Bytes)
+    int required_output_data_on_delta; // 消耗一个输出DELTA任务所需数据 (Bytes)
+    
     int data_to_consume_on_finish; // 本次消耗的实际数据量 (Bytes)
     int total_bytes_consumed; // 总消耗量 (Bytes)
     int total_bytes_received; // 总接收量 (Bytes)
     int bytes_received_this_cycle; // 本周期接收量 (Bytes)
-    
+
+    //========================================================================
+    // VI. GLB 专用：基于 Map 的发送同步机制 (GLB Dispatch Sync Mechanism)
+    //========================================================================
+
+    // --- 发送状态跟踪结构 ---
+    struct PacketSentStatus {
+        bool weights_sent = false;  // 是否已发送 Weights 包
+        bool inputs_sent = false;   // 是否已发送 Inputs 包
+        bool outputs_sent = false;  // 是否已发送 Outputs 包
+
+        // 检查所有类型包是否都已发送
+        bool all_sent() const {
+            return weights_sent && inputs_sent && outputs_sent;
+        }
+
+        // 重置状态
+        void reset() {
+            weights_sent = false;
+            inputs_sent = false;
+            outputs_sent = false;
+        }
+    };
+
+    // --- GLB 发送跟踪器 ---
+    std::map<int, PacketSentStatus> dispatch_tracker_;  // 跟踪每个下游节点的发送状态
+    bool dispatch_in_progress_ = false;                // 标记是否正在进行一轮发送
+
+    // --- GLB 逻辑时间戳控制 ---
+    int glb_timestep_ = 0;                             // GLB 主逻辑时间戳，只有在一批发送完成后才推进
+
+  // 新增：层次化配置相关成员变量
+    int level_index;  // 当前PE所在的层级索引
+
 public: // 建议将内部状态变量设为私有
     //========================================================================
     // V. 内部状态与辅助变量 (Internal State & Helper Variables)
     //========================================================================
-    
+
     int  incoming_packet_size;   // 用于暂存从HEAD flit读到的包大小
     int  previous_ready_signal;  // 用于减少ready信号的日志打印
     int incoming_payload_sizes[3]; // 用于暂存从HEAD flit读到的包大小
-    int logical_timestamp; 
+    int logical_timestamp;
     // +++ 新增：一个专门用于通知缓冲区状态改变的事件 +++
     sc_event buffer_state_changed_event;
     sc_event output_buffer_state_changed_event; // 新增：output buffer状态改变事件
     int incoming_output_payload_sizes[3]; // 用于存储接收到的output payload信息
+    int command_to_send;
+    std::map<int, int> pending_commands_;
+    bool compute_in_progress_;
+    bool is_compute_complete;
+    int compute_cycles;
 
 
     sc_signal<bool> is_receiving_packet;
@@ -193,16 +233,38 @@ public: // 建议将内部状态变量设为私有
     void update_transfer_loop_counters();
     void update_receive_loop_counters();
 
-    void output_txprocess(); // 用于输出txprocess的日志
-    void output_rxProcess();
-    
-    
-    unsigned int getQueueSize() const; 
+    int get_command_to_send();
+
+    void reset_logic(); //达到timestamp上限时的重置行为
+
+    // void output_txprocess(); // 用于输出txprocess的日志
+    // void output_rxProcess();
+
+    void handle_tx_for_port(int port_index);
+
+    void handle_rx_for_port(int port_index);
+
+    int find_child_id(int id);
+    Flit generate_next_flit_from_queue(std::queue<Packet>& queue, bool is_output = false);
+
+    // --- GLB 发送同步相关辅助函数 ---
+    size_t get_required_capability(size_t size, int port_index) const;
+
+    std::string get_packet_type_str(const Packet& packet, int port_index) const;
+
+    int decode_ready_signal(int combined_ready_value, int port_index) const;
+
+    void process_tail_sent_event(int port_index,Packet sent_status);
+    unsigned int getQueueSize() const;
+
+    // 新增：动态配置函数
+    void configure(int id, int level_idx, const HierarchicalConfig& topology_config); 
     // Constructor
+    
 
     SC_CTOR(ProcessingElement) {
-    SC_METHOD(pe_init);
-    sensitive << reset;
+    // SC_METHOD(pe_init);
+    // sensitive << reset;
 
 
 	SC_METHOD(rxProcess);
@@ -213,13 +275,13 @@ public: // 建议将内部状态变量设为私有
 	sensitive << reset;
 	sensitive << clock.pos();
 
-    SC_METHOD(output_txprocess);
-    sensitive << clock.pos();
-    sensitive << reset; 
+    // SC_METHOD(output_txprocess);
+    // sensitive << clock.pos();
+    // sensitive << reset; 
 
-    SC_METHOD(output_rxProcess);
-    sensitive << clock.neg();
-    sensitive << reset;
+    // SC_METHOD(output_rxProcess);
+    // sensitive << clock.neg();
+    // sensitive << reset;
 
     SC_METHOD(update_ready_signal);
     sensitive << reset;

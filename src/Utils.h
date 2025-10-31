@@ -77,7 +77,7 @@ inline ostream & operator <<(ostream & os, const Flit & flit)
 	os << "Sequence no. " << flit.sequence_no << endl;
 	os << "Payload printing not implemented (yet)." << endl;
 	os << "Unix timestamp at packet generation " << flit.
-	    timestamp << endl;
+	    logical_timestamp << endl;
 	os << "Total number of hops from source to destination is " <<
 	    flit.hop_no << endl;
     } else {
@@ -93,8 +93,21 @@ inline ostream & operator <<(ostream & os, const Flit & flit)
 	    os << "T";
 	    break;
 	}
+    if(flit.is_multicast) {
+        os << flit.sequence_no << ", " << flit.src_id << "->";
+        os << " M{";
+        for(size_t i = 0; i < flit.multicast_dst_ids.size(); i++) {
+            os << flit.multicast_dst_ids[i];
+            if(i != flit.multicast_dst_ids.size() - 1)
+                os << ",";
+        }
+        os << "}";
+        os << " VC " << flit.vc_id << ")";
+    } else {
+        os <<  flit.sequence_no << ", " << flit.src_id << "->" << flit.dst_id << " VC " << flit.vc_id << ")";
+    }
 
-	os <<  flit.sequence_no << ", " << flit.src_id << "->" << flit.dst_id << " VC " << flit.vc_id << ")";
+	
     }
 
     return os;
@@ -122,15 +135,15 @@ inline ostream & operator <<(ostream & os, const NoP_data & NoP_data)
     os << "]" << endl;
     return os;
 }
-inline ostream & operator <<(ostream & os, const TBufferFullStatus & bfs)
-{
-    os << "[" ;
-    for (int j = 0; j < GlobalParams::n_virtual_channels; j++)
-	os << bfs.mask[j] << " ";
+// inline ostream & operator <<(ostream & os, const TBufferFullStatus & bfs)
+// {
+//     os << "[" ;
+//     for (int j = 0; j < GlobalParams::n_virtual_channels; j++)
+// 	os << bfs.mask[j] << " ";
 
-    os << "]" << endl;
-    return os;
-}
+//     os << "]" << endl;
+//     return os;
+// }
 
 inline ostream & operator <<(ostream & os, const Coord & coord)
 {
@@ -141,29 +154,38 @@ inline ostream & operator <<(ostream & os, const Coord & coord)
 
 // Trace overloading
 
-inline void sc_trace(sc_trace_file * &tf, const Flit & flit, string & name)
+inline void sc_trace(sc_trace_file * tf, const Flit & flit, const string & name)
 {
     sc_trace(tf, flit.src_id, name + ".src_id");
     sc_trace(tf, flit.dst_id, name + ".dst_id");
+    sc_trace(tf, flit.vc_id, name + ".vc_id");
+    sc_trace(tf, flit.flit_type, name + ".flit_type");
     sc_trace(tf, flit.sequence_no, name + ".sequence_no");
-    sc_trace(tf, flit.timestamp, name + ".timestamp");
+    sc_trace(tf, flit.sequence_length, name + ".sequence_length");
+    sc_trace(tf, flit.payload.data, name + ".payload.data");
+    sc_trace(tf, flit.logical_timestamp, name + ".logical_timestamp");
     sc_trace(tf, flit.hop_no, name + ".hop_no");
+    sc_trace(tf, flit.use_low_voltage_path, name + ".use_low_voltage_path");
+    sc_trace(tf, flit.is_output, name + ".is_output");
 }
 
-inline void sc_trace(sc_trace_file * &tf, const NoP_data & NoP_data, string & name)
+inline void sc_trace(sc_trace_file * tf, const NoP_data & NoP_data, const string & name)
 {
-    sc_trace(tf, NoP_data.sender_id, name + ".sender_id");
-}
-inline void sc_trace(sc_trace_file * &tf, const TBufferFullStatus & bfs, string & name)
-{
-    for (int j = 0; j < GlobalParams::n_virtual_channels; j++)
-	sc_trace(tf, bfs.mask[j], name + "VC "+to_string(j));
+    // 空实现 - 不进行任何 trace 操作
 }
 
-inline void sc_trace(sc_trace_file * &tf, const ChannelStatus & bs, string & name)
+// inline void sc_trace(sc_trace_file * tf, const TBufferFullStatus & bfs, const string & name)
+// {
+//     for (int i = 0; i < MAX_VIRTUAL_CHANNELS; i++) {
+//         std::stringstream ss;
+//         ss << name << ".mask[" << i << "]";
+//         sc_trace(tf, bfs.mask[i], ss.str());
+//     }
+// }
+
+inline void sc_trace(sc_trace_file * tf, const ChannelStatus & bs, const string & name)
 {
-    sc_trace(tf, bs.free_slots, name + ".free_slots");
-    sc_trace(tf, bs.available, name + ".available");
+    // 空实现 - 不进行任何 trace 操作
 }
 
 // Misc common functions
