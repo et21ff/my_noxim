@@ -56,7 +56,6 @@ struct convert<Trigger> {
         if (!node.IsMap()) {
             return false;
         }
-
         // 解析不同类型的触发器
         if (node["on_timestep_modulo"]) {
             rhs.type = "on_timestep_modulo";
@@ -66,7 +65,12 @@ struct convert<Trigger> {
             if (timestep_value == "default") {
                 rhs.type = "default";
                 rhs.params.clear();
-            } else {
+            }
+            else if (timestep_value == "fallback") {
+                rhs.type = "fallback";
+                rhs.params.clear();
+            }
+            else {
                 rhs.type = "on_timestep";
                 rhs.params.push_back(std::stoi(timestep_value));
             }
@@ -163,6 +167,12 @@ struct convert<AtomicDispatchAction> {
             rhs.target_group = node["target_group"].as<std::string>();
         } else {
             rhs.target_group = ""; // 留空，表示需要继承
+        }
+
+        if (node["multicast"]) {
+            rhs.multicast = node["multicast"].as<bool>();
+        } else {
+            rhs.multicast = true; // 默认值
         }
         return true;
     }

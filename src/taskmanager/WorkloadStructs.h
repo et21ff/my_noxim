@@ -61,7 +61,7 @@ struct DataDelta {
  */
 struct Trigger {
     std::string type;                             // 触发类型："on_timestep", "on_timestep_modulo", "default"
-    std::vector<int> params;                      // 触发参数
+    std::vector<int> params;
     bool is_default() const { return type == "default"; }
     bool matches(int timestep) const;
 };
@@ -98,6 +98,7 @@ struct AtomicDispatchAction {
     std::string data_space; // "Weights", "Inputs", "Outputs"
     size_t size;
     std::string target_group;
+    bool multicast;
 };
 
 /**
@@ -107,7 +108,6 @@ struct AtomicDispatchAction {
 struct DeltaEvent {
     Trigger trigger;
     std::string name;
-    
     // [核心修改]
     // 不再是 "DataDelta delta;" 和 "string target_group;"
     // 而是 "AtomicDispatchAction" 的一个列表

@@ -115,15 +115,28 @@ void TaskManager::Configure(const WorkloadConfig& config ,const std::string& rol
         DispatchTask task;
 
         // 查找匹配当前时间步的事件
+        int matched_events = 0;
+        DeltaEvent* fallback_event = nullptr;
         for (const auto& event : schedule.delta_events) {
+            if(event.trigger.type == "fallback") {
+                fallback_event = const_cast<DeltaEvent*>(&event);
+                continue;
+            }
+
             if (matches_trigger_condition(event.trigger, t)) {
                 std::cout << "TaskManager: Timestep " << t << " matches event '"
                           << event.name << "'" << std::endl;
 
                 // 根据事件创建分发任务
                 create_dispatch_task_from_event(task, event, t);
-                break; // 假设每个时间步只匹配一个事件
+                matched_events++;
             }
+        }
+
+        if(matched_events == 0 && fallback_event != nullptr) {
+            std::cout << "TaskManager: Timestep " << t << " using fallback event '"
+                      << fallback_event->name << "'" << std::endl;
+            create_dispatch_task_from_event(task, *fallback_event, t);
         }
 
         // 将创建的任务存储到时间线中
@@ -152,7 +165,13 @@ void TaskManager::Configure(const WorkloadConfig& config ,const std::string& rol
                 }
             } 
     }
-        size_t avg_output = output_size/all_output_targets.size();
+        size_t avg_output = (output_size != 0 ? output_size/all_output_targets.size() : 0 );
+
+        if(role_working_set_==nullptr)
+        {
+            std::cout << "TaskManager: Warning - Role '" << role << "' has no working set defined." << std::endl;
+            return;
+        }
         
         size_t output_ws_size = 0;
         for(auto workspace : role_working_set_->data)
@@ -308,20 +327,30 @@ void TaskManager::create_dispatch_task_from_event(DispatchTask& task, const Delt
             continue;
         }
 
-        // 3. 创建一个 DataDispatchInfo (一个可被跟踪的子任务)
-        DataDispatchInfo sub_task_info;
-        sub_task_info.type = type;
-        sub_task_info.size = action.size;
-        sub_task_info.target_ids = target_ids;
-        
-        // 4. 将这个子任务添加到 DispatchTask 的 vector 中
-        task.sub_tasks.push_back(sub_task_info);
+        if(action.multicast==true)
+        {
+            DataDispatchInfo sub_task_info;
+            sub_task_info.type = type;
+            sub_task_info.size = action.size;
+            sub_task_info.target_ids = target_ids;
+            
+            // 4. 将这个子任务添加到 DispatchTask 的 vector 中
+            task.sub_tasks.push_back(sub_task_info);
+            continue;
+        }
+        else {
+            // 对于非多播，每个目标创建一个独立的子任务
+            for (int target_id : target_ids) {
+                DataDispatchInfo sub_task_info;
+                sub_task_info.type = type;
+                sub_task_info.size = action.size;
+                sub_task_info.target_ids.insert(target_id); // 仅包含单个目标ID
 
-        // 5. 打印详细的调试日志
-        dbg(sc_time_stamp(), "TaskManager", "[CONFIG] Added sub-task:",
-            "Type=" + action.data_space,
-            "Size=" + std::to_string(action.size) + "B",
-            "TargetGroup='" + action.target_group + "' (" + std::to_string(target_ids.size()) + " targets)");
+                // 4. 将这个子任务添加到 DispatchTask 的 vector 中
+                task.sub_tasks.push_back(sub_task_info);
+
+            }
+        }
     }
 }
 
@@ -338,6 +367,10 @@ bool TaskManager::matches_trigger_condition(const Trigger& trigger, int timestep
 
     if (trigger.type == "on_timestep" && !trigger.params.empty()) {
         return timestep == trigger.params[0];
+    }
+
+    if (trigger.type == "fallback") {
+        return false;
     }
 
     return false;

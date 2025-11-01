@@ -20,18 +20,43 @@ workload:
       schedule_template:
         total_timesteps: 32
         delta_events:
-          - name: "FILL"
-            trigger: { on_timestep_modulo: [16, 0] }
+          - trigger: { on_timestep_modulo: [16, 0] }
+            name: "FILL"
             # "delta" 是一个列表，包含一个原子动作
             delta:
               - { data_space: "Weights", size: 100, target_group: "1,2,3" }
               - { data_space: "Weights", size: 200, target_group: "4,5" }
+            multicast: true
 
-          - name: "DELTA"
-            trigger: { on_timestep: "default" }
+          - trigger: { on_timestep: "fallback" }
+            name: "DELTA"
             # "delta" 是一个列表，包含一个原子动作
             delta:
               - { data_space: "Inputs", size: 10, target_group: "2,3" }
+            multicast: true
+            
+)";
+
+const std::string unicast_yaml_str = R"(
+workload:
+  data_flow_specs:
+    - role: "ROLE_GLB"
+      # [修正] schedule_template 应该和 role 对齐，
+      # 它们共同属于 data_flow_specs 列表的第一个元素。
+      schedule_template:
+        total_timesteps: 32
+        delta_events:
+          - trigger: { on_timestep_modulo: [16, 0] }
+            name: "FILL"
+            delta:
+              - { data_space: "Weights", size: 100, target_group: "1,2,3" }
+              - { data_space: "Weights", size: 200, target_group: "4,5"}
+            
+          - trigger: { on_timestep: "default" }
+            name: "DEFAULT_EVENT"
+            delta:
+              - { data_space: "Outputs", size: 50, target_group: "1,2" , multicast: false}
+              - { data_space: "Weights", size: 50, target_group: "3,4" }
 )";
     
     // --- 2. 解析与配置 (Act) ---
@@ -55,6 +80,16 @@ workload:
         return nullptr;
     };
 
+    auto find_multiple_sub_tasks = [](const DispatchTask& task, DataType type) -> std::vector<const DataDispatchInfo*> {
+        std::vector<const DataDispatchInfo*> results;
+        for (const auto& sub_task : task.sub_tasks) {
+            if (sub_task.type == type) {
+                results.push_back(&sub_task);
+            }
+        }
+        return results;
+    };
+
     // 验证 timestep 0 (FILL)
     SECTION("Timestep 0 should be a FILL task") {
         DispatchTask task0 = task_manager.get_task_for_timestep(0);
@@ -70,6 +105,29 @@ workload:
         DataDispatchInfo weights_task_200 = task0.sub_tasks[1];
         REQUIRE(weights_task_200.size == 200);
         REQUIRE(weights_task_200.target_ids.size() == 2); // 假设
+    }
+
+    SECTION("Timestep 1 should also have DEFAULT_EVENT task"){
+        WorkloadConfig unicast_config;
+        REQUIRE_NOTHROW(unicast_config = loadWorkloadConfigFromString(unicast_yaml_str));
+        TaskManager unicast_task_manager;
+        unicast_task_manager.Configure(unicast_config, "ROLE_GLB");
+
+        DispatchTask task0 = unicast_task_manager.get_task_for_timestep(1);
+
+        auto outputs_task = find_multiple_sub_tasks(task0, DataType::OUTPUT);
+        REQUIRE(outputs_task.size() == 2);
+        for(const auto* out_task : outputs_task)
+        {
+            REQUIRE(out_task->size == 50);
+            REQUIRE(out_task->target_ids.size() == 1);
+        }
+
+        auto weights_task = find_sub_task(task0, DataType::WEIGHT);
+        REQUIRE(weights_task != nullptr);
+        REQUIRE(weights_task->size == 50);
+        REQUIRE(weights_task->target_ids.size() == 2);
+        
     }
 
     // 验证 timestep 1 (DELTA)

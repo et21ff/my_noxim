@@ -126,7 +126,7 @@ workload:
               - { data_space: "Inputs",  size: 3 }
               - { data_space: "Outputs", size: 2 }
 
-          - trigger: { on_timestep: "default" }
+          - trigger: { on_timestep: "fallback" }
             name: "DELTA_TO_PES"
             target_group: "2,"
             

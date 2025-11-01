@@ -1,0 +1,88 @@
+# =============================================================================
+# Workload for a Hierarchical CNN Accelerator Simulation (Final Version)
+# =============================================================================
+#
+# 行为模型:
+# 1. `delta_events` 定义了所有“自上而下”(DRAM->GLB, GLB->PEs)的主动数据推送。
+#    它们是系统的“发动机”。
+# 2. `command_definitions` 是一份“行为菜单”，供 PE 在完成计算后查阅。
+#    `evict_payload` 字段同时定义了“回送多少Output数据”和“驱逐多少数据”。
+#
+# =============================================================================
+
+workload:
+  variables:
+    all_pes_group: &all_pes_group "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15"
+  # ---------------------------------------------------------------------------
+  # 规格 A: 针对 ROLE_DRAM (数据源)
+  # 行为: 在仿真开始时 (t=0)，将整个层所需的所有数据一次性加载到 GLB。
+  # ---------------------------------------------------------------------------
+  - role: "ROLE_DRAM"
+    schedule_template:
+      total_timesteps: 1
+      delta_events:
+        - trigger: { on_timestep: "default" }
+          name: "INITIAL_LOAD_DRAM_TO_GLB"
+          target_group: "THE_GLB"  # 逻辑目标，代表唯一的GLB
+          multicast: false
+          delta:
+            # 根据 Timeloop 分析，这是整个卷积层的总数据量
+            - { data_space: "Weights", size: 3072 }
+            - { data_space: "Inputs",  size: 576 }
+            - { data_space: "Outputs", size: 512 }
+
+  # ---------------------------------------------------------------------------
+  # 规格 B: 针对 ROLE_GLB (数据分发器)
+  # 行为: 编排 16 个 PE 的计算节奏。
+  # ---------------------------------------------------------------------------
+  - role: "ROLE_GLB"
+    schedule_template:
+      total_timesteps: 192
+      delta_events:
+
+        # --- 2. 周期性数据事件: "Fill" 阶段，多播输入数据 ---
+        # 规则: 每 3 个周期触发一次，在周期的第一拍 (t = 0, 3, 6, ...)
+        - trigger: { on_timestep_modulo: [3, 0] }
+          name: "MULTICAST_FILL_INPUTS"
+          target_group: *all_pes_group
+          delta:
+            - { data_space: "Inputs",  size: 16 }
+            - { data_space: "Weights", size: 1 , multicast: false } # 单播权重到每个PE
+            - { data_space: "Outputs", size: 16 , multicast: false } # 单播输出到每个PE
+
+        # --- 3. 周期性数据事件: "Delta" 阶段，多播输入更新 ---
+        # 规则: 每 3 个周期触发，在周期的第二拍 (t = 1, 4, 7, ...)
+        - trigger: { on_timestep: "fallback" }
+          name: "MULTICAST_DELTA_INPUTS_1"
+          target_group: *all_pes_group
+          delta:
+            - { data_space: "Inputs",  size: 1 }
+            - { data_space: "Weights", size: 1 , multicast: false } 
+
+
+  # ---------------------------------------------------------------------------
+  # 规格 C: 针对 ROLE_BUFFER (计算单元 PE)
+  # 行为: 纯被动，其行为由接收到的数据包和 command_id 决定。
+  # ---------------------------------------------------------------------------
+  - role: "ROLE_BUFFER"
+    properties:
+      compute_latency: 16 # 关键属性：计算延迟
+
+    schedule_template:
+      total_timesteps: 1
+      # PE 没有基于时间的自主数据发送任务。
+      delta_events: []
+
+    # "行为菜单"，供 PE 在计算完成后的 reset_logic 中查阅
+    command_definitions:
+      # 命令 0: 对应 "Delta" 任务
+      - command_id: 0
+        name: "PROCESS_DELTA"
+        # 动作: 回送 0 个 Outputs, 驱逐 1 个 Input
+        evict_payload: { Weights: 1, Inputs: 1, Outputs: 0 }
+          
+      # 命令 1: 对应 "Fill" 任务
+      - command_id: 1
+        name: "PROCESS_FULL_CONTEXT"
+        # 动作: 回送 16 个 Outputs, 驱逐 1 个 Weight 和 16 个 Inputs
+        evict_payload: { Weights: 1, Inputs: 16, Outputs: 16 }
