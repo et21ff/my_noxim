@@ -33,7 +33,7 @@ flit_size: 32
 r2h_link_length: 2.0
 # lenght in mm of router to router connection
 r2r_link_length: 1.0
-n_virtual_channels: 1
+n_virtual_channels: 3
 # Routing algorithms:
 routing_algorithm: XY # <--- 在1x1的网络里，路由算法不重要，XY即可
 routing_table_filename: ""
@@ -49,7 +49,7 @@ use_wirxsleep: false
 #
 clock_period_ps: 1000
 reset_time: 10 # <--- [建议修改] 缩短reset时间，让我们的逻辑更快开始
-simulation_time: 10000 # <--- [关键修改] 增加模拟时间，确保我们能看到完整的交互链
+simulation_time: 30000 # <--- [关键修改] 增加模拟时间，确保我们能看到完整的交互链
 stats_warm_up_time: 0 # <--- [建议修改] 禁用warm up，我们想从一开始就看log
 # power breakdown, nodes communication details
 detailed: false

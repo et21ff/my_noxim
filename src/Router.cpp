@@ -61,6 +61,15 @@ void Router::rxProcess()
             
 		    (*buffers[i])[vc].Push(received_flit);
 		    LOG << " Flit " << received_flit <<" "<<received_flit.flit_type<< " collected from Input[" << i << "][" << vc <<"]" << endl;
+            std::cout << "@" << sc_time_stamp() << " [" << name() << "]: "
+                              << "[RX_PORT0] Received Flit on VC " << vc
+                              << " src_id=" << received_flit.src_id
+                              << " dst_id=" << received_flit.dst_id
+                              << " flit_type=" << received_flit.flit_type
+                              << " buffer_size=" << (*buffers[i])[vc].Size()
+                              << " flit_data_type=" << DataType_to_str(received_flit.data_type)
+                              << " flit_seq_no=" << received_flit.sequence_no
+                              << std::endl;
 
 		    power.bufferRouterPush();
 
@@ -376,9 +385,9 @@ int Router::route(const RouteData & route_data)
     if (GlobalParams::topology == TOPOLOGY_HIERARCHICAL) {
         
         // 规则 1: 检查本地
-        if(this->local_id == route_data.dst_id&& route_data.is_output == true) {
-            return getLogicalPortIndex(PORT_LOCAL, 1);
-        }
+        // if(this->local_id == route_data.dst_id&& route_data.is_output == true) {
+        //     return getLogicalPortIndex(PORT_LOCAL, 1);
+        // } 暂时本地只有一个端口了
         if (this->local_id == route_data.dst_id) {
             return getLogicalPortIndex(PORT_LOCAL, 0);
         }

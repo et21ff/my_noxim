@@ -9,80 +9,157 @@
 #    `evict_payload` 字段同时定义了“回送多少Output数据”和“驱逐多少数据”。
 #
 # =============================================================================
+topology: "HIERARCHICAL"
+
+# 层次化详细配置
+hierarchical_config:
+  num_levels: 3
+  connection_mode: "tree"
+  
+  # 每层的详细配置
+  level_configs:
+    - level: 0
+      node_type: "DRAM"
+      buffer_size: 4164
+      roles: "ROLE_DRAM"
+      fanouts: 1  # 该层每个节点连接到下一层的节点数
+      
+    - level: 1
+      node_type: "GLB"
+      buffer_size: 4164
+      roles: "ROLE_GLB"
+      fanouts: 16  # 该层每个节点连接到下一层的节点数
+      
+    - level: 2
+      node_type: "COMPUTE"
+      buffer_size: 64  
+      roles: "ROLE_BUFFER"
+      fanouts: 0
+      
+
+buffer_depth: 8 # <--- [建议修改] 稍微调大一点，避免初始调试时因缓冲区太小而产生干扰
+# size of flits, in bits
+flit_size: 32
+# lenght in mm of router to hub connection
+r2h_link_length: 2.0
+# lenght in mm of router to router connection
+r2r_link_length: 1.0
+n_virtual_channels: 3
+# Routing algorithms:
+routing_algorithm: XY # <--- 在1x1的网络里，路由算法不重要，XY即可
+routing_table_filename: ""
+dyad_threshold: 0.6
+# ... (selection_strategy 等保持不变) ...
+selection_strategy: RANDOM
+# ------------------- [重要] 禁用所有不相关的特性 -------------------
+
+# WIRELESS CONFIGURATION (禁用)
+use_winoc: false
+use_wirxsleep: false
+# ------------------- SIMULATION PARAMETERS -------------------
+#
+clock_period_ps: 1000
+reset_time: 10 # <--- [建议修改] 缩短reset时间，让我们的逻辑更快开始
+simulation_time: 10000 # <--- [关键修改] 增加模拟时间，确保我们能看到完整的交互链
+stats_warm_up_time: 0 # <--- [建议修改] 禁用warm up，我们想从一开始就看log
+# power breakdown, nodes communication details
+detailed: false
+# stop after a given amount of load has been processed
+max_volume_to_be_drained: 0
+show_buffer_stats: false
+# ... (detailed, max_volume_to_beROLE_DRAM_drained 等保持不变) ...
+
+# Verbosity level:
+verbose_mode: VERBOSE_OFF # <--- [关键修改] 设置为LOW，可以看到一些基本的网络活动日志
+
+# Trace (可选，但推荐)
+trace_mode: false # 如果需要详细的flit追踪，可以设为true，但日志会非常多
+trace_filename: "debug_trace.log"
+
+# ------------------- [重要] 禁用Noxim自带的流量注入 -------------------
+# 我们现在用自己的逻辑生成流量，所以要把Noxim自带的流量注入率设为0
+
+min_packet_size: 8
+max_packet_size: 8
+packet_injection_rate: 0.1 # <--- [关键修改] 设为0！
+probability_of_retransmission: 0.1 # <--- [关键修改] 设为0！
+
+# Traffic distribution:
+# 将其设置为TABLE_BASED，但提供一个空文件，确保它不会产生任何随机流量。
+traffic_distribution: TRAFFIC_TABLE_BASED # <--- [关键修改]
+traffic_table_filename: "empty_traffic.txt" # <--- 创建一个空的txt文件
+
+variables:
+  all_pes_group: &all_pes_group "2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17"
 
 workload:
-  variables:
-    all_pes_group: &all_pes_group "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15"
-  # ---------------------------------------------------------------------------
-  # 规格 A: 针对 ROLE_DRAM (数据源)
-  # 行为: 在仿真开始时 (t=0)，将整个层所需的所有数据一次性加载到 GLB。
-  # ---------------------------------------------------------------------------
-  - role: "ROLE_DRAM"
-    schedule_template:
-      total_timesteps: 1
-      delta_events:
-        - trigger: { on_timestep: "default" }
-          name: "INITIAL_LOAD_DRAM_TO_GLB"
-          target_group: "THE_GLB"  # 逻辑目标，代表唯一的GLB
-          multicast: false
-          delta:
-            # 根据 Timeloop 分析，这是整个卷积层的总数据量
-            - { data_space: "Weights", size: 3072 }
-            - { data_space: "Inputs",  size: 576 }
-            - { data_space: "Outputs", size: 512 }
+  working_set:
+    - role: "ROLE_DRAM"
+      data:
+        - { data_space: "Weights", size: 3072, reuse_strategy: "resident" }
+        - { data_space: "Inputs", size: 576, reuse_strategy: "resident" }
+        - { data_space: "Outputs", size: 512, reuse_strategy: "resident" }
+    - role: "ROLE_GLB"
+      data:
+        - { data_space: "Weights", size: 3072, reuse_strategy: "resident" }
+        - { data_space: "Inputs", size: 576, reuse_strategy: "resident" }
+        - { data_space: "Outputs", size: 512, reuse_strategy: "resident" }
+    - role: "ROLE_BUFFER"
+      data:
+        - { data_space: "Weights", size: 1, reuse_strategy: "temporal" }
+        - { data_space: "Inputs",  size: 16, reuse_strategy: "temporal" }
+        - { data_space: "Outputs", size: 16, reuse_strategy: "temporal" }
 
-  # ---------------------------------------------------------------------------
-  # 规格 B: 针对 ROLE_GLB (数据分发器)
-  # 行为: 编排 16 个 PE 的计算节奏。
-  # ---------------------------------------------------------------------------
-  - role: "ROLE_GLB"
-    schedule_template:
-      total_timesteps: 192
-      delta_events:
+  data_flow_specs:
+    - role: "ROLE_DRAM"
+      schedule_template:
+        total_timesteps: 1
+        delta_events:
+          - trigger: { on_timestep: "default" }
+            name: "INITIAL_LOAD_DRAM_TO_GLB"
+            target_group: "1,"
+            delta:
+              - { data_space: "Weights", size: 3072 }
+              - { data_space: "Inputs",  size: 576 }
+              - { data_space: "Outputs", size: 512 }
 
-        # --- 2. 周期性数据事件: "Fill" 阶段，多播输入数据 ---
-        # 规则: 每 3 个周期触发一次，在周期的第一拍 (t = 0, 3, 6, ...)
-        - trigger: { on_timestep_modulo: [3, 0] }
-          name: "MULTICAST_FILL_INPUTS"
-          target_group: *all_pes_group
-          delta:
-            - { data_space: "Inputs",  size: 16 }
-            - { data_space: "Weights", size: 1 , multicast: false } # 单播权重到每个PE
-            - { data_space: "Outputs", size: 16 , multicast: false } # 单播输出到每个PE
+    - role: "ROLE_GLB"
+      schedule_template:
+        total_timesteps: 192
+        delta_events:
+          - trigger: { on_timestep_modulo: [3, 0] }
+            name: "MULTICAST_FILL_INPUTS"
+            target_group: *all_pes_group
+            multicast: true
+            delta:
+              - { data_space: "Inputs",  size: 16 }
+              - { data_space: "Weights", size: 1 , multicast: false }
+              - { data_space: "Outputs", size: 16, multicast: false }
 
-        # --- 3. 周期性数据事件: "Delta" 阶段，多播输入更新 ---
-        # 规则: 每 3 个周期触发，在周期的第二拍 (t = 1, 4, 7, ...)
-        - trigger: { on_timestep: "fallback" }
-          name: "MULTICAST_DELTA_INPUTS_1"
-          target_group: *all_pes_group
-          delta:
-            - { data_space: "Inputs",  size: 1 }
-            - { data_space: "Weights", size: 1 , multicast: false } 
+          - trigger: { on_timestep: "fallback" }
+            name: "MULTICAST_DELTA_INPUTS_1"
+            target_group: *all_pes_group
+            delta:
+              - { data_space: "Inputs",  size: 1 }
+              - { data_space: "Weights", size: 1 , multicast: false } 
+      
+      command_definitions:
+        - command_id: 0
+          name: "PROCESS_FULL_CONTEXT"
+          evict_payload: { weights: 3072, inputs: 576, outputs: 512 }
 
+    - role: "ROLE_BUFFER"
+      properties:
+        compute_latency: 16
+      schedule_template:
+        total_timesteps: 1
+        delta_events: []
+      command_definitions:
+        - command_id: 0
+          name: "PROCESS_DELTA"
+          evict_payload: { weights: 1, inputs: 1, outputs: 0 }
+        - command_id: 1
+          name: "PROCESS_FULL_CONTEXT"
+          evict_payload: { weights: 1, inputs: 16, outputs: 16 }
 
-  # ---------------------------------------------------------------------------
-  # 规格 C: 针对 ROLE_BUFFER (计算单元 PE)
-  # 行为: 纯被动，其行为由接收到的数据包和 command_id 决定。
-  # ---------------------------------------------------------------------------
-  - role: "ROLE_BUFFER"
-    properties:
-      compute_latency: 16 # 关键属性：计算延迟
-
-    schedule_template:
-      total_timesteps: 1
-      # PE 没有基于时间的自主数据发送任务。
-      delta_events: []
-
-    # "行为菜单"，供 PE 在计算完成后的 reset_logic 中查阅
-    command_definitions:
-      # 命令 0: 对应 "Delta" 任务
-      - command_id: 0
-        name: "PROCESS_DELTA"
-        # 动作: 回送 0 个 Outputs, 驱逐 1 个 Input
-        evict_payload: { Weights: 1, Inputs: 1, Outputs: 0 }
-          
-      # 命令 1: 对应 "Fill" 任务
-      - command_id: 1
-        name: "PROCESS_FULL_CONTEXT"
-        # 动作: 回送 16 个 Outputs, 驱逐 1 个 Weight 和 16 个 Inputs
-        evict_payload: { Weights: 1, Inputs: 16, Outputs: 16 }
+      

@@ -112,11 +112,13 @@ SC_MODULE(Testbench) {
         dut->downstream_ready_in[0]->bind(ready_to_dut[0]);
         dut->downstream_ready_in[1]->bind(ready_to_dut[1]);
         dut->downstream_ready_out(ready_from_dut);
+        dut->configure(2,2,GlobalParams::hierarchical_config);
 
         sender_pe = new ProcessingElement("Sender_PE");
         sender_pe->reset(reset);
         sender_pe->clock(clock);
         sender_pe->local_id = 1; // 设置发送器 PE 的本地 ID
+        sender_pe->configure(1,1,GlobalParams::hierarchical_config);
 
         for (int i = 0; i < 2; ++i)
         {

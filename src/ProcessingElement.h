@@ -23,6 +23,7 @@
 #include "dbg.h"
 #include <TaskManager.h>
 #include "GlobalParams.h"
+#include "Buffer.h"
 
 // Hierarchical topology configuration structures
 
@@ -57,9 +58,14 @@ SC_MODULE(ProcessingElement)
     int local_id;		// Unique identification number
     bool current_level_rx[2];	// Current level for Alternating Bit Protocol (ABP)
     bool current_level_tx[2];	// Current level for Alternating Bit Protocol (ABP)
-    queue < Packet > packet_queue;	// Local queue of packets
+    std::vector<std::queue<Packet>> packet_queues_;  // VC-aware packet queues
     bool transmittedAtPreviousCycle;	// Used for distributions with memory
-    queue < Packet > packet_queue_2;
+
+    BufferBank rx_buffer; // 物理输入缓冲区
+
+    // [新增] 用于跟踪正在接收、但未完全提交到逻辑缓冲区的数据的总大小
+    size_t main_receiving_size_;
+    size_t output_receiving_size_;
 
     // Functions
     void rxProcess();		// The receiving process
@@ -244,8 +250,19 @@ public: // 建议将内部状态变量设为私有
 
     void handle_rx_for_port(int port_index);
 
+    // 新增：内部流式处理函数
+    void internal_transfer_process();
+
+    // 新增：统一的VC发送处理函数
+    void handle_tx_for_all_vcs();
+
+    // 新增：辅助函数
+    bool packet_queues_are_empty() const;
+    int get_vc_id_for_packet(const Packet& pkt) const;
+    int get_vc_id_for_packet_by_task(DataDispatchInfo type) const;
+
     int find_child_id(int id);
-    Flit generate_next_flit_from_queue(std::queue<Packet>& queue, bool is_output = false);
+    Flit generate_next_flit_from_queue(std::queue<Packet>& queue);
 
     // --- GLB 发送同步相关辅助函数 ---
     size_t get_required_capability(size_t size, int port_index) const;
@@ -263,30 +280,37 @@ public: // 建议将内部状态变量设为私有
     
 
     SC_CTOR(ProcessingElement) {
+        // 初始化新的成员变量
+        main_receiving_size_ = 0;
+        output_receiving_size_ = 0;
+
+        // 初始化VC队列
+        packet_queues_.resize(GlobalParams::n_virtual_channels);
+
     // SC_METHOD(pe_init);
     // sensitive << reset;
 
 
-	SC_METHOD(rxProcess);
-	sensitive << reset;
-	sensitive << clock.neg();
+        SC_METHOD(rxProcess);
+        sensitive << reset;
+        sensitive << clock.neg();
 
-	SC_METHOD(txProcess);
-	sensitive << reset;
-	sensitive << clock.pos();
+        SC_METHOD(txProcess);
+        sensitive << reset;
+        sensitive << clock.pos();
 
     // SC_METHOD(output_txprocess);
     // sensitive << clock.pos();
-    // sensitive << reset; 
+    // sensitive << reset;
 
     // SC_METHOD(output_rxProcess);
     // sensitive << clock.neg();
     // sensitive << reset;
 
-    SC_METHOD(update_ready_signal);
-    sensitive << reset;
-    sensitive << current_data_size;      // 3. 直接对信号敏感
-    sensitive << is_receiving_packet;    // 3. 直接对信号敏感
+        SC_METHOD(update_ready_signal);
+        sensitive << reset;
+        sensitive << current_data_size;      // 3. 直接对信号敏感
+        sensitive << is_receiving_packet;    // 3. 直接对信号敏感
 
 
     }
