@@ -60,7 +60,7 @@ use_wirxsleep: false
 #
 clock_period_ps: 1000
 reset_time: 10 # <--- [建议修改] 缩短reset时间，让我们的逻辑更快开始
-simulation_time: 10000 # <--- [关键修改] 增加模拟时间，确保我们能看到完整的交互链
+simulation_time: 100000 # <--- [关键修改] 增加模拟时间，确保我们能看到完整的交互链
 stats_warm_up_time: 0 # <--- [建议修改] 禁用warm up，我们想从一开始就看log
 # power breakdown, nodes communication details
 detailed: false
@@ -146,7 +146,7 @@ workload:
       command_definitions:
         - command_id: 0
           name: "PROCESS_FULL_CONTEXT"
-          evict_payload: { weights: 3072, inputs: 576, outputs: 512 }
+          evict_payload: { Weights: 3072, Inputs: 576, Outputs: 512 }
 
     - role: "ROLE_BUFFER"
       properties:
@@ -157,9 +157,9 @@ workload:
       command_definitions:
         - command_id: 0
           name: "PROCESS_DELTA"
-          evict_payload: { weights: 1, inputs: 1, outputs: 0 }
+          evict_payload: { Weights: 1, Inputs: 1, Outputs: 0 }
         - command_id: 1
           name: "PROCESS_FULL_CONTEXT"
-          evict_payload: { weights: 1, inputs: 16, outputs: 16 }
+          evict_payload: { Weights: 1, Inputs: 16, Outputs: 16 }
 
       

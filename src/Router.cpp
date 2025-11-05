@@ -69,6 +69,7 @@ void Router::rxProcess()
                               << " buffer_size=" << (*buffers[i])[vc].Size()
                               << " flit_data_type=" << DataType_to_str(received_flit.data_type)
                               << " flit_seq_no=" << received_flit.sequence_no
+                              << " flit_command=" << received_flit.command
                               << std::endl;
 
 		    power.bufferRouterPush();
@@ -87,6 +88,7 @@ void Router::rxProcess()
 		    // should not happen with the new TBufferFullStatus control signals
 		    // except for flit coming from local PE, which don't use it
 		    LOG << " Flit " << received_flit << " buffer full Input[" << i << "][" << vc <<"]" << endl;
+            std::cout << "buffer_full_status_rx[" << i << "].mask[" << vc << "] = " << all_buffer_full_status_rx[i]->read().mask[vc] << std::endl;
 		    assert(port_info_map[i].type == PORT_LOCAL);
 		}
 
@@ -95,7 +97,9 @@ void Router::rxProcess()
 	    // updates the mask of VCs to prevent incoming data on full buffers
 	    TBufferFullStatus bfs;
 	    for (int vc=0;vc<GlobalParams::n_virtual_channels;vc++)
+        {
 		bfs.mask[vc] = (*buffers[i])[vc].IsFull();
+        }
 	    all_buffer_full_status_rx[i]->write(bfs);
 	}
     }
@@ -230,98 +234,158 @@ void Router::txProcess()
     // 2nd phase: Two-Phase Arbitration & Atomic Forwarding
     // 阶段A: 候选筛选 - 收集所有准备就绪的VC
     //==================================================================
-    std::vector<std::pair<int, int>> ready_vcs; // (input_port, vc) pairs
+    struct ForwardCandidate {  
+    int input;  
+    int vc;  
+    vector<int> target_outputs;  
+    };
+    
+    vector<ForwardCandidate> candidates;  
 
-    for (size_t input_port = 0; input_port < all_flit_rx.size(); input_port++) {
-        // 获取该输入端口的所有预留
-        std::map<int, std::vector<int>> vc_reservations = reservation_table.getReservations(input_port);
+    for(int i=0;i < all_flit_rx.size();i++)
+        for (int vc = 0; vc < GlobalParams::n_virtual_channels; vc++){
+            if ((*buffers[i])[vc].IsEmpty()) continue;  
 
-        for (auto& vc_entry : vc_reservations) {
-            int vc = vc_entry.first;
-            const std::vector<int>& output_ports = vc_entry.second;
+            auto target_outputs = reservation_table.getReservations(i,vc); 
 
-            // 预检查：所有目标输出端口是否都准备就绪
+            if(target_outputs.empty()) continue;
+
             bool all_outputs_ready = true;
-            for (int output_port : output_ports) {
-                if (!(current_level_tx[output_port] == all_ack_tx[output_port]->read() &&
-                      all_buffer_full_status_tx[output_port]->read().mask[vc] == false)) {
+            for (int output_port : target_outputs) {
+                if (current_level_tx[output_port] != all_ack_tx[output_port]->read() ||
+                      all_buffer_full_status_tx[output_port]->read().mask[vc] == 1) {
                     all_outputs_ready = false;
                     break;
                 }
             }
-
-            // 如果所有输出端口都准备就绪，且缓冲区非空，则加入候选列表
-            if (all_outputs_ready && !(*buffers[input_port])[vc].IsEmpty()) {
-                ready_vcs.emplace_back(input_port, vc);
-            }
+            if (all_outputs_ready) {  
+                candidates.push_back({i, vc, target_outputs});  
+            }  
         }
-    }
+
+
 
     //==================================================================
     // 阶段B: 仲裁与原子转发
     //==================================================================
-    if (!ready_vcs.empty()) {
-        // 仲裁：随机选择一个准备就绪的VC
-        int winner_idx = rand() % ready_vcs.size();
-        int winner_input = ready_vcs[winner_idx].first;
-        int winner_vc = ready_vcs[winner_idx].second;
+        if (!candidates.empty()) {
+            // 用于跟踪已使用的资源
+            std::set<int> used_inputs;
+            std::set<int> used_outputs;
+            
+            while (!candidates.empty()) {
+                // 过滤出仍然可用的候选
+                vector<ForwardCandidate> available;
+                for (auto& c : candidates) {
+                    // 检查 input 是否已被使用
+                    if (used_inputs.count(c.input)) continue;
+                    
+                    // 检查所有 output 是否都未被使用
+                    bool output_conflict = false;
+                    for (int o : c.target_outputs) {
+                        if (used_outputs.count(o)) {
+                            output_conflict = true;
+                            break;
+                        }
+                    }
+                    if (output_conflict) continue;
+                    
+                    // 添加到可用候选列表
+                    available.push_back(c);
+                }
+                
+                if (available.empty()) break; // 没有可用候选，退出循环
+                
+                // 随机选择一个候选进行仲裁
+                int winner_idx = rand() % available.size();
+                ForwardCandidate& selected = available[winner_idx];
+                
+                // 原子转发：复制 Flit 到所有目标输出端口
+                Flit flit = (*buffers[selected.input])[selected.vc].Front();
+                LOG << "Atomic Forwarding: Input[" << selected.input << "][" << selected.vc << "] -> ";
+                for (size_t i = 0; i < selected.target_outputs.size(); i++) {
+                    int output_port = selected.target_outputs[i];
+                    all_flit_tx[output_port]->write(flit);
+                    current_level_tx[output_port] = 1 - current_level_tx[output_port];
+                    all_req_tx[output_port]->write(current_level_tx[output_port]);
+                    LOG << "Output[" << output_port << (i < selected.target_outputs.size() - 1 ? ", " : "");
+                }
+                cout << "]" << endl;
+                LOG << ", flit: " << flit << " command_id=" << flit.command 
+                    << " flit.is_multicast=" << flit.is_multicast << endl;
+                LOG << "buffer_full_status_tx  forwarding  for VC "<<selected.vc <<" status:" << all_buffer_full_status_tx[selected.target_outputs[0]]->read().mask[selected.vc] << endl;
+                if (flit.command < -1) {
+                    std::cout << "ERROR: Invalid command ID " << flit.command 
+                            << " in flit " << flit << std::endl;
+                }
 
-        // 获取获胜VC的所有目标输出端口
-        std::map<int, std::vector<int>> winner_reservations = reservation_table.getReservations(winner_input);
-        const std::vector<int>& target_outputs = winner_reservations[winner_vc];
+                // 原子弹出：只从输入缓冲区弹出一次
+                (*buffers[selected.input])[selected.vc].Pop();
+                power.bufferRouterPop();
 
-        // 原子转发：复制Flit到所有目标输出端口
-        Flit flit = (*buffers[winner_input])[winner_vc].Front();
-        LOG << "Atomic Forwarding: Input[" << winner_input << "][" << winner_vc << "] -> ";
-        for (size_t i = 0; i < target_outputs.size(); i++) {
-            int output_port = target_outputs[i];
-            all_flit_tx[output_port]->write(flit);
-            current_level_tx[output_port] = 1 - current_level_tx[output_port];
-            all_req_tx[output_port]->write(current_level_tx[output_port]);
-            LOG << "Output[" << output_port << (i < target_outputs.size() - 1 ? ", " : "");
-        }
-        LOG << ", flit: " << flit << endl;
-
-        // 原子弹出：只从输入缓冲区弹出一次
-        (*buffers[winner_input])[winner_vc].Pop();
-
-        // 处理TAIL Flit的资源释放
-        if (flit.flit_type == FLIT_TYPE_TAIL) {
-            TReservation r;
-            r.input = winner_input;
-            r.vc = winner_vc;
-            reservation_table.release(r, target_outputs);
-        }
-
-        // 功耗与统计（对所有目标端口进行统计）
-        for (int output_port : target_outputs) {
-            if (output_port == DIRECTION_HUB) power.r2hLink();
-            else power.r2rLink();
-
-            if (output_port == DIRECTION_LOCAL) {
-                power.networkInterface();
-                LOG << "Consumed flit " << flit << endl;
-                stats.receivedFlit(sc_time_stamp().to_double() / GlobalParams::clock_period_ps, flit);
-                if (GlobalParams::max_volume_to_be_drained) {
-                    if (drained_volume >= GlobalParams::max_volume_to_be_drained)
-                        sc_stop();
-                    else {
-                        drained_volume++;
-                        local_drained++;
+                // 处理 TAIL Flit 的资源释放
+                if (flit.flit_type == FLIT_TYPE_TAIL) {
+                    TReservation r;
+                    r.input = selected.input;
+                    r.vc = selected.vc;
+                    if (selected.target_outputs.size() > 1) {
+                        reservation_table.release(r, selected.target_outputs);
+                    } else {
+                        reservation_table.release(r, selected.target_outputs[0]);
                     }
                 }
-            } else if (winner_input != DIRECTION_LOCAL && winner_input != DIRECTION_LOCAL_2) {
-                routed_flits++;
+
+                // 功耗与统计（对所有目标端口进行统计）
+                for (int output_port : selected.target_outputs) {
+                    if (output_port == DIRECTION_HUB) {
+                        power.r2hLink();
+                    } else {
+                        power.r2rLink();
+                    }
+                    power.crossBar();
+
+                    if (output_port == DIRECTION_LOCAL) {
+                        power.networkInterface();
+                        LOG << "Consumed flit " << flit << endl;
+                        stats.receivedFlit(sc_time_stamp().to_double() / GlobalParams::clock_period_ps, flit);
+                        if (GlobalParams::max_volume_to_be_drained) {
+                            if (drained_volume >= GlobalParams::max_volume_to_be_drained) {
+                                sc_stop();
+                            } else {
+                                drained_volume++;
+                                local_drained++;
+                            }
+                        }
+                    } else if (selected.input != DIRECTION_LOCAL && selected.input != DIRECTION_LOCAL_2) {
+                        routed_flits++;
+                    }
+                }
+
+                // 标记已使用的资源
+                used_inputs.insert(selected.input);
+                for (int o : selected.target_outputs) {
+                    used_outputs.insert(o);
+                }
+
+                // 从候选列表中移除已处理的或产生冲突的候选
+                candidates.erase(
+                    std::remove_if(candidates.begin(), candidates.end(),
+                        [&](const ForwardCandidate& c) {
+                            // 移除使用相同 input 的
+                            if (c.input == selected.input) return true;
+                            
+                            // 移除使用相同 output 的
+                            for (int o : c.target_outputs) {
+                                if (used_outputs.count(o)) return true;
+                            }
+                            return false;
+                        }),
+                    candidates.end()
+                );
             }
         }
-
-        power.bufferRouterPop();
-        power.crossBar();
     }
 
-    if ((int)(sc_time_stamp().to_double() / GlobalParams::clock_period_ps)%2==0)
-	reservation_table.updateIndex();
-    }   
 }
 
 // NoP_data Router::getCurrentNoPData()
@@ -688,9 +752,13 @@ bool Router::connectedHubs(int src_hub, int dst_hub) {
 Router::Router(sc_module_name nm) {
 
     // Register SystemC methods
-    SC_METHOD(process);
+    SC_METHOD(rxProcess);
     sensitive << reset;
     sensitive << clock.pos();
+
+    SC_METHOD(txProcess);
+    sensitive << reset;
+    sensitive << clock.neg();
 
     // Use proper scope resolution for SystemC method registration
     SC_METHOD(perCycleUpdate);

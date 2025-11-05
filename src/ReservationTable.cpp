@@ -36,25 +36,19 @@ bool ReservationTable::isNotReserved(const int port_out)
 /* For a given input, returns the set of output/vc reserved from that input.
  * An index is required for each output entry, to avoid that multiple invokations
  * with different inputs returns the same output in the same clock cycle. */
-std::map<int, std::vector<int>> ReservationTable::getReservations(const int port_in)
+std::vector<int> ReservationTable::getReservations(const int port_in, const int vc)
 {
-    std::map<int, std::vector<int>> result_map;
+    std::vector<int> result;
 
     for (int o = 0; o < n_outputs; o++)
-    {
-        if (!rtable[o].reservations.empty())
+        for(auto reservation : rtable[o].reservations)
         {
-            int winner_index = rtable[o].index;
-            const TReservation& winner_reservation = rtable[o].reservations[winner_index];
-
-            if (winner_reservation.input == port_in)
+            if(reservation.input == port_in && reservation.vc == vc)
             {
-                int winner_vc = winner_reservation.vc;
-                result_map[winner_vc].push_back(o);
+                result.push_back(o);
             }
         }
-    }
-    return result_map;
+    return result;
 }
 
 int ReservationTable::checkReservation(const TReservation r, const int port_out)
@@ -211,6 +205,15 @@ void ReservationTable::reserve(const TReservation& r, const vector<int>& outputs
 {
     assert(checkReservation(r, outputs)==RT_AVAILABLE ); // 断言检查
 
+    std::cout << "[RT::reserve] t=" << sc_time_stamp() 
+              << " input=" << r.input << " vc=" << r.vc 
+              << " outputs={";
+    for (size_t i = 0; i < outputs.size(); ++i) {
+        if (i > 0) std::cout << ",";
+        std::cout << outputs[i];
+    }
+    std::cout << "}" << std::endl;
+
     // 提交阶段：预留所有端口（直接操作，避免重复检查）
     for (vector<int>::const_iterator it = outputs.begin(); it != outputs.end(); ++it)
     {
@@ -223,6 +226,15 @@ void ReservationTable::reserve(const TReservation& r, const vector<int>& outputs
 // 重载方法：释放多个输出端口的预留
 void ReservationTable::release(const TReservation& r, const vector<int>& outputs)
 {
+    std::cout << "[RT::release] t=" << sc_time_stamp() 
+              << " input=" << r.input << " vc=" << r.vc 
+              << " outputs={";
+    for (size_t i = 0; i < outputs.size(); ++i) {
+        if (i > 0) std::cout << ",";
+        std::cout << outputs[i];
+    }
+    std::cout << "}" << std::endl;
+    
     for (vector<int>::const_iterator it = outputs.begin(); it != outputs.end(); ++it)
     {
         int port_out = *it;

@@ -477,6 +477,7 @@ void ProcessingElement::rxProcess() {
                               << " buffer_size=" << rx_buffer[vc_id].Size()
                               << " flit_data_type=" << DataType_to_str(flit.data_type)
                               << " flit_seq_no=" << flit.sequence_no
+                              << " flit_command=" << flit.command
                               << std::endl;
                 } else {
                     // 无效的 VC ID - 这是编程错误，应该使用断言
@@ -694,7 +695,7 @@ void ProcessingElement::handle_tx_for_all_vcs() {
         std::cout << "@" << sc_time_stamp() << " [" << name() << "]: "
                   << "[TX_VC" << vc << "] Sent Flit type=" << flit_to_send.flit_type
                   << " src=" << flit_to_send.src_id << " dst=" << flit_to_send.dst_id
-                  << std::endl;
+                  << " command_id=" << flit_to_send.command << std::endl;
 
         // 如果发送的是 TAIL Flit，从这个 VC 的队列中 pop
         if (flit_to_send.flit_type == FLIT_TYPE_TAIL) {
@@ -887,7 +888,7 @@ void ProcessingElement::reset_logic()
     if(role==ROLE_DRAM)
     {
         dbg("All tasks completed quiting simulation");
-        sc_stop();
+        // sc_stop();
         return;
     }
 
@@ -1285,7 +1286,7 @@ int ProcessingElement::get_command_to_send() // tofix 当完整模拟时需要�
     auto commands = task_manager_->get_commands_for_role(role_to_str(nextRole));
     if (commands == nullptr || commands->empty()) {
         dbg(sc_time_stamp(), name(), "[CMD_ERROR] No command definitions found for downstream role: " + role_to_str(nextRole));
-        return -1; // 返回无效命令
+        return -2; // 返回无效命令
     }
 
     if(logical_timestamp+1 >= task_manager_->get_total_timesteps())
@@ -1294,10 +1295,12 @@ int ProcessingElement::get_command_to_send() // tofix 当完整模拟时需要�
     }
     DataDelta next_delta;
     DispatchTask next_task = task_manager_->get_task_for_timestep(logical_timestamp+1);
+
     for (const auto& sub_task : next_task.sub_tasks) {
-        if (sub_task.type == DataType::WEIGHT) next_delta.weights += sub_task.size;
-        if (sub_task.type == DataType::INPUT)  next_delta.inputs  += sub_task.size;
-        if (sub_task.type == DataType::OUTPUT) next_delta.outputs += sub_task.size;
+        int multicast_factor = sub_task.target_ids.size();
+        if (sub_task.type == DataType::WEIGHT) next_delta.weights += sub_task.size*multicast_factor;
+        if (sub_task.type == DataType::INPUT)  next_delta.inputs  += sub_task.size*multicast_factor;
+        if (sub_task.type == DataType::OUTPUT) next_delta.outputs += sub_task.size*multicast_factor;
     }
 
     for (const auto& cmd : *commands) {
@@ -1310,6 +1313,8 @@ int ProcessingElement::get_command_to_send() // tofix 当完整模拟时需要�
             return cmd.command_id;
         }
     }
+
+    return -2;
 
 }
 void ProcessingElement::update_transfer_loop_counters() {

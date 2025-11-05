@@ -223,6 +223,7 @@ DataDelta TaskManager::get_command_definition(int command_id) const {
         }
     } 
     std::cerr << "Error: role_commands_ is a nullptr!" << std::endl;
+    assert(false);
 
 
 }

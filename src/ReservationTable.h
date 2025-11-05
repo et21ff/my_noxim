@@ -66,7 +66,7 @@ class ReservationTable {
     void release(const TReservation& r, const std::vector<int>& outputs);
 
     // Returns a map of VC to list of output ports reserved by port_in
-    std::map<int, std::vector<int>> getReservations(const int port_in);
+    std::vector<int> getReservations(const int port_in , const int vc);
 
     // update the index of the reservation having highest priority in the current cycle
     void updateIndex();

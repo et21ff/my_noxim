@@ -372,56 +372,56 @@ void Hub::antennaToTileProcess()
 		}
 	}
 	// forwarding
-	for (unsigned int i = 0; i < rxChannels.size(); i++)
-	{
-		int channel = rxChannels[i];
-		map<int, vector<int>> reservations = antenna2tile_reservation_table.getReservations(channel);
+	// for (unsigned int i = 0; i < rxChannels.size(); i++)
+	// {
+	// 	int channel = rxChannels[i];
+	// 	map<int, vector<int>> reservations = antenna2tile_reservation_table.getReservations(channel);
 
-		if (reservations.size()!=0)
-		{
-			// 随机选择一个VC
-			int vc_idx = rand()%reservations.size();
-			auto it = reservations.begin();
-		 advance(it, vc_idx);
-		 int vc = it->first;
-		 int port = it->second[0]; // 取第一个输出端口
+	// 	if (reservations.size()!=0)
+	// 	{
+	// 		// 随机选择一个VC
+	// 		int vc_idx = rand()%reservations.size();
+	// 		auto it = reservations.begin();
+	// 	 advance(it, vc_idx);
+	// 	 int vc = it->first;
+	// 	 int port = it->second[0]; // 取第一个输出端口
 
-			if (!(target[channel]->buffer_rx.IsEmpty()))
-			{
-				Flit received_flit = target[channel]->buffer_rx.Front();
-				power.antennaBufferFront();
+	// 		if (!(target[channel]->buffer_rx.IsEmpty()))
+	// 		{
+	// 			Flit received_flit = target[channel]->buffer_rx.Front();
+	// 			power.antennaBufferFront();
 
-				if ( !buffer_to_tile[port][vc].IsFull() )
-				{
-					target[channel]->buffer_rx.Pop();
-					power.antennaBufferPop();
-					LOG << "*** [Ch" << channel << "] Moving flit  " << received_flit << " from buffer_rx to buffer_to_tile[" << port <<"][" << vc << "]" << endl;
+	// 			if ( !buffer_to_tile[port][vc].IsFull() )
+	// 			{
+	// 				target[channel]->buffer_rx.Pop();
+	// 				power.antennaBufferPop();
+	// 				LOG << "*** [Ch" << channel << "] Moving flit  " << received_flit << " from buffer_rx to buffer_to_tile[" << port <<"][" << vc << "]" << endl;
 
-					buffer_to_tile[port][vc].Push(received_flit);
-					power.bufferToTilePush();
+	// 				buffer_to_tile[port][vc].Push(received_flit);
+	// 				power.bufferToTilePush();
 
-					if (received_flit.flit_type == FLIT_TYPE_TAIL)
-					{
-						LOG << "Releasing reservation for output port " << port << ", flit " << received_flit << endl;
-						TReservation r;
-						r.input = channel;
-						r.vc = vc;
-						antenna2tile_reservation_table.release(r,port);
-					}
-				}
-				else
-					LOG << "Full buffer_to_tile[" << port <<"][" << vc << "]" << ", cannot store " << received_flit << endl;
-			}
-			else
-			{
-				// should be ok
-				/*
-                LOG << "WARNING: empty target["<<channel<<"] buffer_rx, but reservation still present, if correct, remove assertion below " << endl;
-                assert(false);
-                */
-			}
-		}
-	}
+	// 				if (received_flit.flit_type == FLIT_TYPE_TAIL)
+	// 				{
+	// 					LOG << "Releasing reservation for output port " << port << ", flit " << received_flit << endl;
+	// 					TReservation r;
+	// 					r.input = channel;
+	// 					r.vc = vc;
+	// 					antenna2tile_reservation_table.release(r,port);
+	// 				}
+	// 			}
+	// 			else
+	// 				LOG << "Full buffer_to_tile[" << port <<"][" << vc << "]" << ", cannot store " << received_flit << endl;
+	// 		}
+	// 		else
+	// 		{
+	// 			// should be ok
+	// 			/*
+    //             LOG << "WARNING: empty target["<<channel<<"] buffer_rx, but reservation still present, if correct, remove assertion below " << endl;
+    //             assert(false);
+    //             */
+	// 		}
+	// 	}
+	// }
 }
 
 void Hub::tileToAntennaProcess()
@@ -549,60 +549,60 @@ void Hub::tileToAntennaProcess()
 		start_from_port = (last_reserved+1)%num_ports;
 
 	// 2nd phase: Forwarding
-	for (int i = 0; i < num_ports; i++)
-	{
-		map<int, vector<int>> reservations = tile2antenna_reservation_table.getReservations(i);
+	// for (int i = 0; i < num_ports; i++)
+	// {
+	// 	// map<int, vector<int>> reservations = tile2antenna_reservation_table.getReservations(i);
 
-		if (reservations.size()!=0)
-		{
-			// 随机选择一个VC
-			int vc_idx = rand()%reservations.size();
-			auto it = reservations.begin();
-		 advance(it, vc_idx);
-		 int vc = it->first;
-		 int o = it->second[0]; // 取第一个输出端口
+	// 	if (reservations.size()!=0)
+	// 	{
+	// 		// 随机选择一个VC
+	// 		int vc_idx = rand()%reservations.size();
+	// 		auto it = reservations.begin();
+	// 	 advance(it, vc_idx);
+	// 	 int vc = it->first;
+	// 	 int o = it->second[0]; // 取第一个输出端口
 
-			if (!buffer_from_tile[i][vc].IsEmpty())
-			{
-				Flit flit = buffer_from_tile[i][vc].Front();
-				// powerFront already accounted in 1st phase
+	// 		if (!buffer_from_tile[i][vc].IsEmpty())
+	// 		{
+	// 			Flit flit = buffer_from_tile[i][vc].Front();
+	// 			// powerFront already accounted in 1st phase
 
-				assert(r_from_tile[i][vc] == DIRECTION_WIRELESS);
+	// 			assert(r_from_tile[i][vc] == DIRECTION_WIRELESS);
 
-				int channel =  o;
+	// 			int channel =  o;
 
-				if (channel != NOT_RESERVED)
-				{
-					if (!(init[channel]->buffer_tx.IsFull()) )
-					{
-						buffer_from_tile[i][vc].Pop();
-						power.bufferFromTilePop();
-						init[channel]->buffer_tx.Push(flit);
-						power.antennaBufferPush();
-						if (flit.flit_type == FLIT_TYPE_TAIL)
-						{
-							TReservation r;
-							r.input = i;
-							r.vc = vc;
-							tile2antenna_reservation_table.release(r,channel);
-						}
+	// 			if (channel != NOT_RESERVED)
+	// 			{
+	// 				if (!(init[channel]->buffer_tx.IsFull()) )
+	// 				{
+	// 					buffer_from_tile[i][vc].Pop();
+	// 					power.bufferFromTilePop();
+	// 					init[channel]->buffer_tx.Push(flit);
+	// 					power.antennaBufferPush();
+	// 					if (flit.flit_type == FLIT_TYPE_TAIL)
+	// 					{
+	// 						TReservation r;
+	// 						r.input = i;
+	// 						r.vc = vc;
+	// 						tile2antenna_reservation_table.release(r,channel);
+	// 					}
 
-						LOG << "Flit " << flit << " moved from buffer_from_tile["<<i<<"]["<<vc<<"]  to buffer_tx["<<channel<<"] " << endl;
-					}
-					else
-					{
-						LOG << "Buffer Full: Cannot move flit " << flit << " from buffer_from_tile["<<i<<"] to buffer_tx["<<channel<<"] " << endl;
-						//init[channel]->buffer_tx.Print();
-					}
-				}
-				else
-				{
-					LOG << "Forwarding: No channel reserved for input port [" << i << "][" << vc << "], flit " << flit << endl;
-				}
-			}
+	// 					LOG << "Flit " << flit << " moved from buffer_from_tile["<<i<<"]["<<vc<<"]  to buffer_tx["<<channel<<"] " << endl;
+	// 				}
+	// 				else
+	// 				{
+	// 					LOG << "Buffer Full: Cannot move flit " << flit << " from buffer_from_tile["<<i<<"] to buffer_tx["<<channel<<"] " << endl;
+	// 					//init[channel]->buffer_tx.Print();
+	// 				}
+	// 			}
+	// 			else
+	// 			{
+	// 				LOG << "Forwarding: No channel reserved for input port [" << i << "][" << vc << "], flit " << flit << endl;
+	// 			}
+	// 		}
 
-		}// for all the ports
-	}
+	// 	}// for all the ports
+	// }
 
 	for (int i = 0; i < num_ports; i++)
 	{
