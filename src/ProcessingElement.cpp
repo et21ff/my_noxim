@@ -169,7 +169,7 @@ void ProcessingElement::rxProcess() {
         main_receiving_size_ = 0;
         output_receiving_size_ = 0;
 
-        for (int i = 0; i < 2; ++i) {
+        for (int i = 0; i < NUM_LOCAL_PORTS; ++i) {
             ack_rx[i].write(0);
             current_level_rx[i] = 0;
 
@@ -201,7 +201,7 @@ void ProcessingElement::rxProcess() {
     // 阶段二: 接收新的入站 Flit
     // ==========================================================
     // 这部分是物理接收逻辑，负责将新来的 Flit Push 进 rx_buffer
-    for (int i = 0; i < 2; ++i) {
+    for (int i = 0; i < NUM_LOCAL_PORTS; ++i) {
         if (i == 0) {
             // --- Port 0: 新的支持VC的缓冲逻辑 ---
 
@@ -258,7 +258,7 @@ void ProcessingElement::rxProcess() {
     // 阶段三: 更新对上游的流控信号
     // ==========================================================
     // 这个逻辑报告的是物理缓冲区 rx_buffer 的状态
-    for (int i = 0; i < 2; ++i) {
+    for (int i = 0; i < NUM_LOCAL_PORTS; ++i) {
         TBufferFullStatus status;
 
         if (i == 0) {
@@ -506,9 +506,7 @@ void ProcessingElement::txProcess() {
     // 复位逻辑保持不变（更新以清空新的VC队列）
     if (reset.read()) {
         req_tx[0].write(0);
-        req_tx[1].write(0);
         current_level_tx[0] = 0;
-        current_level_tx[1] = 0;
 
         // 清空所有VC队列
         for (auto& q : packet_queues_) {

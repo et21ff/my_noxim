@@ -10,7 +10,7 @@
 
 #ifndef __NOXIMROUTER_H__
 #define __NOXIMROUTER_H__
-#define NUM_LOCAL_PORTS 2
+#define NUM_LOCAL_PORTS 1
 
 #include <systemc.h>
 #include "DataStructs.h"

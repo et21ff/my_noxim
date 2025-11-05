@@ -161,7 +161,7 @@ Tile::Tile(sc_module_name nm, int id, int level): sc_module(nm) {
     // ====================================================================================
 
     // 内部连接常量：定义PE与Router之间的连接数量
-    const int NUM_INTERNAL_CONNECTIONS = 2;
+    const int NUM_INTERNAL_CONNECTIONS = 1;
     
     // 分配二维指针数组
     sig_flit_p2r = new sc_signal<Flit>*[NUM_INTERNAL_CONNECTIONS];

@@ -26,7 +26,7 @@
 #include "Buffer.h"
 
 // Hierarchical topology configuration structures
-
+#define NUM_LOCAL_PORTS 1
 
 using namespace std;
 
@@ -43,21 +43,21 @@ SC_MODULE(ProcessingElement)
     sc_in < bool > reset;	// The reset signal for the PE
 
     // Primary and Secondary connections as arrays
-    sc_in < Flit > flit_rx[2];	// The input channels [0: PRIMARY, 1: SECONDARY]
-    sc_in < bool > req_rx[2];	// The request signals associated with input channels
-    sc_out < bool > ack_rx[2];	// The outgoing ack signals associated with input channels
-    sc_out < TBufferFullStatus > buffer_full_status_rx[2];	
+    sc_in < Flit > flit_rx[NUM_LOCAL_PORTS];	// The input channels [0: PRIMARY, 1: SECONDARY]
+    sc_in < bool > req_rx[NUM_LOCAL_PORTS];	// The request signals associated with input channels
+    sc_out < bool > ack_rx[NUM_LOCAL_PORTS];	// The outgoing ack signals associated with input channels
+    sc_out < TBufferFullStatus > buffer_full_status_rx[NUM_LOCAL_PORTS];	
 
-    sc_out < Flit > flit_tx[2];	// The output channels [0: PRIMARY, 1: SECONDARY]
-    sc_out < bool > req_tx[2];	// The request signals associated with output channels
-    sc_in < bool > ack_tx[2];	// The incoming ack signals associated with output channels
-    sc_in < TBufferFullStatus > buffer_full_status_tx[2];
+    sc_out < Flit > flit_tx[NUM_LOCAL_PORTS];	// The output channels [0: PRIMARY, 1: SECONDARY]
+    sc_out < bool > req_tx[NUM_LOCAL_PORTS];	// The request signals associated with output channels
+    sc_in < bool > ack_tx[NUM_LOCAL_PORTS];	// The incoming ack signals associated with output channels
+    sc_in < TBufferFullStatus > buffer_full_status_tx[NUM_LOCAL_PORTS];
 
 
     // Registers
     int local_id;		// Unique identification number
-    bool current_level_rx[2];	// Current level for Alternating Bit Protocol (ABP)
-    bool current_level_tx[2];	// Current level for Alternating Bit Protocol (ABP)
+    bool current_level_rx[NUM_LOCAL_PORTS];	// Current level for Alternating Bit Protocol (ABP)
+    bool current_level_tx[NUM_LOCAL_PORTS];	// Current level for Alternating Bit Protocol (ABP)
     std::vector<std::queue<Packet>> packet_queues_;  // VC-aware packet queues
     bool transmittedAtPreviousCycle;	// Used for distributions with memory
 
