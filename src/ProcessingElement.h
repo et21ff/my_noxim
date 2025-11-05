@@ -231,26 +231,14 @@ public: // 建议将内部状态变量设为私有
 
 
     sc_signal<bool> is_receiving_packet;
-    std::string role_to_str(const PE_Role& role); // 用于将角色转换为字符串
-     void update_ready_signal(); // 一个新的SC_METHOD,用于向上级存储器更新当前空闲状态
-    void pe_init();
+    std::string role_to_str(const PE_Role& role); // 用于将角色转换为字符串 // 一个新的SC_METHOD,用于向上级存储器更新当前空闲状态
     void run_storage_logic();
     void run_compute_logic();
-    void update_transfer_loop_counters();
-    void update_receive_loop_counters();
 
     int get_command_to_send();
 
     void reset_logic(); //达到timestamp上限时的重置行为
 
-    // void output_txprocess(); // 用于输出txprocess的日志
-    // void output_rxProcess();
-
-    void handle_tx_for_port(int port_index);
-
-    void handle_rx_for_port(int port_index);
-
-    // 新增：内部流式处理函数
     void internal_transfer_process();
 
     // 新增：统一的VC发送处理函数
@@ -264,14 +252,6 @@ public: // 建议将内部状态变量设为私有
     int find_child_id(int id);
     Flit generate_next_flit_from_queue(std::queue<Packet>& queue);
 
-    // --- GLB 发送同步相关辅助函数 ---
-    size_t get_required_capability(size_t size, int port_index) const;
-
-    std::string get_packet_type_str(const Packet& packet, int port_index) const;
-
-    int decode_ready_signal(int combined_ready_value, int port_index) const;
-
-    void process_tail_sent_event(int port_index,Packet sent_status);
     unsigned int getQueueSize() const;
 
     // 新增：动态配置函数
@@ -298,20 +278,6 @@ public: // 建议将内部状态变量设为私有
         SC_METHOD(txProcess);
         sensitive << reset;
         sensitive << clock.pos();
-
-    // SC_METHOD(output_txprocess);
-    // sensitive << clock.pos();
-    // sensitive << reset;
-
-    // SC_METHOD(output_rxProcess);
-    // sensitive << clock.neg();
-    // sensitive << reset;
-
-        SC_METHOD(update_ready_signal);
-        sensitive << reset;
-        sensitive << current_data_size;      // 3. 直接对信号敏感
-        sensitive << is_receiving_packet;    // 3. 直接对信号敏感
-
 
     }
 
