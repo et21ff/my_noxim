@@ -22,11 +22,12 @@ struct DataDispatchInfo {
     int id;
     DataType type; 
     size_t size;                          // 数据大小（字节）
-    std::unordered_set<int> target_ids;        // 目标节点ID列表
+    std::unordered_set<int> target_ids;  
+    bool is_multicast;                    // 是否为多播
 
-    DataDispatchInfo() : size(0) {}
+    DataDispatchInfo() : size(0), is_multicast(false) {}
     DataDispatchInfo(size_t s, const std::unordered_set<int>& targets)
-        : size(s), target_ids(targets) {}
+        : size(s), target_ids(targets), is_multicast(false) {}
 
 };
 

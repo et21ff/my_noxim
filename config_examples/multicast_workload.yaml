@@ -15,6 +15,7 @@ topology: "HIERARCHICAL"
 hierarchical_config:
   num_levels: 4
   connection_mode: "tree"
+  word_bits: 8
   
   # 每层的详细配置
   level_configs:
@@ -22,24 +23,28 @@ hierarchical_config:
       node_type: "DRAM"
       buffer_size: 4164
       roles: "ROLE_DRAM"
+      bandwidth: 128
       fanouts: 1  # 该层每个节点连接到下一层的节点数
       
     - level: 1
       node_type: "GLB"
       buffer_size: 4164
       roles: "ROLE_GLB"
+      bandwidth: 8
       fanouts: 4  # 该层每个节点连接到下一层的节点数
 
     - level: 2
       node_type: "DISTRIBUTOR"
       buffer_size: 0
       roles: "ROLE_DISTRIBUTOR"
+      bandwidth: 8
       fanouts: 4  # 该层每个节点连接到下一层的节点数
       
     - level: 3
       node_type: "COMPUTE"
       buffer_size: 64  
       roles: "ROLE_BUFFER"
+      bandwidth: 8
       fanouts: 0
       
 
@@ -118,6 +123,8 @@ workload:
 
   data_flow_specs:
     - role: "ROLE_DRAM"
+      properties:
+        sync_per_timestep: 1
       schedule_template:
         total_timesteps: 1
         delta_events:
@@ -130,6 +137,8 @@ workload:
               - { data_space: "Outputs", size: 512 }
 
     - role: "ROLE_GLB"
+      properties:
+        sync_per_timestep: 6
       schedule_template:
         total_timesteps: 192
         delta_events:

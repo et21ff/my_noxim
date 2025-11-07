@@ -173,29 +173,18 @@ void TaskManager::Configure(const WorkloadConfig& config ,const std::string& rol
             return;
         }
         
-        size_t output_ws_size = 0;
-        for(auto workspace : role_working_set_->data)
-        {
-            if(stringToDataType(workspace.data_space) == DataType::OUTPUT)
+
+        int sync_per_timestep = get_properties_for_role(role)->sync_per_timestep;
+
+            for(int t=0; t<schedule.total_timesteps; ++t)
             {
-                output_ws_size = workspace.size;
+                if(sync_per_timestep <= 0) break;
+                if((t+1) % sync_per_timestep == 0)
+                {
+                    sync_points_[t] = true;
+                }
 
             }
-        }
-
-        role_output_working_set_size_ = output_ws_size;
-
-        size_t cumulative_outputs_sent = 0;
-        for(int t=0; t<schedule.total_timesteps; ++t)
-        {
-            cumulative_outputs_sent += avg_output;
-            if (cumulative_outputs_sent>= output_ws_size)
-            {
-                sync_points_[t] = true;
-                cumulative_outputs_sent = 0;
-            } 
-
-        }
         
 }
 
@@ -334,6 +323,7 @@ void TaskManager::create_dispatch_task_from_event(DispatchTask& task, const Delt
             sub_task_info.type = type;
             sub_task_info.size = action.size;
             sub_task_info.target_ids = target_ids;
+            sub_task_info.is_multicast = true;
             
             // 4. 将这个子任务添加到 DispatchTask 的 vector 中
             task.sub_tasks.push_back(sub_task_info);
@@ -346,6 +336,7 @@ void TaskManager::create_dispatch_task_from_event(DispatchTask& task, const Delt
                 sub_task_info.type = type;
                 sub_task_info.size = action.size;
                 sub_task_info.target_ids.insert(target_id); // 仅包含单个目标ID
+                sub_task_info.is_multicast = false;
 
                 // 4. 将这个子任务添加到 DispatchTask 的 vector 中
                 task.sub_tasks.push_back(sub_task_info);

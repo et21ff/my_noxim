@@ -192,6 +192,7 @@ struct GlobalParams {
     static int channel_selection;
 
     static int num_levels;
+    static int word_bits;
     static int* fanouts_per_level;
     static int num_nodes;
 

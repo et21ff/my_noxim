@@ -89,7 +89,7 @@ void ProcessingElement::configure(int id, int level_idx, const HierarchicalConfi
                 output_buffer_manager_->OnDataReceived(DataType::OUTPUT, dataset.outputs);
             }
 
-            outputs_required_count_ = task_manager_->role_output_working_set_size_;
+            outputs_required_count_ = task_manager_->get_current_working_set().outputs;
             outputs_received_count_ = 0;
 
             // 状态初始化
@@ -111,7 +111,7 @@ void ProcessingElement::configure(int id, int level_idx, const HierarchicalConfi
             // 配置TaskManager
             task_manager_ = std::unique_ptr<TaskManager>(new TaskManager());
             task_manager_->Configure(GlobalParams::workload, "ROLE_GLB");
-            outputs_required_count_ = task_manager_->role_output_working_set_size_;
+            outputs_required_count_ = task_manager_->get_current_working_set().outputs;
             outputs_received_count_ = 0;
 
             this->downstream_node_ids.clear();
@@ -314,6 +314,7 @@ void ProcessingElement::internal_transfer_process() {
                               << "[INTERNAL_TRANSFER] Accepted OUTPUT_RETURN HEAD Flit on VC " << vc
                               << " src_id=" << flit.src_id
                               << " payload=" << flit.payload_data_size
+                              << " command_id=" << flit.command
                               << std::endl;
                     continue; // 继续处理下一个flit
                 }
@@ -372,6 +373,7 @@ void ProcessingElement::internal_transfer_process() {
                 if (flit.command == -1) {
                     // 这是一个输出回传包，只更新计数器，不调用BufferManager
                     outputs_received_count_ += flit.payload_data_size;
+                    assert(outputs_received_count_ <= outputs_required_count_ && "Received more outputs than required");
                     
                     vc_buffer.Pop();
                     
@@ -557,8 +559,14 @@ void ProcessingElement::txProcess() {
     }
 
 
+
+
     if(role!=ROLE_BUFFER && current_dispatch_task_.sub_tasks.empty()&&packet_queues_are_empty() && dispatch_in_progress_)
         {
+            if(task_manager_->is_in_sync_points(logical_timestamp))
+            {
+                outputs_received_count_ = 0;
+            }
             logical_timestamp++;
             dispatch_in_progress_ = false;
             cout << sc_time_stamp() << ": PE[" << local_id << "] Completed dispatch for timestamp " << logical_timestamp - 1 << endl;
@@ -589,7 +597,7 @@ void ProcessingElement::reset_logic()
 {
     if(role==ROLE_DRAM)
     {
-        dbg("All tasks completed quiting simulation");
+        dbg(sc_time_stamp(),"All tasks completed quiting simulation");
         // sc_stop();
         return;
     }
@@ -621,7 +629,8 @@ void ProcessingElement::reset_logic()
             pkt.dst_id = upstream_node_ids[0];
             pkt.payload_data_size = cmd.outputs;
             pkt.data_type = DataType::OUTPUT;
-            pkt.size = pkt.flit_left = cmd.outputs+2;
+            int bandwidth_scale = GlobalParams::hierarchical_config.get_level_config(level_index-1).bandwidth / GlobalParams::word_bits;
+            pkt.size = pkt.flit_left = (cmd.outputs + bandwidth_scale - 1) / bandwidth_scale + 2;
             pkt.command = -1; //表示这是一个回送包
             pkt.is_multicast = false;
             pkt.vc_id = 2; //回送包使用vc 0
@@ -774,7 +783,7 @@ void  ProcessingElement::run_storage_logic() {
 
         Packet pkt;
         pkt.src_id = local_id;
-        pkt.is_multicast = (selected_task.target_ids.size() >1);
+        pkt.is_multicast = selected_task.is_multicast;
         if(pkt.is_multicast)
         {
             for(auto target_id : selected_task.target_ids)
@@ -786,12 +795,13 @@ void  ProcessingElement::run_storage_logic() {
         {
             pkt.dst_id = *selected_task.target_ids.begin();
         }
+        int bandwidth_scale = GlobalParams::hierarchical_config.get_level_config(level_index).bandwidth / GlobalParams::word_bits;
         pkt.vc_id = vc_id;  // 使用预先计算的VC ID
         pkt.payload_data_size = selected_task.size;
         pkt.logical_timestamp = logical_timestamp;
         pkt.data_type = selected_task.type;
         // pkt.is_output = (selected_task.type == DataType::OUTPUT);
-        pkt.size = pkt.flit_left = selected_task.size+2;
+        pkt.size = pkt.flit_left = (selected_task.size+bandwidth_scale-1) / bandwidth_scale + 2; // 计算所需Flit数（含头尾）
         pkt.command = command_to_send;
 
         // 将Packet推入对应的VC队列

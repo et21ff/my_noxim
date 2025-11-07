@@ -97,6 +97,13 @@ struct convert<RoleProperties> {
             rhs.compute_latency = 0; // 默认值
         }
 
+        if (node["sync_per_timestep"]) {
+            // 这里假设 RoleProperties 有一个 sync_per_timestep 成员变量
+            rhs.sync_per_timestep = node["sync_per_timestep"].as<int>();
+        } else {
+            rhs.sync_per_timestep = 0; // 默认值
+        }
+
         return true;
     }
 };

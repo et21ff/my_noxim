@@ -63,6 +63,7 @@ int GlobalParams::channel_selection;
 
 int GlobalParams::num_levels;
 int* GlobalParams::fanouts_per_level;
+int GlobalParams::word_bits;
 
 int* GlobalParams::node_level_map = nullptr;
 int* GlobalParams::parent_map = nullptr;

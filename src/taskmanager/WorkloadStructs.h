@@ -89,9 +89,10 @@ struct CommandDefinition {
  * 定义角色的静态属性
  */
 struct RoleProperties {
-    int compute_latency;                          // 计算延迟（仅对 COMPUTE 角色有效）
+    int compute_latency;
+    int sync_per_timestep;                          // 计算延迟（仅对 COMPUTE 角色有效）
 
-    RoleProperties() : compute_latency(0) {}
+    RoleProperties() : compute_latency(0), sync_per_timestep(0) {}
 };
 
 struct AtomicDispatchAction {

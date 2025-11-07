@@ -153,6 +153,7 @@ if (GlobalParams::topology == TOPOLOGY_HIERARCHICAL){
     YAML::Node hierarchical_config = config["hierarchical_config"];
     
     GlobalParams::num_levels = hierarchical_config["num_levels"].as<int>();
+    GlobalParams::word_bits = hierarchical_config["word_bits"].as<int>();
     // GlobalParams::hierarchical_connection_mode = hierarchical_config["connection_mode"].as<string>();
     
     // 读取每层配置
@@ -175,6 +176,7 @@ if (GlobalParams::topology == TOPOLOGY_HIERARCHICAL){
             //    我们使用 .as<Type>() 来进行类型转换
             current_level_data.level = node["level"].as<int>();
             current_level_data.buffer_size = node["buffer_size"].as<int>();
+            current_level_data.bandwidth = node["bandwidth"].as<int>();
             
             // 解析 'roles' 数组
             YAML::Node roles_node = node["roles"];
