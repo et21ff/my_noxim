@@ -25,13 +25,14 @@ inline DataType stringToDataType(const std::string& str) {
     return DataType::UNKNOWN;
 }
 
-enum PE_Role { ROLE_UNUSED, ROLE_DRAM, ROLE_GLB, ROLE_BUFFER };
+enum PE_Role { ROLE_UNUSED, ROLE_DRAM, ROLE_GLB, ROLE_BUFFER, ROLE_DISTRIBUTOR };
 inline const char* roleToString(PE_Role role) {
     switch (role) {
         case ROLE_UNUSED: return "ROLE_UNUSED";
         case ROLE_DRAM:   return "ROLE_DRAM";
         case ROLE_GLB:    return "ROLE_GLB";
         case ROLE_BUFFER: return "ROLE_BUFFER";
+        case ROLE_DISTRIBUTOR: return "ROLE_DISTRIBUTOR";
         default:          return "UNKNOWN_ROLE";
     }
 }
@@ -41,6 +42,7 @@ inline PE_Role stringToRole(const std::string& str) {
     if (str == "ROLE_DRAM")   return ROLE_DRAM;
     if (str == "ROLE_GLB")    return ROLE_GLB;
     if (str == "ROLE_BUFFER") return ROLE_BUFFER;
+    if (str == "ROLE_DISTRIBUTOR") return ROLE_DISTRIBUTOR;
     return ROLE_UNUSED; // 默认返回
 }
 

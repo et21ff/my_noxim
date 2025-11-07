@@ -74,3 +74,6 @@ WorkloadConfig GlobalParams::workload;
 
 map<PE_Role,RoleChannelCapabilities> GlobalParams::CapabilityMap;
 HierarchicalConfig GlobalParams::hierarchical_config;
+
+map<int, vector<int>> GlobalParams::storage_to_compute_map;  // GLB -> COMPUTE 节点列表  
+map<int, int> GlobalParams::compute_to_storage_map;

@@ -196,6 +196,7 @@ void NoC::buildHierarchical()
     // 2. 创建层次化映射关系
     //==================================================================
     setupHierarchicalTopology();
+    buildRoleMappings();
     
     //==================================================================
     // 3. 分配层次化信号
@@ -288,6 +289,7 @@ for (int i = 0; i < GlobalParams::num_nodes; i++) {
 }
     setupHierarchicalConnections();
     
+    
     cout << "=== 层次化NoC拓扑构建完成 ===" << endl;
     cout << "注意: 需要修改Router类支持层次化路由" << endl;
 
@@ -335,9 +337,10 @@ void NoC::setupHierarchicalTopology()
             
             for (int i = 0; i < nodes_per_level[level]; i++) {
                 int current_node = level_start + i;
-                int parent_id = parent_level_start + (i % nodes_per_level[level - 1]);
-                parent_map[current_node] = parent_id;
                 int node_num = nodes_per_level[level]/nodes_per_level[level - 1];
+                int parent_id = parent_level_start + (i / node_num);
+                parent_map[current_node] = parent_id;
+                
                 // 为父节点分配子节点数组
                 if (child_map[parent_id] == NULL) {
                     child_map[parent_id] = new int[node_num];
@@ -364,6 +367,69 @@ void NoC::setupHierarchicalTopology()
     writeToGlobalParams();
     
     cout << "层次化映射建立完成" << endl;
+}
+
+void NoC::buildRoleMappings()  
+{  
+    HierarchicalConfig& config = GlobalParams::hierarchical_config;  
+      
+    // 找到 GLB 层和 COMPUTE 层的索引  
+    int glb_level = -1, compute_level = -1;  
+    for (int i = 0; i < config.levels.size(); i++) {  
+        if (config.levels[i].roles == ROLE_GLB) {  
+            glb_level = i;  
+        }  
+        if (config.levels[i].roles == ROLE_BUFFER) {  
+            compute_level = i;  
+        }  
+    }  
+      
+    if (glb_level == -1 || compute_level == -1) return;  
+      
+    // 计算每层的起始节点ID  
+    int glb_start = 0, compute_start = 0;  
+    for (int i = 0; i < glb_level; i++) {  
+        glb_start += nodes_per_level[i];  
+    }  
+    for (int i = 0; i < compute_level; i++) {  
+        compute_start += nodes_per_level[i];  
+    }  
+      
+    // 遍历所有 GLB 节点,找到其对应的 COMPUTE 节点  
+    for (int i = 0; i < nodes_per_level[glb_level]; i++) {  
+        int glb_id = glb_start + i;  
+        vector<int> compute_nodes;  
+          
+        // 通过递归遍历子节点找到所有 COMPUTE 节点  
+        findComputeNodes(glb_id, compute_level, compute_nodes);
+
+        GlobalParams::storage_to_compute_map[glb_id] = compute_nodes;
+
+        // 反向映射
+        for (int compute_id : compute_nodes) {
+            GlobalParams::compute_to_storage_map[compute_id] = glb_id;
+        }
+    }  
+}  
+  
+void NoC::findComputeNodes(int node_id, int target_level, vector<int>& result)  
+{  
+    int current_level = node_level_map[node_id];  
+      
+    if (current_level == target_level) {  
+        result.push_back(node_id);  
+        return;  
+    }  
+      
+    // 递归遍历所有子节点  
+    if (child_map[node_id] != NULL) {  
+        int fanout = GlobalParams::fanouts_per_level[current_level];  
+        for (int i = 0; i < fanout; i++) {  
+            if (child_map[node_id][i] != -1) {  
+                findComputeNodes(child_map[node_id][i], target_level, result);  
+            }  
+        }  
+    }  
 }
 
 void NoC::buildButterfly()
@@ -589,35 +655,38 @@ void NoC::setupLocalConnections() {
     // ... 其他信号向量 ...
 
     for (int i = 0; i < GlobalParams::num_nodes; i++) {
+        int current_level = node_level_map[i];
         
-    if(node_level_map[i] > 0) {
-        t[i]->r->h_flit_rx_up->bind(*(t[i]->hierarchical_flit_up_rx));
-        t[i]->r->h_req_rx_up->bind(*(t[i]->hierarchical_req_up_rx));
-	    t[i]->r->h_ack_rx_up->bind(*(t[i]->hierarchical_ack_up_rx));
-        t[i]->r->h_buffer_full_status_rx_up->bind(*(t[i]->hierarchical_buffer_full_status_up_rx));
+        if(current_level > 0) {
+            t[i]->r->h_flit_rx_up->bind(*(t[i]->hierarchical_flit_up_rx));
+            t[i]->r->h_req_rx_up->bind(*(t[i]->hierarchical_req_up_rx));
+            t[i]->r->h_ack_rx_up->bind(*(t[i]->hierarchical_ack_up_rx));
+            t[i]->r->h_buffer_full_status_rx_up->bind(*(t[i]->hierarchical_buffer_full_status_up_rx));
 
-        t[i]->r->h_flit_tx_up->bind(*(t[i]->hierarchical_flit_up_tx));
-	    t[i]->r->h_req_tx_up->bind(*(t[i]->hierarchical_req_up_tx));
-	    t[i]->r->h_ack_tx_up->bind(*(t[i]->hierarchical_ack_up_tx));
-	    t[i]->r->h_buffer_full_status_tx_up->bind(*(t[i]->hierarchical_buffer_full_status_up_tx));
+            t[i]->r->h_flit_tx_up->bind(*(t[i]->hierarchical_flit_up_tx));
+            t[i]->r->h_req_tx_up->bind(*(t[i]->hierarchical_req_up_tx));
+            t[i]->r->h_ack_tx_up->bind(*(t[i]->hierarchical_ack_up_tx));
+            t[i]->r->h_buffer_full_status_tx_up->bind(*(t[i]->hierarchical_buffer_full_status_up_tx));
 
-        cout<< "[连接] Tile"<<i<< "和其Router的UP绑定建立完成。" << endl;
-    }
-        dbg(i,GlobalParams::node_level_map[i],GlobalParams::fanouts_per_level[GlobalParams::node_level_map[i]]);
+            cout<< "[连接] Tile"<<i<< "和其Router的UP绑定建立完成。" << endl;
+        }
+        int num_children = GlobalParams::fanouts_per_level[current_level];
 
-    for(int j=0;j<GlobalParams::fanouts_per_level[GlobalParams::node_level_map[i]];j++) {
-        t[i]->r->h_flit_rx_down[j]->bind(*(t[i]->hierarchical_flit_down_rx[j]));
-        t[i]->r->h_req_rx_down[j]->bind(*(t[i]->hierarchical_req_down_rx[j]));
-        t[i]->r->h_ack_rx_down[j]->bind(*(t[i]->hierarchical_ack_down_rx[j]));
-        t[i]->r->h_buffer_full_status_rx_down[j]->bind(*(t[i]->hierarchical_buffer_full_status_down_rx[j]));
+        if(num_children<=0 || current_level >= GlobalParams::num_levels - 1) continue;
 
-        t[i]->r->h_flit_tx_down[j]->bind(*(t[i]->hierarchical_flit_down_tx[j]));
-        t[i]->r->h_req_tx_down[j]->bind(*(t[i]->hierarchical_req_down_tx[j]));
-        t[i]->r->h_ack_tx_down[j]->bind(*(t[i]->hierarchical_ack_down_tx[j]));
-        t[i]->r->h_buffer_full_status_tx_down[j]->bind(*(t[i]->hierarchical_buffer_full_status_down_tx[j]));
-        
-        cout<< "[连接] Tile"<<i<< "和其Router的DOWN"<<j<<"绑定建立完成。" << endl;
-    }
+        for(int j=0;j < num_children;j++) {
+            t[i]->r->h_flit_rx_down[j]->bind(*(t[i]->hierarchical_flit_down_rx[j]));
+            t[i]->r->h_req_rx_down[j]->bind(*(t[i]->hierarchical_req_down_rx[j]));
+            t[i]->r->h_ack_rx_down[j]->bind(*(t[i]->hierarchical_ack_down_rx[j]));
+            t[i]->r->h_buffer_full_status_rx_down[j]->bind(*(t[i]->hierarchical_buffer_full_status_down_rx[j]));
+
+            t[i]->r->h_flit_tx_down[j]->bind(*(t[i]->hierarchical_flit_down_tx[j]));
+            t[i]->r->h_req_tx_down[j]->bind(*(t[i]->hierarchical_req_down_tx[j]));
+            t[i]->r->h_ack_tx_down[j]->bind(*(t[i]->hierarchical_ack_down_tx[j]));
+            t[i]->r->h_buffer_full_status_tx_down[j]->bind(*(t[i]->hierarchical_buffer_full_status_down_tx[j]));
+            
+            cout<< "[连接] Tile"<<i<< "和其Router的DOWN"<<j<<"绑定建立完成。" << endl;
+        }
 
 }
 

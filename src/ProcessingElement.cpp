@@ -114,6 +114,12 @@ void ProcessingElement::configure(int id, int level_idx, const HierarchicalConfi
             outputs_required_count_ = task_manager_->role_output_working_set_size_;
             outputs_received_count_ = 0;
 
+            this->downstream_node_ids.clear();
+            for(auto compute_node : GlobalParams::storage_to_compute_map[this->local_id])
+            {
+                this->downstream_node_ids.push_back(compute_node);
+            }
+
             break;
         }
 
@@ -134,6 +140,13 @@ void ProcessingElement::configure(int id, int level_idx, const HierarchicalConfi
             outputs_received_count_ = 0;
             compute_cycles = 0;
 
+            this->upstream_node_ids.clear();
+            this->upstream_node_ids.push_back(GlobalParams::compute_to_storage_map[this->local_id]);
+
+            break;
+        }
+
+        case ROLE_DISTRIBUTOR:{
             break;
         }
 
@@ -190,6 +203,8 @@ void ProcessingElement::rxProcess() {
         }
         return;
     }
+
+    if(role==ROLE_DISTRIBUTOR) return;
 
     // ==========================================================
     // 阶段一: [核心] 调用内部处理函数
@@ -507,6 +522,9 @@ void ProcessingElement::txProcess() {
     if (reset.read()) {
         req_tx[0].write(0);
         current_level_tx[0] = 0;
+        compute_in_progress_ = false;
+        is_compute_complete = false;
+        compute_cycles = 0;
 
         // 清空所有VC队列
         for (auto& q : packet_queues_) {
@@ -515,12 +533,14 @@ void ProcessingElement::txProcess() {
         return;
     }
 
+    if(role==ROLE_DISTRIBUTOR) return;
+
     // --- 步骤 A: 如果需要，智能地生成Packet ---
     // 只有在所有VC队列为空时，才尝试生成新的Packet
         // 根据角色调用生成逻辑。
         // run_storage_logic 内部已经包含了所有"意图"和"能力"的匹配检查。
         // 如果条件不满足，它什么也不会做，VC队列依然为空。
-        if (role == ROLE_DRAM || role == ROLE_GLB) {
+    if (role == ROLE_DRAM || role == ROLE_GLB) {
             run_storage_logic();
         }
 
@@ -621,7 +641,7 @@ void ProcessingElement::reset_logic()
         }
         output_buffer_manager_->RemoveData(DataType::OUTPUT, cmd.outputs);
 
-        cout<< sc_time_stamp() << ": PE[" << local_id << "]" << buffer_manager_->GetCurrentSize() << "/" << buffer_manager_->GetCapacity() << " bytes remaining after resetting for timestamp " << logical_timestamp << endl;
+        LOG<< sc_time_stamp() << ": PE[" << local_id << "]" << buffer_manager_->GetCurrentSize() << "/" << buffer_manager_->GetCapacity() << " bytes remaining after resetting for timestamp " << logical_timestamp << endl;
         output_buffer_state_changed_event.notify();
     }
 
@@ -641,7 +661,7 @@ void ProcessingElement::run_compute_logic() {
         // 4. Dependency Check: Verify that all required data for the *current* timestep's computation is present.
         // A compute task's dependencies are its required Inputs and Weights.
             const auto& required_data = task_manager_->get_working_set_for_role(role_to_str(role))->get_data_map();
-            consume_cycles_left = task_manager_->get_compute_latency();
+            
             
             for (const auto& entry : required_data) {
                 DataType type = entry.first;
@@ -663,12 +683,13 @@ void ProcessingElement::run_compute_logic() {
                     }
                 }
             }
-
+            consume_cycles_left = task_manager_->get_compute_latency();
             compute_in_progress_ = true;
         }
 
         if (compute_in_progress_) {
             consume_cycles_left--;
+            assert(consume_cycles_left>=0 && "Consume cycles underflow");
             if (consume_cycles_left == 0) {
                 compute_in_progress_ = false;
                 is_compute_complete = true;

@@ -13,7 +13,7 @@ topology: "HIERARCHICAL"
 
 # 层次化详细配置
 hierarchical_config:
-  num_levels: 3
+  num_levels: 4
   connection_mode: "tree"
   
   # 每层的详细配置
@@ -28,9 +28,15 @@ hierarchical_config:
       node_type: "GLB"
       buffer_size: 4164
       roles: "ROLE_GLB"
-      fanouts: 16  # 该层每个节点连接到下一层的节点数
-      
+      fanouts: 4  # 该层每个节点连接到下一层的节点数
+
     - level: 2
+      node_type: "DISTRIBUTOR"
+      buffer_size: 0
+      roles: "ROLE_DISTRIBUTOR"
+      fanouts: 4  # 该层每个节点连接到下一层的节点数
+      
+    - level: 3
       node_type: "COMPUTE"
       buffer_size: 64  
       roles: "ROLE_BUFFER"
@@ -90,7 +96,7 @@ traffic_distribution: TRAFFIC_TABLE_BASED # <--- [关键修改]
 traffic_table_filename: "empty_traffic.txt" # <--- 创建一个空的txt文件
 
 variables:
-  all_pes_group: &all_pes_group "2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17"
+  all_pes_group: &all_pes_group "6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21"
 
 workload:
   working_set:

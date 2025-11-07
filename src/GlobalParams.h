@@ -206,6 +206,8 @@ struct GlobalParams {
     static map<PE_Role,RoleChannelCapabilities> CapabilityMap;
 
     static HierarchicalConfig hierarchical_config;
+    static map<int, vector<int>> storage_to_compute_map;  // GLB -> COMPUTE 节点列表  
+    static map<int, int> compute_to_storage_map;
 
 };
 

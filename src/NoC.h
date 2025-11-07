@@ -101,6 +101,12 @@ public:
     int getLevelOfNode(int node_id);          // 获取节点所在的层级
     void writeToGlobalParams();
 
+    void buildRoleMappings();
+
+    void findComputeNodes(int node_id, int target_level, vector<int>& result);
+
+
+
     map<int, Hub *> hub;
     map<int, Channel *> channel;
 
