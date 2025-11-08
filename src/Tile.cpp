@@ -65,7 +65,7 @@ void Tile::initHierarchicalPorts() {
     hierarchical_ack_down_rx.reserve(fanout);
     hierarchical_buffer_full_status_down_rx.reserve(fanout);
 
-    this->pe->downstream_ready_in.reserve(fanout); //在这里完成对downstream_ready_in的初始化
+    // this->pe->downstream_ready_in.reserve(fanout); //在这里完成对downstream_ready_in的初始化
 
     // this->pe->downstream_ready_out = new sc_out<int>((std::to_string(local_id) + " downstream_ready_out").c_str());
 
@@ -86,7 +86,7 @@ void Tile::initHierarchicalPorts() {
         hierarchical_ack_down_rx.push_back(new sc_out<bool>((name_prefix + "_ack_rx").c_str()));
         hierarchical_buffer_full_status_down_rx.push_back(new sc_out<TBufferFullStatus>((name_prefix + "_buffer_status_rx").c_str()));
 
-        this->pe->downstream_ready_in.push_back(new sc_in<int>((name_prefix + "_downstream_ready_in").c_str()));
+        // this->pe->downstream_ready_in.push_back(new sc_in<int>((name_prefix + "_downstream_ready_in").c_str()));
 
 
     }
@@ -125,6 +125,44 @@ void Tile::cleanupHierarchicalPorts() {
     hierarchical_req_down_rx.clear();
     hierarchical_ack_down_rx.clear();
     hierarchical_buffer_full_status_down_rx.clear();
+}
+
+void Tile::connectRouterToHierarchicalPorts() {
+    // =================================================================
+    // 1. 连接UP方向端口（与父节点的连接）
+    // =================================================================
+    if (local_level > 0 && hierarchical_flit_up_rx != nullptr) {
+        // UP RX路径：从父节点接收数据
+        r->h_flit_rx_up->bind(*hierarchical_flit_up_rx);
+        r->h_req_rx_up->bind(*hierarchical_req_up_rx);
+        r->h_ack_rx_up->bind(*hierarchical_ack_up_rx);
+        r->h_buffer_full_status_rx_up->bind(*hierarchical_buffer_full_status_up_rx);
+        
+        // UP TX路径：向父节点发送数据
+        r->h_flit_tx_up->bind(*hierarchical_flit_up_tx);
+        r->h_req_tx_up->bind(*hierarchical_req_up_tx);
+        r->h_ack_tx_up->bind(*hierarchical_ack_up_tx);
+        r->h_buffer_full_status_tx_up->bind(*hierarchical_buffer_full_status_up_tx);
+    }
+    
+    // =================================================================
+    // 2. 连接DOWN方向端口（与子节点的连接）
+    // =================================================================
+    int fanout = hierarchical_flit_down_tx.size();
+    
+    for (int i = 0; i < fanout; i++) {
+        // DOWN TX：Router -> 子节点
+        r->h_flit_tx_down[i]->bind(*hierarchical_flit_down_tx[i]);
+        r->h_req_tx_down[i]->bind(*hierarchical_req_down_tx[i]);
+        r->h_ack_tx_down[i]->bind(*hierarchical_ack_down_tx[i]);
+        r->h_buffer_full_status_tx_down[i]->bind(*hierarchical_buffer_full_status_down_tx[i]);
+        
+        // DOWN RX：子节点 -> Router
+        r->h_flit_rx_down[i]->bind(*hierarchical_flit_down_rx[i]);
+        r->h_req_rx_down[i]->bind(*hierarchical_req_down_rx[i]);
+        r->h_ack_rx_down[i]->bind(*hierarchical_ack_down_rx[i]);
+        r->h_buffer_full_status_rx_down[i]->bind(*hierarchical_buffer_full_status_down_rx[i]);
+    }
 }
 
 Tile::Tile(sc_module_name nm, int id, int level): sc_module(nm) {
@@ -230,4 +268,5 @@ Tile::Tile(sc_module_name nm, int id, int level): sc_module(nm) {
 
     // Hierarchical ports initialization
 	initHierarchicalPorts();
+    connectRouterToHierarchicalPorts();
 }

@@ -16,7 +16,7 @@
 #include <utility>
 #include <vector>
 #include <string>
-#include <WorkloadStructs.h>
+#include "taskmanager/WorkloadStructs.h"
 #include "DataTypes.h" 
 using namespace std;
 

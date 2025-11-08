@@ -73,6 +73,7 @@ SC_MODULE(Tile)
     // Hierarchical port management
     void initHierarchicalPorts();  // 初始化层次化端口
     void cleanupHierarchicalPorts();   
+    void connectRouterToHierarchicalPorts();
       // 清理层次化端口
 
     // Destructor

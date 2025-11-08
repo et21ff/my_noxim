@@ -14,7 +14,7 @@
 
 #include "yaml-cpp/yaml.h"
 #include "GlobalParams.h"
-#include "ConfigParser.h"
+#include "taskmanager/ConfigParser.h"
 
 #include <iostream>
 #include <vector>

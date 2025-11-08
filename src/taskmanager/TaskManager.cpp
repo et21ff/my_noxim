@@ -1,6 +1,6 @@
 #include "TaskManager.h"
 #include "ConfigParser.h"
-#include "GlobalParams.h"
+#include "../GlobalParams.h"
 #include <algorithm>
 #include <stdexcept>
 #include <sstream>
@@ -293,8 +293,8 @@ std::unordered_set<int> TaskManager::resolve_target_group(const std::string& tar
  */
 void TaskManager::create_dispatch_task_from_event(DispatchTask& task, const DeltaEvent& event, int timestep) const {
     
-    dbg(sc_time_stamp(), "TaskManager", "[CONFIG] Processing event '" + event.name + 
-        "' for timestep " + std::to_string(timestep));
+    // dbg(sc_time_stamp(), "TaskManager", "[CONFIG] Processing event '" + event.name + 
+    //     "' for timestep " + std::to_string(timestep));
 
     // --- [核心修改] 遍历 event 中的所有 actions ---
     // 每个 action 都将成为 DispatchTask 中的一个独立 sub_task
@@ -317,32 +317,13 @@ void TaskManager::create_dispatch_task_from_event(DispatchTask& task, const Delt
             continue;
         }
 
-        if(action.multicast==true)
-        {
-            DataDispatchInfo sub_task_info;
-            sub_task_info.type = type;
-            sub_task_info.size = action.size;
-            sub_task_info.target_ids = target_ids;
-            sub_task_info.is_multicast = true;
-            
-            // 4. 将这个子任务添加到 DispatchTask 的 vector 中
-            task.sub_tasks.push_back(sub_task_info);
-            continue;
-        }
-        else {
-            // 对于非多播，每个目标创建一个独立的子任务
-            for (int target_id : target_ids) {
-                DataDispatchInfo sub_task_info;
-                sub_task_info.type = type;
-                sub_task_info.size = action.size;
-                sub_task_info.target_ids.insert(target_id); // 仅包含单个目标ID
-                sub_task_info.is_multicast = false;
+        DataDispatchInfo sub_task_info;
+        sub_task_info.type = type;
+        sub_task_info.size = action.size;
+        sub_task_info.target_ids = target_ids;
+        sub_task_info.is_multicast = action.multicast;
+        task.sub_tasks.push_back(sub_task_info);
 
-                // 4. 将这个子任务添加到 DispatchTask 的 vector 中
-                task.sub_tasks.push_back(sub_task_info);
-
-            }
-        }
     }
 }
 

@@ -11,8 +11,8 @@
 #include "ConfigurationManager.h"
 #include <systemc.h> //Included for the function time() 
 #include <dbg.h>
-#include <DataStructs.h>
-#include <GlobalParams.h>
+#include "DataStructs.h"
+#include "GlobalParams.h"
 
 YAML::Node config;
 YAML::Node power_config;

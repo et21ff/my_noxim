@@ -465,7 +465,7 @@ void NoC::buildOmega()
 void NoC::setupHierarchicalConnections() {
     cout << "[连接] 正在建立 Tile 间的层次化连接..." << endl;
 
-    t[0]->pe->downstream_ready_out.bind(dummy_signal); // make systemc satisfied
+    // t[0]->pe->downstream_ready_out.bind(dummy_signal); // make systemc satisfied
 
 
     // 遍历所有非根节点（从1开始）
@@ -522,8 +522,8 @@ void NoC::setupHierarchicalConnections() {
 
 
 
-            t[parent_id]->pe->downstream_ready_in[child_index]->bind(downstream_ready_signals[i][0]);
-            t[i]->pe->downstream_ready_out.bind(downstream_ready_signals[i][0]);
+            // t[parent_id]->pe->downstream_ready_in[child_index]->bind(downstream_ready_signals[i][0]);
+            // t[i]->pe->downstream_ready_out.bind(downstream_ready_signals[i][0]);
             
             cout << "    - C->P Bind OK." << endl;
         }

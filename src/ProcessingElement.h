@@ -18,10 +18,10 @@
 #include "DataStructs.h"
 #include "GlobalTrafficTable.h"
 #include "Utils.h"
-#include "BufferManager.h"
+#include "smartbuffer/BufferManager.h"
 #include <memory>
 #include "dbg.h"
-#include <TaskManager.h>
+#include "taskmanager/TaskManager.h"
 #include "GlobalParams.h"
 #include "Buffer.h"
 
@@ -36,8 +36,6 @@ SC_MODULE(ProcessingElement)
     // I/O Ports
 
     // **** 我们新增的、用于握手的端口 ****
-    vector<sc_in<int>*> downstream_ready_in; // 从下游PE接收的"ready"信号
-    sc_out<int> downstream_ready_out; // 向上游PE发送的"ready"信号
 
     sc_in_clk clock;		// The input clock for the PE
     sc_in < bool > reset;	// The reset signal for the PE

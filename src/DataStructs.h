@@ -14,7 +14,7 @@
 #include <systemc.h>
 #include <vector>
 #include "GlobalParams.h"
-#include <DataTypes.h>
+#include "DataTypes.h"
 
 // Coord -- XY coordinates type of the Tile inside the Mesh
 class Coord {

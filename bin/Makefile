@@ -279,14 +279,51 @@ $(TEST_MODULE_PE): $(TEST_PE_OBJS)
 	@echo "--- Linking PE test executable: $(TEST_MODULE_PE) ---"
 	$(CXX) $(LIBDIR) $^ $(LDFLAGS) $(LIBS) -o $@ 2>&1 | c++filt
 
+
+ 
+##### 1. 定义 GLB Tile 测试相关的文件 #####
+ 
+# 测试可执行文件的名字
+TEST_MODULE_GLB_TILE := test_glb_tile
+ 
+# 测试程序的源文件
+TEST_GLB_TILE_MAIN_SRC := ../tests/test_glb_tile.cpp
+TEST_GLB_TILE_MAIN_OBJ := $(subst ../tests,$(OBJDIR),$(TEST_GLB_TILE_MAIN_SRC:.cpp=.o))
+ 
+# 排除包含重复 sc_main 的文件
+OBJS_TO_EXCLUDE_FOR_GLB_TEST := $(OBJDIR)/Main.o
+ 
+# 从完整的 .o 文件列表中过滤掉不需要的，然后添加测试主程序
+OBJS_FOR_GLB_TEST := $(filter-out $(OBJS_TO_EXCLUDE_FOR_GLB_TEST), $(OBJS))
+TEST_GLB_TILE_OBJS := $(OBJS_FOR_GLB_TEST) $(TEST_GLB_TILE_MAIN_OBJ)
+ 
+##### 2. 编写编译和链接规则 #####
+ 
+# 为测试源文件添加编译规则
+$(OBJDIR)/%.o: ../tests/%.cpp
+	@echo "--- Compiling test source: $< ---"
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $(INCDIR) -c $< -o $@
+ 
+# 链接 GLB Tile 测试可执行文件
+$(TEST_MODULE_GLB_TILE): $(TEST_GLB_TILE_OBJS)
+	@echo "--- Linking GLB Tile test executable: $(TEST_MODULE_GLB_TILE) ---"
+	$(CXX) $(LIBDIR) $^ $(LDFLAGS) $(LIBS) -o $@ 2>&1 | c++filt
+ 
+# 便捷目标：构建并运行测试
+test_glb_tile: $(TEST_MODULE_GLB_TILE)
+	@echo "\n--- Running GLB Tile tests ---"
+	@echo "--- GLB Tile tests completed ---\n"
+ 
 ##### 3. 更新辅助规则 #####
-
-# 默认的 'all' 目标，现在编译 noxim 和所有测试程序
-all: $(MODULE) $(TEST_MODULE_HIERARCHICAL) $(TEST_MODULE_RESERVATION_TABLE)
-
-# 新的 clean 规则，确保能清理所有文件
+ 
+# 更新 all 目标，包含新的测试程序
+all: $(MODULE) $(TEST_MODULE_HIERARCHICAL) $(TEST_MODULE_RESERVATION_TABLE) $(TEST_MODULE_GLB_TILE)
+ 
+# 更新 clean 规则
 clean:
 	rm -f $(OBJS) $(MODULE) *~ $(TEST_HIERARCHICAL_MAIN_OBJ) $(TEST_MODULE_HIERARCHICAL) $(TEST_RESERVATION_TABLE_MAIN_OBJ) $(TEST_MODULE_RESERVATION_TABLE)
 	rm -f $(TEST_CONFIG_PARSER_OBJS) $(TEST_MODULE_CONFIG_PARSER)
 	rm -f $(TEST_TASK_MANAGER_OBJS) $(TEST_MODULE_TASK_MANAGER)
 	rm -f $(TEST_PE_MAIN_OBJ) $(TEST_MODULE_PE)
+	rm -f $(TEST_GLB_TILE_MAIN_OBJ) $(TEST_MODULE_GLB_TILE)

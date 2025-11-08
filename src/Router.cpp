@@ -47,6 +47,10 @@ void Router::rxProcess()
 	    // 1) there is an incoming request
 	    // 2) there is a free slot in the input buffer of direction i
 	    //LOG<<"****RX****DIRECTION ="<<i<<  endl;
+        if(i==1){
+            LOG << " h_flit_rx_down[0] req=" << all_req_rx[i]->read()
+                << " current_level_rx=" << current_level_rx[i] << endl;
+        }
 
 	    if (all_req_rx[i]->read() == 1 - current_level_rx[i])
 	    {
