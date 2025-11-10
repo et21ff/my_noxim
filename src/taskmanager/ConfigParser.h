@@ -181,6 +181,12 @@ struct convert<AtomicDispatchAction> {
         } else {
             rhs.multicast = true; // 默认值
         }
+
+        if( node["split_remaining"]) {
+            rhs.split_remaining = node["split_remaining"].as<int>();
+        } else {
+            rhs.split_remaining = 0; // 默认值
+        }
         return true;
     }
 };

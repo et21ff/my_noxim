@@ -48,7 +48,8 @@ struct Packet {
     int size;
     int flit_left;		// Number of remaining flits inside the packet
     bool use_low_voltage_path;
-    vector<int> multicast_dst_ids;
+    int split_remaining;
+    vector<int> dst_ids;
     bool is_multicast; // true if this packet is a multicast packet
 
 
@@ -87,19 +88,12 @@ struct RouteData {
     int current_id;
     int src_id;
     int dst_id;
+    vector<int> dst_ids; 
     int dir_in;			// direction from which the packet comes from
     int vc_id;
     bool is_output;        // true if the packet is an output packet
 };
 
-struct MulticastRouteData {
-      int current_id;
-      int src_id;
-      vector<int> dst_ids;      // 多个目标节点
-      int dir_in;               // 输入方向
-      int vc_id;
-      bool is_output;
-};
 
 struct ChannelStatus {
     int free_slots;		// occupied buffer slots
@@ -168,7 +162,7 @@ struct Flit {
     int src_id;
     int dst_id;
     bool is_multicast; // true if this flit belongs to a multicast packet
-    vector<int> multicast_dst_ids; // multiple destination nodes for multicast
+    vector<int> dst_ids; // multiple destination nodes for multicast
     int vc_id; // Virtual Channel
     FlitType flit_type;	// The flit type (FLIT_TYPE_HEAD, FLIT_TYPE_BODY, FLIT_TYPE_TAIL)
     int sequence_no;		// The sequence number of the flit inside the packet
@@ -180,19 +174,15 @@ struct Flit {
     int logical_timestamp;
     DataType data_type; // flit携带的数据种类
     int command; // 用于存储来自txprocess的命令 (timestamp,command)
+    int split_remaining;
 
     int hub_relay_node;
 
-    Flit():
-        multicast_dst_ids()
-        {
-            is_multicast = false;
-        }
 
     inline bool operator ==(const Flit & flit) const {
-	return (flit.src_id == src_id && flit.dst_id == dst_id
+	return (flit.src_id == src_id
 		&& flit.is_multicast == is_multicast
-		&& flit.multicast_dst_ids == multicast_dst_ids
+		&& flit.dst_ids == dst_ids
 		&& flit.flit_type == flit_type
 		&& flit.vc_id == vc_id
 		&& flit.sequence_no == sequence_no
@@ -201,6 +191,16 @@ struct Flit {
 		&& flit.hop_no == hop_no
 		&& flit.use_low_voltage_path == use_low_voltage_path);
 }};
+
+inline std::ostream& operator<<(std::ostream& os, const std::vector<int>& vec) {
+    os << "[";
+    for (size_t i = 0; i < vec.size(); ++i) {
+        if (i > 0) os << ", ";
+        os << vec[i];
+    }
+    os << "]";
+    return os;
+}
 
 enum PayloadIndex {
     INPUT_IDX = 0,

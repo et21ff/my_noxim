@@ -243,6 +243,8 @@ void ReservationTable::release(const TReservation& r, const vector<int>& outputs
         // 调用原始的单端口release方法
         release(r, port_out);
     }
+
+    output_mappings.erase({r.input, r.vc});
 }
 
 void ReservationTable::updateIndex()
@@ -283,3 +285,12 @@ void ReservationTable::reset()
     }
 }
 
+void ReservationTable::setOutputMapping(int input, int vc,   
+                                         const map<int, set<int>>& mapping) {  
+    output_mappings[{input, vc}] = mapping;  
+}  
+  
+map<int, set<int>> ReservationTable::getOutputMapping(int input, int vc) {  
+    auto it = output_mappings.find({input, vc});  
+    return (it != output_mappings.end()) ? it->second : map<int, set<int>>();  
+}

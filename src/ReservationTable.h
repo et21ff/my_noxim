@@ -14,6 +14,7 @@
 #include <cassert>
 #include <vector>
 #include <map>
+#include <set>
 
 #include "DataStructs.h"
 #include "Utils.h"
@@ -80,12 +81,17 @@ class ReservationTable {
 
     void reset();
 
+    void setOutputMapping(int input, int vc, const map<int, set<int>>& mapping);  
+    map<int, set<int>> getOutputMapping(int input, int vc);  
+
   private:
 
      TRTEntry *rtable;	// reservation vector: rtable[i] gives a RTEntry containing the set of input/VC 
 			// which reserved output port
 
      int n_outputs;
+
+     map<pair<int,int>, map<int, set<int>>> output_mappings;
 };
 
 #endif

@@ -14,7 +14,7 @@ Routing_XY * Routing_XY::getInstance() {
 vector<int> Routing_XY::route(Router * router, const RouteData & routeData)
 {
     Coord current = id2Coord(routeData.current_id);
-    Coord destination = id2Coord(routeData.dst_id);
+    Coord destination = id2Coord(routeData.dst_ids[0]);
     vector <int> directions;
 
     if (destination.x > current.x)

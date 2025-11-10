@@ -35,7 +35,7 @@ SC_MODULE(MockNode) {
                 Flit received_flit = flit_rx.read();
                 cout << "[" << sc_time_stamp() << "] " << node_name 
                      << " received flit: src=" << received_flit.src_id 
-                     << " dst=" << received_flit.dst_id << endl;
+                     << " dst=" << received_flit.dst_ids << endl;
                 ack_rx.write(1);
             } else {
                 ack_rx.write(0);

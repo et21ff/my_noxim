@@ -83,8 +83,8 @@ add_executable(noxim
         src/ReservationTable.h
         src/LocalRoutingTable.cpp
         src/LocalRoutingTable.h
-        src/MockPE.cpp
-        src/MockPE.h
+        # src/MockPE.cpp
+        # src/MockPE.h
         src/TokenRing.cpp
         src/TokenRing.h
         src/Utils.h
@@ -174,8 +174,8 @@ add_executable(test_glb_tile
         src/ReservationTable.h
         src/LocalRoutingTable.cpp
         src/LocalRoutingTable.h
-        src/MockPE.cpp
-        src/MockPE.h
+        # src/MockPE.cpp
+        # src/MockPE.h
         src/TokenRing.cpp
         src/TokenRing.h
         src/Utils.h

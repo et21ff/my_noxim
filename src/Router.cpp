@@ -68,7 +68,7 @@ void Router::rxProcess()
             std::cout << "@" << sc_time_stamp() << " [" << name() << "]: "
                               << "[RX_PORT0] Received Flit on VC " << vc
                               << " src_id=" << received_flit.src_id
-                              << " dst_id=" << received_flit.dst_id
+                              << " dst_id=" << received_flit.dst_ids
                               << " flit_type=" << received_flit.flit_type
                               << " buffer_size=" << (*buffers[i])[vc].Size()
                               << " flit_data_type=" << DataType_to_str(received_flit.data_type)
@@ -145,87 +145,62 @@ void Router::txProcess()
 
 		  if (flit.flit_type == FLIT_TYPE_HEAD)
 		    {
-		      // prepare data for routing
-		      if (flit.is_multicast) {
-		          // 多播路由处理
-		          MulticastRouteData multicast_route_data;
-		          multicast_route_data.current_id = local_id;
-		          multicast_route_data.src_id = flit.src_id;
-		          multicast_route_data.dst_ids = flit.multicast_dst_ids;
-		          multicast_route_data.dir_in = i;
-		          multicast_route_data.vc_id = flit.vc_id;
-		          multicast_route_data.is_output = flit.is_output;
 
-		          // 调用多播路由函数
-		          vector<int> output_ports = routeMulticast(multicast_route_data);
-		          cout << "Router " << local_id << " multicast route from input " << i << " to outputs: ";
-		          for (size_t idx = 0; idx < output_ports.size(); idx++) {
-		              cout << output_ports[idx] << (idx < output_ports.size() - 1 ? ", " : "");
-		          }
-		          cout << endl;
-
-		          // 预留所有输出端口（原子操作）
-		          TReservation r;
-		          r.input = i;
-		          r.vc = vc;
-		          int reservation_status = reservation_table.checkReservation(r, output_ports);
-
-		          if (reservation_status == RT_AVAILABLE) {
-		              LOG << " reserving multicast outputs for flit " << flit << endl;
-		              reservation_table.reserve(r, output_ports);
-		          } else if (reservation_status == RT_ALREADY_SAME) {
-		              LOG << " RT_ALREADY_SAME reserved multicast outputs for flit " << flit << endl;
-		          } else if (reservation_status == RT_OUTVC_BUSY) {
-		              LOG << " RT_OUTVC_BUSY reservation for multicast flit " << flit << endl;
-		          } else if (reservation_status == RT_ALREADY_OTHER_OUT) {
-		              LOG << "RT_ALREADY_OTHER_OUT: another outputs previously reserved for the same multicast flit" << endl;
-		          } else {
-		              assert(false); // no meaningful status here
-		          }
-		      } else {
-		          // 单播路由处理
-		          RouteData route_data;
-		          route_data.current_id = local_id;
-		          //LOG<< "current_id= "<< route_data.current_id <<" for sending " << flit << endl;
-		          route_data.src_id = flit.src_id;
-		          route_data.dst_id = flit.dst_id;
-		          route_data.dir_in = i;
-		          route_data.vc_id = flit.vc_id;
-			      route_data.is_output = flit.is_output; // 新增：标记是否为output包
-
-		          // TODO: see PER POSTERI (adaptive routing should not recompute route if already reserved)
-		          int o = route(route_data);
-		          cout << "Router " << local_id << " route from input " << i << " to output " << o << endl;
-
-		          // manage special case of target hub not directly connected to destination
-		          if (o >= DIRECTION_HUB_RELAY) {
-		              Flit f = (*buffers[i])[vc].Pop();
-		              f.hub_relay_node = o - DIRECTION_HUB_RELAY;
-		              (*buffers[i])[vc].Push(f);
-		              o = DIRECTION_HUB;
-		          }
-
-		          TReservation r;
-		          r.input = i;
-		          r.vc = vc;
-
-		          LOG << " checking availability of Output[" << o << "] for Input[" << i << "][" << vc << "] flit " << flit << endl;
-
-		          int rt_status = reservation_table.checkReservation(r, o);
-
-		          if (rt_status == RT_AVAILABLE) {
-		              LOG << " reserving direction " << o << " for flit " << flit << endl;
-		              reservation_table.reserve(r, o);
-		          } else if (rt_status == RT_ALREADY_SAME) {
-		              LOG << " RT_ALREADY_SAME reserved direction " << o << " for flit " << flit << endl;
-		          } else if (rt_status == RT_OUTVC_BUSY) {
-		              LOG << " RT_OUTVC_BUSY reservation direction " << o << " for flit " << flit << endl;
-		          } else if (rt_status == RT_ALREADY_OTHER_OUT) {
-		              LOG << "RT_ALREADY_OTHER_OUT: another output previously reserved for the same flit " << endl;
-		          } else {
-		              assert(false); // no meaningful status here
-		          }
-		      }
+              if (flit.flit_type == FLIT_TYPE_HEAD) {  
+                // 统一准备路由数据  
+                RouteData route_data;  
+                route_data.current_id = local_id;  
+                route_data.src_id = flit.src_id;  
+                route_data.dst_ids = flit.dst_ids;  // 统一使用dst_ids  
+                route_data.dir_in = i;  
+                route_data.vc_id = flit.vc_id;  
+                route_data.is_output = flit.is_output;  
+            
+                // 统一调用route()获取输出端口  
+                vector<int> output_ports = route(route_data);  
+                
+                // 调试输出  
+                cout << "Router " << local_id << " route from input " << i << " to outputs: ";  
+                for (size_t idx = 0; idx < output_ports.size(); idx++) {  
+                    cout << output_ports[idx] << (idx < output_ports.size() - 1 ? ", " : "");  
+                }  
+                cout << endl;  
+            
+                // 处理Hub中继的特殊情况  
+                if (output_ports.size() == 1 && output_ports[0] >= DIRECTION_HUB_RELAY) {  
+                    Flit f = (*buffers[i])[vc].Pop();  
+                    f.hub_relay_node = output_ports[0] - DIRECTION_HUB_RELAY;  
+                    (*buffers[i])[vc].Push(f);  
+                    output_ports[0] = DIRECTION_HUB;  
+                }  
+            
+                // 统一的预留逻辑  
+                TReservation r;  
+                r.input = i;  
+                r.vc = vc;  
+            
+                LOG << " checking availability of Output(s) for Input[" << i << "][" << vc << "] flit " << flit << endl;  
+            
+                int reservation_status = reservation_table.checkReservation(r, output_ports);  
+            
+                if (reservation_status == RT_AVAILABLE) {  
+                    LOG << " reserving outputs for flit " << flit << endl;  
+                    reservation_table.reserve(r, output_ports);  
+                    
+                    // 建立output到dst_ids的映射(用于分裂转发)  
+                    map<int, set<int>> output_to_dsts = buildOutputMapping(flit, output_ports, i);  
+                    reservation_table.setOutputMapping(r.input, r.vc, output_to_dsts);  
+                    
+                } else if (reservation_status == RT_ALREADY_SAME) {  
+                    LOG << " RT_ALREADY_SAME reserved outputs for flit " << flit << endl;  
+                } else if (reservation_status == RT_OUTVC_BUSY) {  
+                    LOG << " RT_OUTVC_BUSY reservation for flit " << flit << endl;  
+                } else if (reservation_status == RT_ALREADY_OTHER_OUT) {  
+                    LOG << "RT_ALREADY_OTHER_OUT: another outputs previously reserved for the same flit" << endl;  
+                } else {  
+                    assert(false);  
+                }  
+            }
 		    }
 		}
 	  }
@@ -304,40 +279,87 @@ void Router::txProcess()
                 int winner_idx = rand() % available.size();
                 ForwardCandidate& selected = available[winner_idx];
                 
-                // 原子转发：复制 Flit 到所有目标输出端口
                 Flit flit = (*buffers[selected.input])[selected.vc].Front();
-                LOG << "Atomic Forwarding: Input[" << selected.input << "][" << selected.vc << "] -> ";
-                for (size_t i = 0; i < selected.target_outputs.size(); i++) {
-                    int output_port = selected.target_outputs[i];
-                    all_flit_tx[output_port]->write(flit);
-                    current_level_tx[output_port] = 1 - current_level_tx[output_port];
-                    all_req_tx[output_port]->write(current_level_tx[output_port]);
-                    LOG << "Output[" << output_port << (i < selected.target_outputs.size() - 1 ? ", " : "");
-                }
-                cout << "]" << endl;
-                LOG << ", flit: " << flit << " command_id=" << flit.command 
-                    << " flit.is_multicast=" << flit.is_multicast << endl;
-                LOG << "buffer_full_status_tx  forwarding  for VC "<<selected.vc <<" status:" << all_buffer_full_status_tx[selected.target_outputs[0]]->read().mask[selected.vc] << endl;
-                if (flit.command < -1) {
-                    std::cout << "ERROR: Invalid command ID " << flit.command 
-                            << " in flit " << flit << std::endl;
-                }
-
-                // 原子弹出：只从输入缓冲区弹出一次
                 (*buffers[selected.input])[selected.vc].Pop();
                 power.bufferRouterPop();
+
+                // 获取该 flit 对应的输出映射
+                auto output_mapping = reservation_table.getOutputMapping(selected.input, selected.vc);  
+                const vector<int>& target_outputs = selected.target_outputs;  
+                
+                // =================================================================
+                // 核心判断：分裂 vs 多播复制
+                // =================================================================
+                // 核心判断1: 是否需要分裂  
+                bool need_split = (flit.split_remaining > 0) && (target_outputs.size() > 1);  
+                
+                // 核心判断2: 是否为多播复制  
+                bool need_multicast_copy = (flit.is_multicast) && (!need_split);  
+                
+                cout << "[FORWARD] Input[" << selected.input << "][" << selected.vc 
+                     << "] -> Output(s): ";
+                for (size_t idx = 0; idx < target_outputs.size(); idx++) {
+                    cout << target_outputs[idx] << (idx < target_outputs.size() - 1 ? ", " : "");
+                }
+                cout << " | need_split=" << need_split << " need_multicast=" << need_multicast_copy << endl;
+
+                if (need_split) {  
+                    // 分裂模式: 为每个output创建独立的flit  
+                    flit.split_remaining--;  
+                    LOG << "[SPLIT] Processing split flit, remaining=" << flit.split_remaining << endl;
+                    
+                    for (int output_port : target_outputs) {  
+                        Flit split_flit = flit;  
+                        split_flit.dst_ids.clear();  
+                        
+                        // 从映射表中获取该输出端口的目标ID列表
+                        if (output_mapping.count(output_port) > 0) {
+                            for (int dst : output_mapping[output_port]) {  
+                                split_flit.dst_ids.push_back(dst);  
+                            }
+                        }
+                        
+                        LOG << " [SPLIT_FWD] to output " << output_port 
+                            << " dst_ids=" << split_flit.dst_ids << endl;
+                        
+                        all_flit_tx[output_port]->write(split_flit);  
+                        current_level_tx[output_port] = 1 - current_level_tx[output_port];  
+                        all_req_tx[output_port]->write(current_level_tx[output_port]);  
+                    }  
+                } else if (need_multicast_copy || target_outputs.size() > 1) {  
+                    // 多播复制或多输出转发  
+                    LOG << "[MULTICAST] Broadcasting/copying flit to " << target_outputs.size() 
+                        << " output(s)" << endl;
+                    
+                    for (int output_port : target_outputs) {  
+                        all_flit_tx[output_port]->write(flit);  
+                        current_level_tx[output_port] = 1 - current_level_tx[output_port];  
+                        all_req_tx[output_port]->write(current_level_tx[output_port]);  
+                        
+                        LOG << " [MULTICAST_FWD] to output " << output_port 
+                            << " dst_ids=" << flit.dst_ids << endl;
+                    }  
+                } else {  
+                    // 单个output的单播  
+                    LOG << "[UNICAST] Forwarding to single output " << target_outputs[0] << endl;
+                    
+                    all_flit_tx[target_outputs[0]]->write(flit);  
+                    current_level_tx[target_outputs[0]] = 1 - current_level_tx[target_outputs[0]];  
+                    all_req_tx[target_outputs[0]]->write(current_level_tx[target_outputs[0]]);  
+                }  
+                
+                // 错误检测  
+                if (!flit.is_multicast && target_outputs.size() > 1 && flit.split_remaining < 0) {  
+                    LOG << "ERROR: Unicast flit with multiple outputs but no split_remaining" << endl;  
+                    assert(false && "Invalid unicast flit configuration");  
+                }
 
                 // 处理 TAIL Flit 的资源释放
                 if (flit.flit_type == FLIT_TYPE_TAIL) {
                     TReservation r;
                     r.input = selected.input;
                     r.vc = selected.vc;
-                    if (selected.target_outputs.size() > 1) {
-                        reservation_table.release(r, selected.target_outputs);
-                    } else {
-                        reservation_table.release(r, selected.target_outputs[0]);
-                    }
-                }
+                    reservation_table.release(r, selected.target_outputs);
 
                 // 功耗与统计（对所有目标端口进行统计）
                 for (int output_port : selected.target_outputs) {
@@ -365,7 +387,8 @@ void Router::txProcess()
                     }
                 }
 
-                // 标记已使用的资源
+                }
+                            // 标记已使用的资源
                 used_inputs.insert(selected.input);
                 for (int o : selected.target_outputs) {
                     used_outputs.insert(o);
@@ -389,7 +412,6 @@ void Router::txProcess()
             }
         }
     }
-
 }
 
 // NoP_data Router::getCurrentNoPData()
@@ -440,62 +462,84 @@ vector < int > Router::routingFunction(const RouteData & route_data)
 
 	// TODO: fix all the deprecated verbose mode logs
 	if (GlobalParams::verbose_mode > VERBOSE_OFF)
-		LOG << "Wired routing for dst = " << route_data.dst_id << endl;
+		LOG << "Wired routing for dst = " << route_data.dst_ids << endl;
 
 	// not wireless direction taken, apply normal routing
 	return routingAlgorithm->route(this, route_data);
 }
 
+map<int, set<int>> Router::buildOutputMapping(const Flit& flit, const vector<int>& output_ports, int dir_in) {  
+    map<int, set<int>> output_to_dsts;  
 
-
-int Router::route(const RouteData & route_data)
-{
-    if (GlobalParams::topology == TOPOLOGY_HIERARCHICAL) {
-        
-        // 规则 1: 检查本地
-        // if(this->local_id == route_data.dst_id&& route_data.is_output == true) {
-        //     return getLogicalPortIndex(PORT_LOCAL, 1);
-        // } 暂时本地只有一个端口了
-        if (this->local_id == route_data.dst_id) {
-            return getLogicalPortIndex(PORT_LOCAL, 0);
-        }
-        
-        // 规则 2: 检查子孙 (向下路由)
-        if (isDescendant(route_data.dst_id)) {
-            int next_hop_child_id = getNextHopNode(route_data.dst_id);
-            
-            for(int i=0; i<GlobalParams::fanouts_per_level[GlobalParams::node_level_map[local_id]]; i++) {
-                if (GlobalParams::child_map[local_id][i] == next_hop_child_id) {
-                    return getLogicalPortIndex(PORT_DOWN, i);
-                }
-            }
-
-            // 如果 for 循环结束还没返回，说明有严重逻辑错误！
-            // getNextHopChild() 的结果在 child_map 中找不到。
-            cout << "FATAL ERROR in Router " << local_id << ": Cannot find next hop child " 
-                 << next_hop_child_id << " for destination " << route_data.dst_id << endl;
-            assert(false);
-            return -1; // 或者其他错误码
-        }
-        
-        // 规则 3: 向上路由 (如果不是本地也不是子孙)
-        else { // <--- 使用 else
-            if (local_level > 0) {
-                return getLogicalPortIndex(PORT_UP, -1);
-            } else {
-                // 这种情况现在只会在根节点发生
-                cout << "FATAL ERROR in Root Router " << local_id << ": Unroutable destination " 
-                     << route_data.dst_id << endl;
-                assert(false);
-                return -1;
-            }
-        }
-    }
-
-    return -2;
+    // 为每个target计算路由  
+    for (int target_id : flit.dst_ids) {  
+        RouteData route_data;  
+        route_data.current_id = local_id;  
+        route_data.src_id = flit.src_id;  
+        route_data.dst_ids.push_back(target_id);  // 单个目标  
+        route_data.dir_in = dir_in;  // 不需要防环路检查  
+        route_data.vc_id = flit.vc_id;  
+        route_data.is_output = flit.is_output;  
+          
+        // 调用单播路由获取该target的output端口  
+        auto output_port = route(route_data);
+        if(output_port.empty()) continue; // 路由失败，跳过  
+          
+        // 将target添加到对应的output端口列表中  
+        output_to_dsts[output_port[0]].insert(target_id);  
+    }  
+      
+    return output_to_dsts;  
 }
 
-  vector<int> Router::routeMulticast(const MulticastRouteData & route_data)
+// int Router::route(const RouteData & route_data)
+// {
+//     if (GlobalParams::topology == TOPOLOGY_HIERARCHICAL) {
+        
+//         // 规则 1: 检查本地
+//         // if(this->local_id == route_data.dst_id&& route_data.is_output == true) {
+//         //     return getLogicalPortIndex(PORT_LOCAL, 1);
+//         // } 暂时本地只有一个端口了
+//         if (this->local_id == route_data.dst_id) {
+//             return getLogicalPortIndex(PORT_LOCAL, 0);
+//         }
+        
+//         // 规则 2: 检查子孙 (向下路由)
+//         if (isDescendant(route_data.dst_id)) {
+//             int next_hop_child_id = getNextHopNode(route_data.dst_id);
+            
+//             for(int i=0; i<GlobalParams::fanouts_per_level[GlobalParams::node_level_map[local_id]]; i++) {
+//                 if (GlobalParams::child_map[local_id][i] == next_hop_child_id) {
+//                     return getLogicalPortIndex(PORT_DOWN, i);
+//                 }
+//             }
+
+//             // 如果 for 循环结束还没返回，说明有严重逻辑错误！
+//             // getNextHopChild() 的结果在 child_map 中找不到。
+//             cout << "FATAL ERROR in Router " << local_id << ": Cannot find next hop child " 
+//                  << next_hop_child_id << " for destination " << route_data.dst_id << endl;
+//             assert(false);
+//             return -1; // 或者其他错误码
+//         }
+        
+//         // 规则 3: 向上路由 (如果不是本地也不是子孙)
+//         else { // <--- 使用 else
+//             if (local_level > 0) {
+//                 return getLogicalPortIndex(PORT_UP, -1);
+//             } else {
+//                 // 这种情况现在只会在根节点发生
+//                 cout << "FATAL ERROR in Root Router " << local_id << ": Unroutable destination " 
+//                      << route_data.dst_id << endl;
+//                 assert(false);
+//                 return -1;
+//             }
+//         }
+//     }
+
+//     return -2;
+// }
+
+  vector<int> Router::route(const RouteData & route_data)
   {
       vector<int> output_ports;
 
@@ -513,7 +557,7 @@ int Router::route(const RouteData & route_data)
           if (has_local_target) {
               output_ports.push_back(getLogicalPortIndex(PORT_LOCAL, 0));
           }
-
+          
           // 获取所有需要向下路由的子节点
           vector<int> child_targets = getMulticastChildren(route_data.dst_ids);
 

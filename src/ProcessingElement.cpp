@@ -246,7 +246,7 @@ void ProcessingElement::rxProcess() {
                     std::cout << "@" << sc_time_stamp() << " [" << name() << "]: "
                               << "[RX_PORT0] Received Flit on VC " << vc_id
                               << " src_id=" << flit.src_id
-                              << " dst_id=" << flit.dst_id
+                              << " dst_id=" << flit.dst_ids
                               << " flit_type=" << flit.flit_type
                               << " buffer_size=" << rx_buffer[vc_id].Size()
                               << " flit_data_type=" << DataType_to_str(flit.data_type)
@@ -470,7 +470,7 @@ void ProcessingElement::handle_tx_for_all_vcs() {
         // 打印发送日志
         std::cout << "@" << sc_time_stamp() << " [" << name() << "]: "
                   << "[TX_VC" << vc << "] Sent Flit type=" << flit_to_send.flit_type
-                  << " src=" << flit_to_send.src_id << " dst=" << flit_to_send.dst_id
+                  << " src=" << flit_to_send.src_id << " dst=" << flit_to_send.dst_ids
                   << " command_id=" << flit_to_send.command << std::endl;
 
         // 如果发送的是 TAIL Flit，从这个 VC 的队列中 pop
@@ -626,7 +626,8 @@ void ProcessingElement::reset_logic()
         {
             Packet pkt;
             pkt.src_id = local_id;
-            pkt.dst_id = upstream_node_ids[0];
+            pkt.dst_ids.clear();
+            pkt.dst_ids.push_back(upstream_node_ids[0]);
             pkt.payload_data_size = cmd.outputs;
             pkt.data_type = DataType::OUTPUT;
             int bandwidth_scale = GlobalParams::hierarchical_config.get_level_config(level_index-1).bandwidth / GlobalParams::word_bits;
@@ -634,6 +635,7 @@ void ProcessingElement::reset_logic()
             pkt.command = -1; //表示这是一个回送包
             pkt.is_multicast = false;
             pkt.vc_id = 2; //回送包使用vc 0
+            pkt.split_remaining = 0;
             // dbg(sc_time_stamp(), name(), "[RESET_LOGIC] Generating output return Packet to PE " + std::to_string(pkt.dst_id) +
             //     " for " + std::to_string(cmd.outputs) + " bytes.");
             std::cout << "@ " << sc_time_stamp() 
@@ -774,7 +776,7 @@ void  ProcessingElement::run_storage_logic() {
 
         std::cout << sc_time_stamp() << ": PE[" << local_id << "] Generating packet for task: "
                 << "Type=" << DataType_to_str(selected_task.type)
-                << ", Size=" << selected_task.size;
+                << ", Size=" << selected_task.size << ", Split Remaining=" << selected_task.split_remaining;
         for(auto target_id : selected_task.target_ids)
         {
             std::cout << ", Target=" << target_id;
@@ -784,25 +786,22 @@ void  ProcessingElement::run_storage_logic() {
         Packet pkt;
         pkt.src_id = local_id;
         pkt.is_multicast = selected_task.is_multicast;
-        if(pkt.is_multicast)
-        {
-            for(auto target_id : selected_task.target_ids)
+
+        for(auto target_id : selected_task.target_ids)
             {
-                pkt.multicast_dst_ids.push_back(target_id);
+                pkt.dst_ids.push_back(target_id);
             }
-        }
-        else
-        {
-            pkt.dst_id = *selected_task.target_ids.begin();
-        }
+
         int bandwidth_scale = GlobalParams::hierarchical_config.get_level_config(level_index).bandwidth / GlobalParams::word_bits;
         pkt.vc_id = vc_id;  // 使用预先计算的VC ID
         pkt.payload_data_size = selected_task.size;
         pkt.logical_timestamp = logical_timestamp;
         pkt.data_type = selected_task.type;
         // pkt.is_output = (selected_task.type == DataType::OUTPUT);
-        pkt.size = pkt.flit_left = (selected_task.size+bandwidth_scale-1) / bandwidth_scale + 2; // 计算所需Flit数（含头尾）
+        // pkt.size = pkt.flit_left = (selected_task.size+bandwidth_scale-1) / bandwidth_scale + 2; // 计算所需Flit数（含头尾）
+        pkt.size = pkt.flit_left = selected_task.size+2;
         pkt.command = command_to_send;
+        pkt.split_remaining = selected_task.split_remaining;
 
         // 将Packet推入对应的VC队列
         packet_queues_[vc_id].push(pkt);
@@ -855,16 +854,8 @@ Flit ProcessingElement::generate_next_flit_from_queue(std::queue<Packet>& queue)
 
     // 填充公共字段
     flit.src_id = packet.src_id;
-    if(packet.is_multicast)
-    {
-        flit.multicast_dst_ids = packet.multicast_dst_ids;
-        flit.is_multicast = true;
-    }
-    else
-    {
-        flit.dst_id = packet.dst_id;
-        flit.is_multicast = false;
-    }
+    flit.dst_ids = packet.dst_ids;
+    flit.is_multicast = packet.is_multicast;
     flit.vc_id = packet.vc_id;
     flit.logical_timestamp = packet.logical_timestamp;
     flit.sequence_no = packet.size - packet.flit_left;
@@ -874,6 +865,7 @@ Flit ProcessingElement::generate_next_flit_from_queue(std::queue<Packet>& queue)
     flit.hub_relay_node = NOT_VALID;
     flit.data_type = packet.data_type;
     flit.command = packet.command;
+    flit.split_remaining = packet.split_remaining;
 
     // 确定flit类型
     if (packet.size == packet.flit_left) {

@@ -293,7 +293,7 @@ for (int i = 0; i < GlobalParams::num_nodes; i++) {
     cout << "=== 层次化NoC拓扑构建完成 ===" << endl;
     cout << "注意: 需要修改Router类支持层次化路由" << endl;
 
-    setupLocalConnections();
+    // setupLocalConnections();
 }
 
 //======================================================================

@@ -322,6 +322,7 @@ void TaskManager::create_dispatch_task_from_event(DispatchTask& task, const Delt
         sub_task_info.size = action.size;
         sub_task_info.target_ids = target_ids;
         sub_task_info.is_multicast = action.multicast;
+        sub_task_info.split_remaining = action.split_remaining;
         task.sub_tasks.push_back(sub_task_info);
 
     }

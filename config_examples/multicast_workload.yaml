@@ -148,15 +148,15 @@ workload:
             multicast: true
             delta:
               - { data_space: "Inputs",  size: 16 }
-              - { data_space: "Weights", size: 1 , multicast: false }
-              - { data_space: "Outputs", size: 16, multicast: false }
+              - { data_space: "Weights", size: 1 , multicast: false , split_remaining: 2}
+              - { data_space: "Outputs", size: 16, multicast: false , split_remaining: 2}
 
           - trigger: { on_timestep: "fallback" }
             name: "MULTICAST_DELTA_INPUTS_1"
             target_group: *all_pes_group
             delta:
               - { data_space: "Inputs",  size: 1 }
-              - { data_space: "Weights", size: 1 , multicast: false } 
+              - { data_space: "Weights", size: 1 , multicast: false , split_remaining: 2 } 
       
       command_definitions:
         - command_id: 0

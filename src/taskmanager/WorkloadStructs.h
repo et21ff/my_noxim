@@ -100,6 +100,7 @@ struct AtomicDispatchAction {
     size_t size;
     std::string target_group;
     bool multicast;
+    int split_remaining;
 };
 
 /**

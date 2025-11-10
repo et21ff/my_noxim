@@ -24,11 +24,11 @@ struct DataDispatchInfo {
     size_t size;                          // 数据大小（字节）
     std::unordered_set<int> target_ids;  
     bool is_multicast;                    // 是否为多播
+    int split_remaining;                  // 剩余拆分数量
 
-    DataDispatchInfo() : size(0), is_multicast(false) {}
+    DataDispatchInfo() : size(0), is_multicast(false), split_remaining(0) {}
     DataDispatchInfo(size_t s, const std::unordered_set<int>& targets)
-        : size(s), target_ids(targets), is_multicast(false) {}
-
+        : size(s), target_ids(targets), is_multicast(false), split_remaining(0) {}
 };
 
 struct DispatchTask {
