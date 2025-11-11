@@ -26,6 +26,14 @@ SC_MODULE(MockNode) {
     sc_in<TBufferFullStatus> buffer_full_status_tx;
     
     string node_name;
+
+    bool current_level_tx;  
+    bool current_level_rx;
+    
+    queue<Packet> packet_queue;
+    
+    int total_packets_sent;  
+    int total_flits_sent;  
     
     void rxProcess() {
         if (reset.read()) {
@@ -49,10 +57,116 @@ SC_MODULE(MockNode) {
     }
     buffer_full_status_rx.write(bfs);
     }
+
+    Flit generate_next_flit_from_queue(queue<Packet>& queue) {  
+        Flit flit;  
+        Packet& packet = queue.front();  
+        
+        // 填充公共字段  
+        flit.src_id = packet.src_id;  
+        flit.dst_ids = packet.dst_ids;  
+        flit.is_multicast = false;  
+        flit.vc_id = packet.vc_id;  
+        flit.logical_timestamp = packet.logical_timestamp;  
+        flit.sequence_no = packet.size - packet.flit_left;  
+        flit.sequence_length = packet.size;  
+        flit.hop_no = 0;  
+        flit.payload_data_size = packet.payload_data_size;  
+        flit.hub_relay_node = NOT_VALID;  
+        flit.data_type = packet.data_type;  
+        flit.command = packet.command;  
+        flit.is_output = true;  // 回送包  
+        
+        // 确定flit类型  
+        if (packet.size == packet.flit_left) {  
+            flit.flit_type = FLIT_TYPE_HEAD;  
+            std::copy(std::begin(packet.payload_sizes), std::end(packet.payload_sizes), flit.payload_sizes);  
+        } else if (packet.flit_left == 1) {  
+            flit.flit_type = FLIT_TYPE_TAIL;  
+        } else {  
+            flit.flit_type = FLIT_TYPE_BODY;  
+        }  
+        
+        // 处理flit_left和队列pop  
+        queue.front().flit_left--;  
+        if (queue.front().flit_left == 0) {  
+            queue.pop();  
+        }  
+        
+        return flit;  
+}
+
+    void txProcess() {  
+    if (reset.read()) {  
+        req_tx.write(0);  
+        current_level_tx = 0;  
+        while (!packet_queue.empty()) packet_queue.pop();  
+        total_packets_sent = 0;  
+        total_flits_sent = 0;  
+        return;  
+    }  
+      
+    // ABP流控: 检查ack信号是否匹配  
+    if (ack_tx.read() == current_level_tx) {  
+        if (!packet_queue.empty()) {  
+            // 检查目标VC是否满  
+            Packet& pkt = packet_queue.front();  
+            if (buffer_full_status_tx.read().mask[pkt.vc_id]) {  
+                return;  // VC满,等待下次  
+            }  
+              
+            // 生成下一个flit  
+            Flit flit = generate_next_flit_from_queue(packet_queue);  
+              
+            // 发送flit  
+            flit_tx.write(flit);  
+            current_level_tx = 1 - current_level_tx;  
+            req_tx.write(current_level_tx);  
+              
+            // 统计  
+            total_flits_sent++;  
+            if (flit.flit_type == FLIT_TYPE_HEAD) {  
+                total_packets_sent++;  
+                // cout << "[" << sc_time_stamp() << "] " << node_name   
+                //      << " sending packet to dst=" << flit.dst_ids[0] <<"sequecnce_num= "<<flit.sequence_no<< endl;  
+            }  
+             cout << "[" << sc_time_stamp() << "] " << node_name   
+                     << " sending packet to dst=" << flit.dst_ids[0] <<"sequecnce_num= "<<flit.sequence_no<< endl; 
+        }  
+    }
+    
+    
+}
+
+void createReturnPacket(int src_id, int payload_size) {  
+    Packet pkt;  
+    pkt.src_id = src_id;  // 2/3/4/5  
+    pkt.dst_ids.clear();  
+    pkt.dst_ids.push_back(0);  // 目标是节点1  
+    pkt.payload_data_size = payload_size;  
+    pkt.data_type = DataType::OUTPUT;  
+      
+    // 计算packet大小 (假设bandwidth_scale=1)  
+    int bandwidth_scale = 1;  // 根据实际配置调整  
+    pkt.size = pkt.flit_left = payload_size + 2;  
+      
+    pkt.command = -1;  // 表示这是回送包  
+    pkt.is_multicast = false;  
+    pkt.vc_id = 2;  // 回送包使用VC 2  
+    pkt.logical_timestamp = sc_time_stamp().to_double() / GlobalParams::clock_period_ps;  
+      
+    packet_queue.push(pkt);  
+      
+    cout << "[" << sc_time_stamp() << "] " << node_name   
+         << " created return packet: src=" << src_id   
+         << " dst=1 size=" << pkt.size << " flits" << endl;  
+}
     
     SC_CTOR(MockNode) : node_name("MockNode") {
         SC_METHOD(rxProcess);
         sensitive << reset << clock.pos();
+        SC_METHOD(txProcess);
+        sensitive << reset << clock.neg();
     }
 };
  
@@ -204,12 +318,19 @@ int sc_main(int argc, char* argv[]) {
 
     auto sender_pe = glb_tile->pe;
     reset.write(0);
-    sender_pe->buffer_manager_->OnDataReceived(DataType::WEIGHT,3072);
-    sender_pe->buffer_manager_->OnDataReceived(DataType::INPUT,576);
-    sender_pe->output_buffer_manager_->OnDataReceived(DataType::OUTPUT,512);
+
+    for(int i=0;i<4;i++) {
+        if(mock_dist[i]) {
+            // 模拟Distribution节点发送数据包到GLB
+            mock_dist[i]->createReturnPacket(2 + i, 64);  // 节点2,3,4,5发送回送包
+        }
+    }
+    // sender_pe->buffer_manager_->OnDataReceived(DataType::WEIGHT,3072);
+    // sender_pe->buffer_manager_->OnDataReceived(DataType::INPUT,576);
+    // sender_pe->output_buffer_manager_->OnDataReceived(DataType::OUTPUT,512);
     cout << "Reset completed, starting main simulation..." << endl;
 
-    sc_start(100, SC_NS);
+    sc_start(200, SC_NS);
 
     cout << "\n=== Simulation completed ===" << endl;
     

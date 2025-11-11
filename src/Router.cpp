@@ -129,8 +129,10 @@ void Router::txProcess()
 	{
 	  size_t i = (start_from_port + j) % all_flit_rx.size();
 
+
 	  for (int k = 0;k < GlobalParams::n_virtual_channels; k++)
 	  {
+          
 	      int vc = (start_from_vc[i]+k)%(GlobalParams::n_virtual_channels);
 
 	      // Uncomment to enable deadlock checking on buffers.
@@ -142,6 +144,16 @@ void Router::txProcess()
 
 		  Flit flit = (*buffers[i])[vc].Front();
 		  power.bufferRouterFront();
+
+          if(port_info_map[i].type == PORT_DOWN && vc == return_vc_id && is_aggregation)
+          {
+            if (tryAggregation(i, flit)) {  
+                (*buffers[i])[vc].Pop();  
+                power.bufferRouterPop();  
+            }
+            // 如果返回false(重复添加或属性不匹配),不弹出flit  
+            continue;  
+          }
 
 		  if (flit.flit_type == FLIT_TYPE_HEAD)
 		    {
@@ -209,6 +221,15 @@ void Router::txProcess()
 
       start_from_port = (start_from_port + 1) % all_flit_rx.size();
 
+    if (aggregation_entry.port_flits.size() == aggregation_entry.expected_port_count && is_aggregation) {  
+    cout <<name()<< " "<<sc_time_stamp()<<" All " << aggregation_entry.expected_port_count   
+        << " downstream ports ready, triggering aggregation" << endl;  
+      
+    if(performAggregation()) {  
+        aggregation_entry.port_flits.clear();  
+    }  
+}
+
       //==================================================================
     // 2nd phase: Two-Phase Arbitration & Atomic Forwarding
     // 阶段A: 候选筛选 - 收集所有准备就绪的VC
@@ -241,6 +262,23 @@ void Router::txProcess()
                 candidates.push_back({i, vc, target_outputs});  
             }  
         }
+    
+    if(!aggregated_flit_queue.empty())
+    {
+        auto target_outputs = reservation_table.getReservations(-1,return_vc_id);
+        bool all_outputs_ready = true;
+        for (int output_port : target_outputs) {
+            if (current_level_tx[output_port] != all_ack_tx[output_port]->read() ||
+                    all_buffer_full_status_tx[output_port]->read().mask[return_vc_id] == 1) {
+                all_outputs_ready = false;
+                break;
+            }
+        }
+        if (all_outputs_ready) {  
+            candidates.push_back({-1, return_vc_id, target_outputs});  
+        }  
+    }
+
 
 
 
@@ -278,10 +316,19 @@ void Router::txProcess()
                 // 随机选择一个候选进行仲裁
                 int winner_idx = rand() % available.size();
                 ForwardCandidate& selected = available[winner_idx];
+                Flit flit;
+                if(selected.input==-1)
+                {
+                    flit = aggregated_flit_queue.front();
+                    aggregated_flit_queue.pop();
+                    power.bufferRouterPop();
+                }
+                else{
                 
-                Flit flit = (*buffers[selected.input])[selected.vc].Front();
-                (*buffers[selected.input])[selected.vc].Pop();
-                power.bufferRouterPop();
+                    flit = (*buffers[selected.input])[selected.vc].Front();
+                    (*buffers[selected.input])[selected.vc].Pop();
+                    power.bufferRouterPop();
+                }
 
                 // 获取该 flit 对应的输出映射
                 auto output_mapping = reservation_table.getOutputMapping(selected.input, selected.vc);  
@@ -341,7 +388,7 @@ void Router::txProcess()
                     }  
                 } else {  
                     // 单个output的单播  
-                    LOG << "[UNICAST] Forwarding to single output " << target_outputs[0] << endl;
+                    cout << "[UNICAST] Forwarding to single output " << target_outputs[0] << endl;
                     
                     all_flit_tx[target_outputs[0]]->write(flit);  
                     current_level_tx[target_outputs[0]] = 1 - current_level_tx[target_outputs[0]];  
@@ -646,6 +693,9 @@ void Router::configure(const int _id, const int _level,
     local_id = _id;
     local_level = _level;
     stats.configure(_id, _warm_up_time);
+    return_vc_id = 2;
+    is_aggregation = GlobalParams::hierarchical_config.get_level_config(local_level).aggregate;
+    aggregation_entry.expected_port_count = GlobalParams::fanouts_per_level[local_level];
 
     start_from_port = (all_flit_rx.size() > 0) ? getLogicalPortIndex(PORT_LOCAL, 0) : 0; // Start from LOCAL port
   
@@ -696,7 +746,85 @@ void Router::configure(const int _id, const int _level,
 	// buffer[DIRECTION_LOCAL_2][vc].Enable();
     }
 
+bool Router::tryAggregation(int input_port, const Flit& flit) {  
+    // 验证是回送包且使用正确的VC  
+    assert(flit.vc_id == return_vc_id && "Return packet must use designated VC");
+    
+    if(aggregation_entry.port_flits.count(input_port)) return false;
+      
+    // 如果是第一个到达的flit,初始化聚合条目  
+    if (aggregation_entry.port_flits.empty()) {  
+        aggregation_entry.payload_data_size = flit.payload_data_size;
+        aggregation_entry.flit_type = flit.flit_type;  
+    }  
+      
+    // 验证flit属性匹配  
+    if (aggregation_entry.payload_data_size != flit.payload_data_size ||   
+        aggregation_entry.flit_type != flit.flit_type ) {  
+        assert(false && "mismatch in aggregation flit"); 
+        return false;  
+    }  
+      
+    // 将该端口的flit加入聚合缓冲区  
+    aggregation_entry.port_flits[input_port] = flit;  
+      
+    // 检查是否所有下游端口都已到达      
+    return true;
+}
 
+bool Router::performAggregation() {
+    if (!aggregated_flit_queue.empty()) {  
+        return false;  // 队列中还有未转发的聚合flit,暂不聚合新的  
+    }    
+    // 创建聚合后的大flit  
+    Flit aggregated_flit;  
+      
+    // 合并dst_ids  
+    for (const auto& pair : aggregation_entry.port_flits) {  
+        const Flit& f = pair.second;  
+        aggregated_flit.dst_ids.insert(  
+            aggregated_flit.dst_ids.end(),  
+            f.dst_ids.begin(),  
+            f.dst_ids.end()  
+        );  
+    }  
+      
+    // 设置聚合flit的属性  
+    aggregated_flit = aggregation_entry.port_flits.begin()->second;
+    aggregated_flit.payload_data_size *=aggregation_entry.expected_port_count;
+    aggregated_flit.src_id = -1;
+      
+    // 路由并预留上游端口
+    if(aggregated_flit.flit_type != FlitType::FLIT_TYPE_HEAD)
+    {   
+        aggregated_flit_queue.push(aggregated_flit);
+        return true; //只需要在头flit进行预留
+    }  
+    RouteData route_data;  
+    route_data.current_id = local_id;  
+    route_data.dst_ids = aggregated_flit.dst_ids;  
+    route_data.src_id = -1;
+    route_data.dir_in = -2;  
+      
+    vector<int> output_ports = route(route_data);
+      
+      
+    TReservation r;  
+    r.input = -1;  // 特殊标记  
+    r.vc = return_vc_id;  
+      
+    int reservation_status = reservation_table.checkReservation(r, output_ports);  
+    if (reservation_status == RT_AVAILABLE) {  
+        reservation_table.reserve(r, output_ports);  
+        aggregated_flit_queue.push(aggregated_flit);
+        map<int, set<int>> output_to_dsts = buildOutputMapping(aggregated_flit, output_ports, -2);  
+        reservation_table.setOutputMapping(r.input, r.vc, output_to_dsts);
+
+        return true;
+    }
+
+    return false;
+}
 unsigned long Router::getRoutedFlits()
 {
     return routed_flits;

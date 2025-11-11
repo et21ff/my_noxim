@@ -107,6 +107,17 @@ SC_MODULE(Router)
     ReservationTable reservation_table;		// Switch reservation table
     unsigned long routed_flits;
     RoutingAlgorithm * routingAlgorithm;
+
+    struct AggregationEntry {  
+    map<int, Flit> port_flits;  // port_id -> flit  
+    int payload_data_size;              // 所有flit必须相同  
+    int flit_type;              // 所有flit必须相同(HEAD/BODY/TAIL)  
+    int expected_port_count;    // 期望的下游端口数量  
+};  
+    AggregationEntry aggregation_entry;  // 单个实例,不需要map  
+    int return_vc_id;  // 回送包使用的固定VC ID
+    queue<Flit> aggregated_flit_queue;
+    bool is_aggregation;  
     
     // Functions
 
@@ -123,6 +134,9 @@ SC_MODULE(Router)
     Router(sc_module_name nm); 
         void initPorts();
     void buildUnifiedInterface();
+    bool tryAggregation(int input_port, const Flit& flit);
+    bool performAggregation();
+    
     ~Router();
 
     vector<int> getMulticastChildren(const vector<int>& dst_ids);

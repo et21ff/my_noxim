@@ -57,6 +57,7 @@ struct LevelConfig {
     int buffer_size;
     PE_Role roles;
     int bandwidth;
+    bool aggregate = false;
 
 };
 

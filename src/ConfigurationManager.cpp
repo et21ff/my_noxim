@@ -177,6 +177,7 @@ if (GlobalParams::topology == TOPOLOGY_HIERARCHICAL){
             current_level_data.level = node["level"].as<int>();
             current_level_data.buffer_size = node["buffer_size"].as<int>();
             current_level_data.bandwidth = node["bandwidth"].as<int>();
+            current_level_data.aggregate = node["aggregate"] ? node["aggregate"].as<bool>() : false;
             
             // 解析 'roles' 数组
             YAML::Node roles_node = node["roles"];

@@ -367,6 +367,12 @@ void ProcessingElement::internal_transfer_process() {
             } else if (flit.flit_type == FLIT_TYPE_BODY) {
                 // BODY Flit无条件丢弃
                 vc_buffer.Pop();
+                std::cout << "@" << sc_time_stamp() << " [" << name() << "]: "
+                              << "[INTERNAL_TRANSFER] Processed OUTPUT_RETURN body Flit on VC " << vc
+                              << " src_id=" << flit.src_id
+                              << " payload=" << flit.payload_data_size
+                              << "seq_no=" << flit.sequence_no
+                              << std::endl;
 
             } else if (flit.flit_type == FLIT_TYPE_TAIL) {
                 // [核心修改] 特殊处理回传包
@@ -799,7 +805,7 @@ void  ProcessingElement::run_storage_logic() {
         pkt.data_type = selected_task.type;
         // pkt.is_output = (selected_task.type == DataType::OUTPUT);
         // pkt.size = pkt.flit_left = (selected_task.size+bandwidth_scale-1) / bandwidth_scale + 2; // 计算所需Flit数（含头尾）
-        pkt.size = pkt.flit_left = selected_task.size+2;
+        pkt.size = pkt.flit_left = (selected_task.size+bandwidth_scale - 1) / bandwidth_scale + 2; // 计算所需Flit数（含头尾）
         pkt.command = command_to_send;
         pkt.split_remaining = selected_task.split_remaining;
 
