@@ -165,7 +165,6 @@ void TaskManager::Configure(const WorkloadConfig& config ,const std::string& rol
                 }
             } 
     }
-        size_t avg_output = (output_size != 0 ? output_size/all_output_targets.size() : 0 );
 
         if(role_working_set_==nullptr)
         {
@@ -185,6 +184,8 @@ void TaskManager::Configure(const WorkloadConfig& config ,const std::string& rol
                 }
 
             }
+
+            sync_points_.erase(2);
         
 }
 

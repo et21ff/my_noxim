@@ -111,7 +111,7 @@ void ProcessingElement::configure(int id, int level_idx, const HierarchicalConfi
             // 配置TaskManager
             task_manager_ = std::unique_ptr<TaskManager>(new TaskManager());
             task_manager_->Configure(GlobalParams::workload, "ROLE_GLB");
-            outputs_required_count_ = task_manager_->get_current_working_set().outputs;
+            outputs_required_count_ = task_manager_->get_current_working_set().outputs/2;
             outputs_received_count_ = 0;
 
             this->downstream_node_ids.clear();
@@ -425,11 +425,12 @@ void ProcessingElement::internal_transfer_process() {
                 buffer_state_changed_event.notify(SC_ZERO_TIME);
 
                 std::cout << "@" << sc_time_stamp() << " [" << name() << "]: "
-                          << "[INTERNAL_TRANSFER] Processed TAIL Flit on VC " << vc
+                          << "[RECEIVE_EVENT] Processed TAIL Flit on VC " << vc
                           << " src_id=" << flit.src_id
                           << " type=" << DataType_to_str(flit.data_type)
                           << " payload=" << flit.payload_data_size
                           << " committed_to_logic_buffer"
+                          << "buffer_size=" << target_manager->GetCurrentSize()<<"/"<< target_manager->GetCapacity()
                           << std::endl;
             }
         }
@@ -571,7 +572,7 @@ void ProcessingElement::txProcess() {
         {
             if(task_manager_->is_in_sync_points(logical_timestamp))
             {
-                outputs_received_count_ = 0;
+                outputs_received_count_ -= outputs_required_count_;
             }
             logical_timestamp++;
             dispatch_in_progress_ = false;
@@ -687,6 +688,9 @@ void ProcessingElement::run_compute_logic() {
                 // For a compute PE, the working set should only define dependencies (Inputs, Weights), not Outputs.
                 if (type == DataType::INPUT || type == DataType::WEIGHT) {
                     if (!buffer_manager_->AreDataTypeReady(type, size)) {
+                        // cout<< sc_time_stamp() << ": PE[" << local_id << "] Waiting for " 
+                        //     << size << " bytes of " << DataType_to_str(type) 
+                        //     << " to start computation at cycle " << compute_cycles << endl;
                         // If any dependency is not met, we cannot start the computation yet.
                         return; 
                     }

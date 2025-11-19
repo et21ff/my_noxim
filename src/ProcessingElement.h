@@ -163,47 +163,15 @@ public:
     // --- 专属于“最终消费者” (Buffer_PE) ---
     bool is_consuming;         // 是否正在进行抽象消耗
     int  consume_cycles_left;  // 抽象消耗剩余周期
-    bool is_stalled_waiting_for_data;  // 是否因数据不足而停顿
-    int  required_data_on_fill;  // 消耗一个FILL任务所需数据 (Bytes)
-    int  required_data_on_delta; // 消耗一个DELTA任务所需数据 (Bytes)
-
-    int required_output_data_on_fill;  // 消耗一个输出FILL任务所需数据 (Bytes)
-    int required_output_data_on_delta; // 消耗一个输出DELTA任务所需数据 (Bytes)
-    
-    int data_to_consume_on_finish; // 本次消耗的实际数据量 (Bytes)
-    int total_bytes_consumed; // 总消耗量 (Bytes)
-    int total_bytes_received; // 总接收量 (Bytes)
-    int bytes_received_this_cycle; // 本周期接收量 (Bytes)
 
     //========================================================================
     // VI. GLB 专用：基于 Map 的发送同步机制 (GLB Dispatch Sync Mechanism)
     //========================================================================
 
-    // --- 发送状态跟踪结构 ---
-    struct PacketSentStatus {
-        bool weights_sent = false;  // 是否已发送 Weights 包
-        bool inputs_sent = false;   // 是否已发送 Inputs 包
-        bool outputs_sent = false;  // 是否已发送 Outputs 包
 
-        // 检查所有类型包是否都已发送
-        bool all_sent() const {
-            return weights_sent && inputs_sent && outputs_sent;
-        }
-
-        // 重置状态
-        void reset() {
-            weights_sent = false;
-            inputs_sent = false;
-            outputs_sent = false;
-        }
-    };
-
-    // --- GLB 发送跟踪器 ---
-    std::map<int, PacketSentStatus> dispatch_tracker_;  // 跟踪每个下游节点的发送状态
     bool dispatch_in_progress_ = false;                // 标记是否正在进行一轮发送
 
     // --- GLB 逻辑时间戳控制 ---
-    int glb_timestep_ = 0;                             // GLB 主逻辑时间戳，只有在一批发送完成后才推进
 
   // 新增：层次化配置相关成员变量
     int level_index;  // 当前PE所在的层级索引
@@ -213,14 +181,10 @@ public: // 建议将内部状态变量设为私有
     // V. 内部状态与辅助变量 (Internal State & Helper Variables)
     //========================================================================
 
-    int  incoming_packet_size;   // 用于暂存从HEAD flit读到的包大小
-    int  previous_ready_signal;  // 用于减少ready信号的日志打印
-    int incoming_payload_sizes[3]; // 用于暂存从HEAD flit读到的包大小
     int logical_timestamp;
     // +++ 新增：一个专门用于通知缓冲区状态改变的事件 +++
     sc_event buffer_state_changed_event;
     sc_event output_buffer_state_changed_event; // 新增：output buffer状态改变事件
-    int incoming_output_payload_sizes[3]; // 用于存储接收到的output payload信息
     int command_to_send;
     std::map<int, int> pending_commands_;
     bool compute_in_progress_;

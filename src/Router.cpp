@@ -343,7 +343,7 @@ void Router::txProcess()
                 // 核心判断2: 是否为多播复制  
                 bool need_multicast_copy = (flit.is_multicast) && (!need_split);  
                 
-                cout << "[FORWARD] Input[" << selected.input << "][" << selected.vc 
+                cout <<name()<< "[FORWARD] Input[" << selected.input << "][" << selected.vc 
                      << "] -> Output(s): ";
                 for (size_t idx = 0; idx < target_outputs.size(); idx++) {
                     cout << target_outputs[idx] << (idx < target_outputs.size() - 1 ? ", " : "");
@@ -461,27 +461,6 @@ void Router::txProcess()
     }
 }
 
-// NoP_data Router::getCurrentNoPData()
-// {
-//     NoP_data NoP_data;
-
-//     for (int j = 0; j < DIRECTIONS; j++) {
-// 	try {
-// 		NoP_data.channel_status_neighbor[j].free_slots = free_slots_neighbor[j].read();
-// 		NoP_data.channel_status_neighbor[j].available = (reservation_table.isNotReserved(j));
-// 	}
-// 	catch (int e)
-// 	{
-// 	    if (e!=NOT_VALID) assert(false);
-// 	    // Nothing to do if an NOT_VALID direction is caught
-// 	};
-//     }
-
-//     NoP_data.sender_id = local_id;
-
-//     return NoP_data;
-// }
-
 void Router::perCycleUpdate()
 {
     if (reset.read()) {
@@ -539,52 +518,6 @@ map<int, set<int>> Router::buildOutputMapping(const Flit& flit, const vector<int
     return output_to_dsts;  
 }
 
-// int Router::route(const RouteData & route_data)
-// {
-//     if (GlobalParams::topology == TOPOLOGY_HIERARCHICAL) {
-        
-//         // 规则 1: 检查本地
-//         // if(this->local_id == route_data.dst_id&& route_data.is_output == true) {
-//         //     return getLogicalPortIndex(PORT_LOCAL, 1);
-//         // } 暂时本地只有一个端口了
-//         if (this->local_id == route_data.dst_id) {
-//             return getLogicalPortIndex(PORT_LOCAL, 0);
-//         }
-        
-//         // 规则 2: 检查子孙 (向下路由)
-//         if (isDescendant(route_data.dst_id)) {
-//             int next_hop_child_id = getNextHopNode(route_data.dst_id);
-            
-//             for(int i=0; i<GlobalParams::fanouts_per_level[GlobalParams::node_level_map[local_id]]; i++) {
-//                 if (GlobalParams::child_map[local_id][i] == next_hop_child_id) {
-//                     return getLogicalPortIndex(PORT_DOWN, i);
-//                 }
-//             }
-
-//             // 如果 for 循环结束还没返回，说明有严重逻辑错误！
-//             // getNextHopChild() 的结果在 child_map 中找不到。
-//             cout << "FATAL ERROR in Router " << local_id << ": Cannot find next hop child " 
-//                  << next_hop_child_id << " for destination " << route_data.dst_id << endl;
-//             assert(false);
-//             return -1; // 或者其他错误码
-//         }
-        
-//         // 规则 3: 向上路由 (如果不是本地也不是子孙)
-//         else { // <--- 使用 else
-//             if (local_level > 0) {
-//                 return getLogicalPortIndex(PORT_UP, -1);
-//             } else {
-//                 // 这种情况现在只会在根节点发生
-//                 cout << "FATAL ERROR in Root Router " << local_id << ": Unroutable destination " 
-//                      << route_data.dst_id << endl;
-//                 assert(false);
-//                 return -1;
-//             }
-//         }
-//     }
-
-//     return -2;
-// }
 
   vector<int> Router::route(const RouteData & route_data)
   {
@@ -724,26 +657,6 @@ void Router::configure(const int _id, const int _level,
     }
 
 
-    // if (GlobalParams::topology == TOPOLOGY_MESH)
-    // {
-	// int row = _id / GlobalParams::mesh_dim_x;
-	// int col = _id % GlobalParams::mesh_dim_x;
-
-	// for (int vc = 0; vc<GlobalParams::n_virtual_channels; vc++)
-	// {
-	//     if (row == 0)
-	//       buffer[DIRECTION_NORTH][vc].Disable();
-	//     if (row == GlobalParams::mesh_dim_y-1)
-	//       buffer[DIRECTION_SOUTH][vc].Disable();
-	//     if (col == 0)
-	//       buffer[DIRECTION_WEST][vc].Disable();
-	//     if (col == GlobalParams::mesh_dim_x-1)
-	//       buffer[DIRECTION_EAST][vc].Disable();
-	// }
-	
-	// // Ensure LOCAL and LOCAL_2 ports are always enabled in mesh topology
-	// buffer[DIRECTION_LOCAL][vc].Enable();
-	// buffer[DIRECTION_LOCAL_2][vc].Enable();
     }
 
 bool Router::tryAggregation(int input_port, const Flit& flit) {  
@@ -884,19 +797,7 @@ int Router::getNeighborId(int _id, int direction) const
     return neighbor_id;
 }
 
-// bool Router::inCongestion()
-// {
-//     for (int i = 0; i < DIRECTIONS; i++) {
 
-// 	if (free_slots_neighbor[i]==NOT_VALID) continue;
-
-// 	int flits = GlobalParams::buffer_depth - free_slots_neighbor[i];
-// 	if (flits > (int) (GlobalParams::buffer_depth * GlobalParams::dyad_threshold))
-// 	    return true;
-//     }
-
-//     return false;
-// }
 
 void Router::ShowBuffersStats(std::ostream & out)
 {
@@ -930,30 +831,17 @@ Router::Router(sc_module_name nm) {
     // Register SystemC methods
     SC_METHOD(rxProcess);
     sensitive << reset;
-    sensitive << clock.pos();
+    sensitive << clock.neg();
 
     SC_METHOD(txProcess);
     sensitive << reset;
-    sensitive << clock.neg();
+    sensitive << clock.pos();
 
     // Use proper scope resolution for SystemC method registration
     SC_METHOD(perCycleUpdate);
     sensitive << reset;
     sensitive << clock.pos();
-    sensitive << clock.pos();
 
-    // // Initialize dynamic ports
-    // initPorts();
-    // cout<<"function!"<<endl;
-    // buildUnifiedInterface();
-
-    // routingAlgorithm = RoutingAlgorithms::get(GlobalParams::routing_algorithm);
-
-    // if (routingAlgorithm == 0)
-    // {
-    //     cerr << " FATAL: invalid routing -routing " << GlobalParams::routing_algorithm << ", check with noxim -help" << endl;
-    //     exit(-1);
-    // }
 }
 
 // Destructor implementation

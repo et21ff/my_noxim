@@ -73,7 +73,7 @@ use_wirxsleep: false
 #
 clock_period_ps: 1000
 reset_time: 10 # <--- [建议修改] 缩短reset时间，让我们的逻辑更快开始
-simulation_time: 10000 # <--- [关键修改] 增加模拟时间，确保我们能看到完整的交互链
+simulation_time: 1960 # <--- [关键修改] 增加模拟时间，确保我们能看到完整的交互链
 stats_warm_up_time: 0 # <--- [建议修改] 禁用warm up，我们想从一开始就看log
 # power breakdown, nodes communication details
 detailed: false
@@ -140,7 +140,7 @@ workload:
 
     - role: "ROLE_GLB"
       properties:
-        sync_per_timestep: 6
+        sync_per_timestep: 3
       schedule_template:
         total_timesteps: 192
         delta_events:
