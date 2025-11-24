@@ -13,7 +13,7 @@ topology: "HIERARCHICAL"
 
 # 层次化详细配置
 hierarchical_config:
-  num_levels: 4
+  num_levels: 3
   connection_mode: "tree"
   word_bits: 8
   
@@ -31,18 +31,18 @@ hierarchical_config:
       buffer_size: 4164
       roles: "ROLE_GLB"
       bandwidth: 128
-      fanouts: 4  # 该层每个节点连接到下一层的节点数
+      fanouts: 16  # 该层每个节点连接到下一层的节点数
       aggregate: true
 
-    - level: 2
-      node_type: "DISTRIBUTOR"
-      buffer_size: 0
-      roles: "ROLE_DISTRIBUTOR"
-      bandwidth: 32
-      fanouts: 4  # 该层每个节点连接到下一层的节点数
-      aggregate: true  # 启用数据聚合功能
+    # - level: 2
+    #   node_type: "DISTRIBUTOR"
+    #   buffer_size: 0
+    #   roles: "ROLE_DISTRIBUTOR"
+    #   bandwidth: 32
+    #   fanouts: 4  # 该层每个节点连接到下一层的节点数
+    #   aggregate: true  # 启用数据聚合功能
       
-    - level: 3
+    - level: 2
       node_type: "COMPUTE"
       buffer_size: 64  
       roles: "ROLE_BUFFER"
@@ -73,7 +73,7 @@ use_wirxsleep: false
 #
 clock_period_ps: 1000
 reset_time: 10 # <--- [建议修改] 缩短reset时间，让我们的逻辑更快开始
-simulation_time: 1960 # <--- [关键修改] 增加模拟时间，确保我们能看到完整的交互链
+simulation_time: 4000 # <--- [关键修改] 增加模拟时间，确保我们能看到完整的交互链
 stats_warm_up_time: 0 # <--- [建议修改] 禁用warm up，我们想从一开始就看log
 # power breakdown, nodes communication details
 detailed: false
@@ -103,7 +103,7 @@ traffic_distribution: TRAFFIC_TABLE_BASED # <--- [关键修改]
 traffic_table_filename: "empty_traffic.txt" # <--- 创建一个空的txt文件
 
 variables:
-  all_pes_group: &all_pes_group "6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21"
+  all_pes_group: &all_pes_group "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,17 "
 
 workload:
   working_set:
@@ -167,7 +167,7 @@ workload:
 
     - role: "ROLE_BUFFER"
       properties:
-        compute_latency: 16
+        compute_latency: 6
       schedule_template:
         total_timesteps: 1
         delta_events: []

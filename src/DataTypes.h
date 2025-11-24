@@ -58,6 +58,7 @@ struct LevelConfig {
     PE_Role roles;
     int bandwidth;
     bool aggregate = false;
+    int adder_tree_latency = 0;  // 新增：加法树延迟周期数
 
 };
 

@@ -379,7 +379,7 @@ void ProcessingElement::internal_transfer_process() {
                 if (flit.command == -1) {
                     // 这是一个输出回传包，只更新计数器，不调用BufferManager
                     outputs_received_count_ += flit.payload_data_size;
-                    assert(outputs_received_count_ <= outputs_required_count_ && "Received more outputs than required");
+                    // assert(outputs_received_count_ <= outputs_required_count_ && "Received more outputs than required");
                     
                     vc_buffer.Pop();
                     
@@ -560,7 +560,7 @@ void ProcessingElement::txProcess() {
     // --- 步骤 B: [核心替换] 调用新的统一发送处理器 ---
     handle_tx_for_all_vcs();
 
-    if(role!=ROLE_BUFFER && task_manager_->is_in_sync_points(logical_timestamp) && outputs_received_count_ < outputs_required_count_)
+    if(role!=ROLE_BUFFER && task_manager_->is_in_sync_points(logical_timestamp) && outputs_received_count_ < outputs_required_count_ ||  logical_timestamp == task_manager_->get_total_timesteps()-1 && outputs_received_count_ < task_manager_->get_current_working_set().outputs)
     {
         return;
     }
@@ -570,7 +570,11 @@ void ProcessingElement::txProcess() {
 
     if(role!=ROLE_BUFFER && current_dispatch_task_.sub_tasks.empty()&&packet_queues_are_empty() && dispatch_in_progress_)
         {
-            if(task_manager_->is_in_sync_points(logical_timestamp))
+            if(logical_timestamp == task_manager_->get_total_timesteps()-1)
+            {
+                outputs_received_count_ -= task_manager_->get_current_working_set().outputs;
+            }
+            else if(task_manager_->is_in_sync_points(logical_timestamp))
             {
                 outputs_received_count_ -= outputs_required_count_;
             }

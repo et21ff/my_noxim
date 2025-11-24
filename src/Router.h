@@ -11,6 +11,7 @@
 #ifndef __NOXIMROUTER_H__
 #define __NOXIMROUTER_H__
 #define NUM_LOCAL_PORTS 1
+#define MAX_STAGE_CAPACITY 1
 
 #include <systemc.h>
 #include "DataStructs.h"
@@ -118,6 +119,10 @@ SC_MODULE(Router)
     int return_vc_id;  // 回送包使用的固定VC ID
     queue<Flit> aggregated_flit_queue;
     bool is_aggregation;  
+
+    // ===== 新增：流水线延迟相关变量 =====  
+    int adder_tree_latency_;                        // 加法树延迟周期数  
+    std::deque<std::queue<Flit>> pipeline_stages_;  // 流水线各级队列
     
     // Functions
 
@@ -136,6 +141,8 @@ SC_MODULE(Router)
     void buildUnifiedInterface();
     bool tryAggregation(int input_port, const Flit& flit);
     bool performAggregation();
+
+    void advancePipeline();
     
     ~Router();
 

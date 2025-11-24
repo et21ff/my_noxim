@@ -121,9 +121,14 @@ void Router::txProcess()
 	  current_level_tx[i] = 0;
 	}
        reservation_table.reset();
+
+        for (auto& stage : pipeline_stages_) {  
+            while (!stage.empty()) stage.pop();  
+        }  
     } 
   else 
     { 
+        advancePipeline();  
 
       for (size_t j = 0; j < all_flit_rx.size(); j++)
 	{
@@ -630,6 +635,10 @@ void Router::configure(const int _id, const int _level,
     is_aggregation = GlobalParams::hierarchical_config.get_level_config(local_level).aggregate;
     aggregation_entry.expected_port_count = GlobalParams::fanouts_per_level[local_level];
 
+    adder_tree_latency_ = GlobalParams::hierarchical_config.get_level_config(local_level).adder_tree_latency;
+    pipeline_stages_.clear();  
+    pipeline_stages_.resize(adder_tree_latency_); 
+
     start_from_port = (all_flit_rx.size() > 0) ? getLogicalPortIndex(PORT_LOCAL, 0) : 0; // Start from LOCAL port
   
     // initPorts();
@@ -685,14 +694,19 @@ bool Router::tryAggregation(int input_port, const Flit& flit) {
     return true;
 }
 
-bool Router::performAggregation() {
-    if (!aggregated_flit_queue.empty()) {  
-        return false;  // 队列中还有未转发的聚合flit,暂不聚合新的  
-    }    
-    // 创建聚合后的大flit  
-    Flit aggregated_flit;  
+bool Router::performAggregation() {  
+    if (!aggregated_flit_queue.empty()) {    
+        return false;  // 队列中还有未转发的聚合flit  
+    }  
       
-    // 合并dst_ids  
+    // 检查流水线第一级是否有空间（新增）  
+    if (adder_tree_latency_ > 0 &&   
+        pipeline_stages_[0].size() >= MAX_STAGE_CAPACITY) {  
+        return false;  
+    }  
+      
+    // 创建聚合后的 flit（保持原有逻辑）  
+    Flit aggregated_flit;  
     for (const auto& pair : aggregation_entry.port_flits) {  
         const Flit& f = pair.second;  
         aggregated_flit.dst_ids.insert(  
@@ -702,42 +716,100 @@ bool Router::performAggregation() {
         );  
     }  
       
-    // 设置聚合flit的属性  
-    aggregated_flit = aggregation_entry.port_flits.begin()->second;
-    aggregated_flit.payload_data_size *=aggregation_entry.expected_port_count;
-    aggregated_flit.src_id = -1;
+    aggregated_flit = aggregation_entry.port_flits.begin()->second;  
+    aggregated_flit.payload_data_size *= aggregation_entry.expected_port_count;  
+    aggregated_flit.src_id = -1;  
       
-    // 路由并预留上游端口
-    if(aggregated_flit.flit_type != FlitType::FLIT_TYPE_HEAD)
-    {   
-        aggregated_flit_queue.push(aggregated_flit);
-        return true; //只需要在头flit进行预留
+    // 修改点：根据是否有流水线决定推入位置  
+    if (adder_tree_latency_ > 0) {  
+        pipeline_stages_[0].push(aggregated_flit);  // 推入流水线  
+    } else {  
+        // 旁路模式：保持原有逻辑  
+        if (aggregated_flit.flit_type != FLIT_TYPE_HEAD) {  
+            aggregated_flit_queue.push(aggregated_flit);  
+            return true;  
+        }  
+          
+        // HEAD flit 的路由和预留（保持原有逻辑）  
+        RouteData route_data;  
+        route_data.current_id = local_id;  
+        route_data.dst_ids = aggregated_flit.dst_ids;  
+        route_data.src_id = -1;  
+        route_data.dir_in = -2;  
+          
+        vector<int> output_ports = route(route_data);  
+          
+        TReservation r;  
+        r.input = -1;  
+        r.vc = return_vc_id;  
+          
+        int reservation_status = reservation_table.checkReservation(r, output_ports);  
+        if (reservation_status == RT_AVAILABLE) {  
+            reservation_table.reserve(r, output_ports);  
+            aggregated_flit_queue.push(aggregated_flit);  
+            map<int, set<int>> output_to_dsts = buildOutputMapping(aggregated_flit, output_ports, -2);  
+            reservation_table.setOutputMapping(r.input, r.vc, output_to_dsts);  
+            return true;  
+        }  
+        return false;  
     }  
-    RouteData route_data;  
-    route_data.current_id = local_id;  
-    route_data.dst_ids = aggregated_flit.dst_ids;  
-    route_data.src_id = -1;
-    route_data.dir_in = -2;  
       
-    vector<int> output_ports = route(route_data);
-      
-      
-    TReservation r;  
-    r.input = -1;  // 特殊标记  
-    r.vc = return_vc_id;  
-      
-    int reservation_status = reservation_table.checkReservation(r, output_ports);  
-    if (reservation_status == RT_AVAILABLE) {  
-        reservation_table.reserve(r, output_ports);  
-        aggregated_flit_queue.push(aggregated_flit);
-        map<int, set<int>> output_to_dsts = buildOutputMapping(aggregated_flit, output_ports, -2);  
-        reservation_table.setOutputMapping(r.input, r.vc, output_to_dsts);
-
-        return true;
-    }
-
-    return false;
+    return true;  
 }
+
+void Router::advancePipeline() {  
+    if (adder_tree_latency_ == 0) return;  // 旁路模式  
+      
+    // 步骤 1: 处理流水线最后一级 -> aggregated_flit_queue  
+    if (!pipeline_stages_[adder_tree_latency_ - 1].empty() &&   
+        aggregated_flit_queue.empty()) {  // 只有队列为空时才处理  
+          
+        Flit flit = pipeline_stages_[adder_tree_latency_ - 1].front();  
+        bool can_proceed = false;  
+          
+        if (flit.flit_type == FLIT_TYPE_HEAD) {  
+            // HEAD flit 需要路由和预留  
+            RouteData route_data;  
+            route_data.current_id = local_id;  
+            route_data.dst_ids = flit.dst_ids;  
+            route_data.src_id = -1;  
+            route_data.dir_in = -2;  
+              
+            vector<int> output_ports = route(route_data);  
+              
+            TReservation r;  
+            r.input = -1;  
+            r.vc = return_vc_id;  
+              
+            int reservation_status = reservation_table.checkReservation(r, output_ports);  
+            if (reservation_status == RT_AVAILABLE) {  
+                reservation_table.reserve(r, output_ports);  
+                map<int, set<int>> output_to_dsts = buildOutputMapping(flit, output_ports, -2);  
+                reservation_table.setOutputMapping(r.input, r.vc, output_to_dsts);  
+                can_proceed = true;  
+            }  
+        } else {  
+            // BODY/TAIL flit 直接可以推进  
+            can_proceed = true;  
+        }  
+          
+        if (can_proceed) {  
+            pipeline_stages_[adder_tree_latency_ - 1].pop();  
+            aggregated_flit_queue.push(flit);  
+        }  
+    }  
+      
+    // 步骤 2: 推进流水线中间级（从后往前）  
+    for (int stage = adder_tree_latency_ - 1; stage > 0; --stage) {  
+        if (pipeline_stages_[stage].empty() &&   
+            !pipeline_stages_[stage - 1].empty()) {  
+            Flit flit = pipeline_stages_[stage - 1].front();  
+            pipeline_stages_[stage - 1].pop();  
+            pipeline_stages_[stage].push(flit);  
+        }  
+    }  
+}
+
 unsigned long Router::getRoutedFlits()
 {
     return routed_flits;
