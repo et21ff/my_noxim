@@ -52,13 +52,20 @@ typedef struct  {
 } RoleChannelCapabilities;
 
 
-struct LevelConfig {
-    int level;
-    int buffer_size;
-    PE_Role roles;
-    int bandwidth;
-    bool aggregate = false;
-
+struct RoutingPattern {    
+    std::vector<std::vector<int>> port_groups;  
+};  
+  
+struct LevelConfig {  
+    int level;  
+    int buffer_size;  
+    int bandwidth;  
+    bool aggregate;  
+    PE_Role roles;  
+      
+    // 新增:该层的路由模式配置(可选)  
+    std::map<DataType, RoutingPattern> routing_patterns;  // DataType名称 -> 路由模式  
+    bool has_routing_patterns;  // 标记该层是否配置了路由模式  
 };
 
 struct HierarchicalConfig {
