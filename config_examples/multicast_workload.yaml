@@ -13,7 +13,7 @@ topology: "HIERARCHICAL"
 
 # 层次化详细配置
 hierarchical_config:
-  num_levels: 4
+  num_levels: 3
   connection_mode: "tree"
   word_bits: 8
   
@@ -25,24 +25,39 @@ hierarchical_config:
       roles: "ROLE_DRAM"
       bandwidth: 128
       fanouts: 1  # 该层每个节点连接到下一层的节点数
+      routing_patterns:  
+        INPUT:  
+          mode: "INPUT"  
+          port_groups: [[1]]  # 端口1是DOWN[0]  
+        WEIGHT:  
+          mode: "WEIGHT"  
+          port_groups: [[1]]  
+        OUTPUT:  
+          mode: "OUTPUT"  
+          port_groups: [[1]]  
+
       
     - level: 1
       node_type: "GLB"
       buffer_size: 4164
       roles: "ROLE_GLB"
       bandwidth: 128
-      fanouts: 4  # 该层每个节点连接到下一层的节点数
+      fanouts: 16  # 该层每个节点连接到下一层的节点数
       aggregate: true
-
-    - level: 2
-      node_type: "DISTRIBUTOR"
-      buffer_size: 0
-      roles: "ROLE_DISTRIBUTOR"
-      bandwidth: 32
-      fanouts: 4  # 该层每个节点连接到下一层的节点数
-      aggregate: true  # 启用数据聚合功能
+      routing_patterns:  
+        INPUT:  
+          mode: "INPUT"  
+          port_groups: [[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]]  
+        WEIGHT:  
+          mode: "WEIGHT"  
+          port_groups: [[2], [3], [4], [5], [6], [7], [8], [9],   
+                        [10], [11], [12], [13], [14], [15], [16], [17]]  
+        OUTPUT:  
+          mode: "OUTPUT"  
+          port_groups: [[2], [3], [4], [5], [6], [7], [8], [9],   
+                        [10], [11], [12], [13], [14], [15], [16], [17]]  
       
-    - level: 3
+    - level: 2
       node_type: "COMPUTE"
       buffer_size: 64  
       roles: "ROLE_BUFFER"
@@ -73,7 +88,7 @@ use_wirxsleep: false
 #
 clock_period_ps: 1000
 reset_time: 10 # <--- [建议修改] 缩短reset时间，让我们的逻辑更快开始
-simulation_time: 1960 # <--- [关键修改] 增加模拟时间，确保我们能看到完整的交互链
+simulation_time: 4000 # <--- [关键修改] 增加模拟时间，确保我们能看到完整的交互链
 stats_warm_up_time: 0 # <--- [建议修改] 禁用warm up，我们想从一开始就看log
 # power breakdown, nodes communication details
 detailed: false
@@ -103,7 +118,7 @@ traffic_distribution: TRAFFIC_TABLE_BASED # <--- [关键修改]
 traffic_table_filename: "empty_traffic.txt" # <--- 创建一个空的txt文件
 
 variables:
-  all_pes_group: &all_pes_group "6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21"
+  all_pes_group: &all_pes_group "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,17 "
 
 workload:
   working_set:
@@ -134,9 +149,9 @@ workload:
             name: "INITIAL_LOAD_DRAM_TO_GLB"
             target_group: "1,"
             delta:
-              - { data_space: "Weights", size: 3072 }
-              - { data_space: "Inputs",  size: 576 }
-              - { data_space: "Outputs", size: 512 }
+              - { data_space: "Weights", size: 3072 ,target_role: "ROLE_GLB" }
+              - { data_space: "Inputs",  size: 576 ,target_role: "ROLE_GLB" }
+              - { data_space: "Outputs", size: 512 ,target_role: "ROLE_GLB" }
 
     - role: "ROLE_GLB"
       properties:
@@ -149,16 +164,16 @@ workload:
             target_group: *all_pes_group
             multicast: true
             delta:
-              - { data_space: "Inputs",  size: 16 }
-              - { data_space: "Weights", size: 1 , multicast: false , split_remaining: 2}
-              - { data_space: "Outputs", size: 16, multicast: false , split_remaining: 2}
+              - { data_space: "Inputs",  size: 16,target_role: "ROLE_BUFFER" }
+              - { data_space: "Weights", size: 1 , multicast: false , split_remaining: 2 ,target_role: "ROLE_BUFFER" }
+              - { data_space: "Outputs", size: 16, multicast: false , split_remaining: 2, target_role: "ROLE_BUFFER" }
 
           - trigger: { on_timestep: "fallback" }
             name: "MULTICAST_DELTA_INPUTS_1"
             target_group: *all_pes_group
             delta:
-              - { data_space: "Inputs",  size: 1 }
-              - { data_space: "Weights", size: 1 , multicast: false , split_remaining: 2 } 
+              - { data_space: "Inputs",  size: 1 ,target_role: "ROLE_BUFFER" }
+              - { data_space: "Weights", size: 1 , multicast: false , split_remaining: 2 ,target_role: "ROLE_BUFFER" } 
       
       command_definitions:
         - command_id: 0
