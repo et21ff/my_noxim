@@ -201,6 +201,8 @@ struct Flit
     int command;        // 用于存储来自txprocess的命令 (timestamp,command)
     int split_remaining;
     PE_Role target_role;
+    int forward_count;
+    int current_forward;
 
     int hub_relay_node;
 

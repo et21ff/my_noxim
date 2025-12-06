@@ -58,12 +58,23 @@ void Router::rxProcess()
             if (all_req_rx[i]->read() == 1 - current_level_rx[i])
             {
                 Flit received_flit = all_flit_rx[i]->read();
+
                 // LOG<<"request opposite to the current_level, reading flit "<<received_flit<<endl;
 
                 int vc = received_flit.vc_id;
                 assert(buffers[i] != nullptr && "Pointer to BufferBank is null!");
                 if (!(*buffers[i])[vc].IsFull())
                 {
+
+                    if (use_predefined_routing &&
+                        routing_patterns.count(received_flit.data_type) > 0)
+                    {
+
+                        const RoutingPattern &pattern = routing_patterns[received_flit.data_type];
+                        received_flit.forward_count = pattern.forward_count; // 从配置获取                   // 重置计数
+                    }
+
+                    received_flit.current_forward = 0;
 
                     (*buffers[i])[vc].Push(received_flit);
                     LOG << " Flit " << received_flit << " " << received_flit.flit_type << " collected from Input[" << i << "][" << vc << "]" << endl;
@@ -108,6 +119,26 @@ void Router::rxProcess()
             all_buffer_full_status_rx[i]->write(bfs);
         }
     }
+}
+
+vector<vector<int>> Router::getCurrentPortGroups(int forward_count, int current_forward, const vector<vector<int>> &all_groups)
+{
+    vector<vector<int>> current_groups;
+
+    // 计算每批发送的group数量
+    int batch_size = (all_groups.size() + forward_count - 1) / forward_count;
+
+    // 计算当前批次的起始和结束索引
+    int start_idx = current_forward * batch_size;
+    int end_idx = min(start_idx + batch_size, (int)all_groups.size());
+
+    // 提取当前批次的groups
+    for (int i = start_idx; i < end_idx; i++)
+    {
+        current_groups.push_back(all_groups[i]);
+    }
+
+    return current_groups;
 }
 
 void Router::txProcess()
@@ -156,7 +187,7 @@ void Router::txProcess()
                         continue;
                     }
 
-                    if (flit.flit_type == FLIT_TYPE_HEAD)
+                    if (flit.flit_type == FLIT_TYPE_HEAD && flit.current_forward == 0)
                     {
                         // 统一准备路由数据
                         RouteData route_data;
@@ -353,10 +384,26 @@ void Router::txProcess()
                 }
                 else
                 {
+                    // 检查是否完成所有转发
+                    bool should_pop = true;
+                    if (use_predefined_routing && routing_patterns.count(flit.data_type) > 0)
+                    {
+                        Flit &flit = (*buffers[selected.input])[selected.vc].FrontRef();
+                        flit.current_forward++;
+                        const RoutingPattern &pattern = routing_patterns[flit.data_type];
+                        if (flit.current_forward < pattern.forward_count)
+                        {
+                            should_pop = false; // 还未完成转发，不pop
+                        }
+                    }
 
                     flit = (*buffers[selected.input])[selected.vc].Front();
-                    (*buffers[selected.input])[selected.vc].Pop();
-                    power.bufferRouterPop();
+
+                    if (should_pop)
+                    {
+                        (*buffers[selected.input])[selected.vc].Pop();
+                        power.bufferRouterPop();
+                    }
                 }
 
                 if (flit.target_role == this->role)
@@ -378,14 +425,18 @@ void Router::txProcess()
                 else if (use_predefined_routing && routing_patterns.count(flit.data_type) > 0)
                 {
                     const RoutingPattern &pattern = routing_patterns[flit.data_type];
+                    vector<vector<int>> current_groups = getCurrentPortGroups(
+                        flit.forward_count,
+                        flit.current_forward - 1,
+                        pattern.port_groups);
 
                     // 关键判断:port_groups 的数量决定是否分裂
-                    bool need_split = (pattern.port_groups.size() > 1);
+                    bool need_split = (current_groups.size() > 1);
 
                     if (need_split)
                     {
                         // 分裂模式:为每个 port_group 创建独立的 flit
-                        for (const vector<int> &group : pattern.port_groups)
+                        for (const vector<int> &group : current_groups)
                         {
                             Flit split_flit = flit;
 
@@ -412,7 +463,7 @@ void Router::txProcess()
                     else
                     {
                         // 非分裂模式:单个 port_group
-                        const vector<int> &group = pattern.port_groups[0];
+                        const vector<int> &group = current_groups[0];
 
                         if (group.size() == 1)
                         {
@@ -440,7 +491,8 @@ void Router::txProcess()
                     TReservation r;
                     r.input = selected.input;
                     r.vc = selected.vc;
-                    reservation_table.release(r, selected.target_outputs);
+                    if (!flit.current_forward > 1 || flit.current_forward >= flit.forward_count || flit.command == -1)
+                        reservation_table.release(r, selected.target_outputs);
 
                     // 功耗与统计（对所有目标端口进行统计）
                     for (int output_port : selected.target_outputs)

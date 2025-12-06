@@ -206,7 +206,28 @@ void loadConfiguration()
                 // 5. 从 YAML 节点中解析每个字段，并填充 C++ 对象
                 //    我们使用 .as<Type>() 来进行类型转换
                 current_level_data.level = node["level"].as<int>();
-                current_level_data.buffer_size = node["buffer_size"].as<int>();
+                if (node["buffer_size"].IsScalar())
+                {
+                    // 兼容单个int值，复制到3个buffer
+                    int size = node["buffer_size"].as<int>();
+                    current_level_data.buffer_size[0] = size;
+                    current_level_data.buffer_size[1] = size;
+                    current_level_data.buffer_size[2] = size;
+                }
+                else if (node["buffer_size"].IsSequence() && node["buffer_size"].size() == 3)
+                {
+                    // 直接读取3个值
+                    for (int i = 0; i < 3; i++)
+                    {
+                        current_level_data.buffer_size[i] = node["buffer_size"][i].as<int>();
+                    }
+                }
+                else
+                {
+                    cerr << "Error: buffer_size must be either int or array of 3 ints" << endl;
+                    exit(1);
+                }
+
                 current_level_data.bandwidth = node["bandwidth"].as<int>();
                 current_level_data.aggregate = node["aggregate"] ? node["aggregate"].as<bool>() : false;
 
@@ -238,6 +259,8 @@ void loadConfiguration()
 
                         YAML::Node pattern_config = it->second;
                         RoutingPattern pattern;
+
+                        pattern.forward_count = pattern_config["forward_count"] ? pattern_config["forward_count"].as<int>() : 1;
 
                         // mode 字段也需要转换为 DataType
                         string mode_str = pattern_config["mode"].as<string>();

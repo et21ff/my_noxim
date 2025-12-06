@@ -117,8 +117,6 @@ add_executable(noxim
         # 智能缓冲区
         src/smartbuffer/BufferManager.cpp
         src/smartbuffer/BufferManager.h
-        src/smartbuffer/ScheduleFactory.cpp
-        src/smartbuffer/ScheduleFactory.h
 )
 
 target_link_libraries(noxim yaml-cpp.a systemc.a)
@@ -208,8 +206,13 @@ add_executable(test_glb_tile
         # 智能缓冲区
         src/smartbuffer/BufferManager.cpp
         src/smartbuffer/BufferManager.h
-        src/smartbuffer/ScheduleFactory.cpp
-        src/smartbuffer/ScheduleFactory.h
 )
 
 target_link_libraries(test_glb_tile yaml-cpp.a systemc.a)
+
+add_executable(run_tests
+        src/smartbuffer/test_buffer_manager.cpp
+        src/smartbuffer/BufferManager.cpp
+)
+
+target_link_libraries(run_tests yaml-cpp.a systemc.a)

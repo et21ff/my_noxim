@@ -1,0 +1,327 @@
+[
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/noxim.dir/src/Main.cpp.o -c /root/my_noxim/src/Main.cpp",
+  "file": "/root/my_noxim/src/Main.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/noxim.dir/src/NoC.cpp.o -c /root/my_noxim/src/NoC.cpp",
+  "file": "/root/my_noxim/src/NoC.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/noxim.dir/src/Tile.cpp.o -c /root/my_noxim/src/Tile.cpp",
+  "file": "/root/my_noxim/src/Tile.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/noxim.dir/src/Router.cpp.o -c /root/my_noxim/src/Router.cpp",
+  "file": "/root/my_noxim/src/Router.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/noxim.dir/src/ProcessingElement.cpp.o -c /root/my_noxim/src/ProcessingElement.cpp",
+  "file": "/root/my_noxim/src/ProcessingElement.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/noxim.dir/src/Buffer.cpp.o -c /root/my_noxim/src/Buffer.cpp",
+  "file": "/root/my_noxim/src/Buffer.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/noxim.dir/src/Channel.cpp.o -c /root/my_noxim/src/Channel.cpp",
+  "file": "/root/my_noxim/src/Channel.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/noxim.dir/src/GlobalParams.cpp.o -c /root/my_noxim/src/GlobalParams.cpp",
+  "file": "/root/my_noxim/src/GlobalParams.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/noxim.dir/src/GlobalRoutingTable.cpp.o -c /root/my_noxim/src/GlobalRoutingTable.cpp",
+  "file": "/root/my_noxim/src/GlobalRoutingTable.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/noxim.dir/src/GlobalTrafficTable.cpp.o -c /root/my_noxim/src/GlobalTrafficTable.cpp",
+  "file": "/root/my_noxim/src/GlobalTrafficTable.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/noxim.dir/src/GlobalStats.cpp.o -c /root/my_noxim/src/GlobalStats.cpp",
+  "file": "/root/my_noxim/src/GlobalStats.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/noxim.dir/src/ConfigurationManager.cpp.o -c /root/my_noxim/src/ConfigurationManager.cpp",
+  "file": "/root/my_noxim/src/ConfigurationManager.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/noxim.dir/src/Stats.cpp.o -c /root/my_noxim/src/Stats.cpp",
+  "file": "/root/my_noxim/src/Stats.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/noxim.dir/src/Power.cpp.o -c /root/my_noxim/src/Power.cpp",
+  "file": "/root/my_noxim/src/Power.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/noxim.dir/src/Hub.cpp.o -c /root/my_noxim/src/Hub.cpp",
+  "file": "/root/my_noxim/src/Hub.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/noxim.dir/src/Initiator.cpp.o -c /root/my_noxim/src/Initiator.cpp",
+  "file": "/root/my_noxim/src/Initiator.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/noxim.dir/src/Target.cpp.o -c /root/my_noxim/src/Target.cpp",
+  "file": "/root/my_noxim/src/Target.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/noxim.dir/src/MM.cpp.o -c /root/my_noxim/src/MM.cpp",
+  "file": "/root/my_noxim/src/MM.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/noxim.dir/src/ReservationTable.cpp.o -c /root/my_noxim/src/ReservationTable.cpp",
+  "file": "/root/my_noxim/src/ReservationTable.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/noxim.dir/src/LocalRoutingTable.cpp.o -c /root/my_noxim/src/LocalRoutingTable.cpp",
+  "file": "/root/my_noxim/src/LocalRoutingTable.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/noxim.dir/src/TokenRing.cpp.o -c /root/my_noxim/src/TokenRing.cpp",
+  "file": "/root/my_noxim/src/TokenRing.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/noxim.dir/src/routingAlgorithms/RoutingAlgorithms.cpp.o -c /root/my_noxim/src/routingAlgorithms/RoutingAlgorithms.cpp",
+  "file": "/root/my_noxim/src/routingAlgorithms/RoutingAlgorithms.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/noxim.dir/src/routingAlgorithms/Routing_DELTA.cpp.o -c /root/my_noxim/src/routingAlgorithms/Routing_DELTA.cpp",
+  "file": "/root/my_noxim/src/routingAlgorithms/Routing_DELTA.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/noxim.dir/src/routingAlgorithms/Routing_NEGATIVE_FIRST.cpp.o -c /root/my_noxim/src/routingAlgorithms/Routing_NEGATIVE_FIRST.cpp",
+  "file": "/root/my_noxim/src/routingAlgorithms/Routing_NEGATIVE_FIRST.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/noxim.dir/src/routingAlgorithms/Routing_NORTH_LAST.cpp.o -c /root/my_noxim/src/routingAlgorithms/Routing_NORTH_LAST.cpp",
+  "file": "/root/my_noxim/src/routingAlgorithms/Routing_NORTH_LAST.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/noxim.dir/src/routingAlgorithms/Routing_ODD_EVEN.cpp.o -c /root/my_noxim/src/routingAlgorithms/Routing_ODD_EVEN.cpp",
+  "file": "/root/my_noxim/src/routingAlgorithms/Routing_ODD_EVEN.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/noxim.dir/src/routingAlgorithms/Routing_TABLE_BASED.cpp.o -c /root/my_noxim/src/routingAlgorithms/Routing_TABLE_BASED.cpp",
+  "file": "/root/my_noxim/src/routingAlgorithms/Routing_TABLE_BASED.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/noxim.dir/src/routingAlgorithms/Routing_WEST_FIRST.cpp.o -c /root/my_noxim/src/routingAlgorithms/Routing_WEST_FIRST.cpp",
+  "file": "/root/my_noxim/src/routingAlgorithms/Routing_WEST_FIRST.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/noxim.dir/src/routingAlgorithms/Routing_XY.cpp.o -c /root/my_noxim/src/routingAlgorithms/Routing_XY.cpp",
+  "file": "/root/my_noxim/src/routingAlgorithms/Routing_XY.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/noxim.dir/src/taskmanager/TaskManager.cpp.o -c /root/my_noxim/src/taskmanager/TaskManager.cpp",
+  "file": "/root/my_noxim/src/taskmanager/TaskManager.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/noxim.dir/src/smartbuffer/BufferManager.cpp.o -c /root/my_noxim/src/smartbuffer/BufferManager.cpp",
+  "file": "/root/my_noxim/src/smartbuffer/BufferManager.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/test_glb_tile.dir/tests/test_glb_tile.cpp.o -c /root/my_noxim/tests/test_glb_tile.cpp",
+  "file": "/root/my_noxim/tests/test_glb_tile.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/test_glb_tile.dir/src/NoC.cpp.o -c /root/my_noxim/src/NoC.cpp",
+  "file": "/root/my_noxim/src/NoC.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/test_glb_tile.dir/src/Tile.cpp.o -c /root/my_noxim/src/Tile.cpp",
+  "file": "/root/my_noxim/src/Tile.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/test_glb_tile.dir/src/Router.cpp.o -c /root/my_noxim/src/Router.cpp",
+  "file": "/root/my_noxim/src/Router.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/test_glb_tile.dir/src/ProcessingElement.cpp.o -c /root/my_noxim/src/ProcessingElement.cpp",
+  "file": "/root/my_noxim/src/ProcessingElement.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/test_glb_tile.dir/src/Buffer.cpp.o -c /root/my_noxim/src/Buffer.cpp",
+  "file": "/root/my_noxim/src/Buffer.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/test_glb_tile.dir/src/Channel.cpp.o -c /root/my_noxim/src/Channel.cpp",
+  "file": "/root/my_noxim/src/Channel.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/test_glb_tile.dir/src/GlobalParams.cpp.o -c /root/my_noxim/src/GlobalParams.cpp",
+  "file": "/root/my_noxim/src/GlobalParams.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/test_glb_tile.dir/src/GlobalRoutingTable.cpp.o -c /root/my_noxim/src/GlobalRoutingTable.cpp",
+  "file": "/root/my_noxim/src/GlobalRoutingTable.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/test_glb_tile.dir/src/GlobalTrafficTable.cpp.o -c /root/my_noxim/src/GlobalTrafficTable.cpp",
+  "file": "/root/my_noxim/src/GlobalTrafficTable.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/test_glb_tile.dir/src/GlobalStats.cpp.o -c /root/my_noxim/src/GlobalStats.cpp",
+  "file": "/root/my_noxim/src/GlobalStats.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/test_glb_tile.dir/src/ConfigurationManager.cpp.o -c /root/my_noxim/src/ConfigurationManager.cpp",
+  "file": "/root/my_noxim/src/ConfigurationManager.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/test_glb_tile.dir/src/Stats.cpp.o -c /root/my_noxim/src/Stats.cpp",
+  "file": "/root/my_noxim/src/Stats.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/test_glb_tile.dir/src/Power.cpp.o -c /root/my_noxim/src/Power.cpp",
+  "file": "/root/my_noxim/src/Power.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/test_glb_tile.dir/src/HierarchicalTopologyManager.cpp.o -c /root/my_noxim/src/HierarchicalTopologyManager.cpp",
+  "file": "/root/my_noxim/src/HierarchicalTopologyManager.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/test_glb_tile.dir/src/Hub.cpp.o -c /root/my_noxim/src/Hub.cpp",
+  "file": "/root/my_noxim/src/Hub.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/test_glb_tile.dir/src/Initiator.cpp.o -c /root/my_noxim/src/Initiator.cpp",
+  "file": "/root/my_noxim/src/Initiator.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/test_glb_tile.dir/src/Target.cpp.o -c /root/my_noxim/src/Target.cpp",
+  "file": "/root/my_noxim/src/Target.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/test_glb_tile.dir/src/MM.cpp.o -c /root/my_noxim/src/MM.cpp",
+  "file": "/root/my_noxim/src/MM.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/test_glb_tile.dir/src/ReservationTable.cpp.o -c /root/my_noxim/src/ReservationTable.cpp",
+  "file": "/root/my_noxim/src/ReservationTable.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/test_glb_tile.dir/src/LocalRoutingTable.cpp.o -c /root/my_noxim/src/LocalRoutingTable.cpp",
+  "file": "/root/my_noxim/src/LocalRoutingTable.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/test_glb_tile.dir/src/TokenRing.cpp.o -c /root/my_noxim/src/TokenRing.cpp",
+  "file": "/root/my_noxim/src/TokenRing.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/test_glb_tile.dir/src/routingAlgorithms/RoutingAlgorithms.cpp.o -c /root/my_noxim/src/routingAlgorithms/RoutingAlgorithms.cpp",
+  "file": "/root/my_noxim/src/routingAlgorithms/RoutingAlgorithms.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/test_glb_tile.dir/src/routingAlgorithms/Routing_DELTA.cpp.o -c /root/my_noxim/src/routingAlgorithms/Routing_DELTA.cpp",
+  "file": "/root/my_noxim/src/routingAlgorithms/Routing_DELTA.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/test_glb_tile.dir/src/routingAlgorithms/Routing_NEGATIVE_FIRST.cpp.o -c /root/my_noxim/src/routingAlgorithms/Routing_NEGATIVE_FIRST.cpp",
+  "file": "/root/my_noxim/src/routingAlgorithms/Routing_NEGATIVE_FIRST.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/test_glb_tile.dir/src/routingAlgorithms/Routing_NORTH_LAST.cpp.o -c /root/my_noxim/src/routingAlgorithms/Routing_NORTH_LAST.cpp",
+  "file": "/root/my_noxim/src/routingAlgorithms/Routing_NORTH_LAST.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/test_glb_tile.dir/src/routingAlgorithms/Routing_ODD_EVEN.cpp.o -c /root/my_noxim/src/routingAlgorithms/Routing_ODD_EVEN.cpp",
+  "file": "/root/my_noxim/src/routingAlgorithms/Routing_ODD_EVEN.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/test_glb_tile.dir/src/routingAlgorithms/Routing_TABLE_BASED.cpp.o -c /root/my_noxim/src/routingAlgorithms/Routing_TABLE_BASED.cpp",
+  "file": "/root/my_noxim/src/routingAlgorithms/Routing_TABLE_BASED.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/test_glb_tile.dir/src/routingAlgorithms/Routing_WEST_FIRST.cpp.o -c /root/my_noxim/src/routingAlgorithms/Routing_WEST_FIRST.cpp",
+  "file": "/root/my_noxim/src/routingAlgorithms/Routing_WEST_FIRST.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/test_glb_tile.dir/src/routingAlgorithms/Routing_XY.cpp.o -c /root/my_noxim/src/routingAlgorithms/Routing_XY.cpp",
+  "file": "/root/my_noxim/src/routingAlgorithms/Routing_XY.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/test_glb_tile.dir/src/taskmanager/TaskManager.cpp.o -c /root/my_noxim/src/taskmanager/TaskManager.cpp",
+  "file": "/root/my_noxim/src/taskmanager/TaskManager.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/test_glb_tile.dir/src/smartbuffer/BufferManager.cpp.o -c /root/my_noxim/src/smartbuffer/BufferManager.cpp",
+  "file": "/root/my_noxim/src/smartbuffer/BufferManager.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/run_tests.dir/src/smartbuffer/test_buffer_manager.cpp.o -c /root/my_noxim/src/smartbuffer/test_buffer_manager.cpp",
+  "file": "/root/my_noxim/src/smartbuffer/test_buffer_manager.cpp"
+},
+{
+  "directory": "/root/my_noxim",
+  "command": "/usr/bin/c++ -DSC_NO_WRITE_CHECK -I/root/my_noxim/bin/libs/systemc-2.3.1/include -I/root/my_noxim/bin/libs/yaml-cpp/include -g -O0 -Wall -Wextra -std=gnu++11 -o CMakeFiles/run_tests.dir/src/smartbuffer/BufferManager.cpp.o -c /root/my_noxim/src/smartbuffer/BufferManager.cpp",
+  "file": "/root/my_noxim/src/smartbuffer/BufferManager.cpp"
+}
+]

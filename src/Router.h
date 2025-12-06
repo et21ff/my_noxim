@@ -146,6 +146,7 @@ SC_MODULE(Router)
     void buildUnifiedInterface();
     bool tryAggregation(int input_port, const Flit &flit);
     bool performAggregation();
+    vector<vector<int>> getCurrentPortGroups(int forward_count, int current_forward, const vector<vector<int>> &all_groups);
 
     ~Router();
 

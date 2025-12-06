@@ -1,178 +1,233 @@
-#include "BufferManager.h"
 #include <iostream>
 #include <cassert>
-#include <string>
-#include <functional>
+#include <map>
+#include <vector>
+#include "BufferManager.h"
 
-// --- 一个简单的测试框架 ---
+// Helper function to print test status
+void PrintTestStatus(const std::string& testName) {
+    std::cout << "[RUNNING] " << testName << "..." << std::endl;
+}
 
-// 定义一个测试函数的类型别名
-using TestFunction = std::function<void()>;
+void PrintTestSuccess(const std::string& testName) {
+    std::cout << "[PASSED] " << testName << std::endl;
+}
 
-// 运行单个测试用例的辅助函数
-void run_test(const TestFunction& test_func, const std::string& test_name) {
-    std::cout << "Running test: " << test_name << "..." << std::endl;
-    try {
-        test_func();
-        std::cout << "  [PASSED]" << std::endl;
-    } catch (const std::exception& e) {
-        std::cerr << "  [FAILED] with exception: " << e.what() << std::endl;
-    } catch (...) {
-        std::cerr << "  [FAILED] with unknown exception." << std::endl;
+// 1. 构造函数测试
+void TestConstructors() {
+    PrintTestStatus("Constructor Tests");
+
+    // 共享模式构造函数
+    {
+        size_t capacity = 100;
+        BufferManager bm(capacity);
+        assert(bm.GetCapacity() == capacity);
+        assert(bm.GetCurrentSize() == 0);
+        assert(bm.GetDataSize(DataType::INPUT) == 0);
+        assert(bm.GetDataSize(DataType::WEIGHT) == 0);
+        assert(bm.GetDataSize(DataType::OUTPUT) == 0);
     }
+
+    // 独立模式构造函数
+    {
+        std::map<DataType, size_t> type_capacities;
+        type_capacities[DataType::INPUT] = 50;
+        type_capacities[DataType::WEIGHT] = 30;
+        type_capacities[DataType::OUTPUT] = 20;
+
+        BufferManager bm(type_capacities);
+        assert(bm.GetCapacity(DataType::INPUT) == 50);
+        assert(bm.GetCapacity(DataType::WEIGHT) == 30);
+        assert(bm.GetCapacity(DataType::OUTPUT) == 20);
+        assert(bm.GetCurrentSize() == 0);
+        assert(bm.GetDataSize(DataType::INPUT) == 0);
+    }
+
+    PrintTestSuccess("Constructor Tests");
 }
 
-// --- 测试用例实现 ---
+// 2. 数据接收测试
+void TestDataReception() {
+    PrintTestStatus("Data Reception Tests");
 
-/**
- * @brief 测试1: 正确初始化
- * 验证Buffer能正确加载容量，且初始状态为空。
- */
-void test_initialization() {
-    EvictionSchedule empty_schedule;
-    BufferManager buffer(1024, empty_schedule);
+    // 共享模式容量限制
+    {
+        BufferManager bm(100);
+        assert(bm.OnDataReceived(DataType::INPUT, 50) == true);
+        assert(bm.GetCurrentSize() == 50);
+        assert(bm.OnDataReceived(DataType::WEIGHT, 50) == true);
+        assert(bm.GetCurrentSize() == 100);
+        assert(bm.OnDataReceived(DataType::OUTPUT, 1) == false); // Overflow
+        assert(bm.GetCurrentSize() == 100);
+    }
 
-    assert(buffer.GetCapacity() == 1024);
-    assert(buffer.GetCurrentSize() == 0);
-    assert(!buffer.IsFull());
-    assert(buffer.GetDataSize(DataType::INPUT) == 0);
-    assert(buffer.GetDataSize(DataType::WEIGHT) == 0);
-    assert(buffer.GetDataSize(DataType::OUTPUT) == 0);
+    // 独立模式类型限制
+    {
+        std::map<DataType, size_t> caps = {{DataType::INPUT, 50}, {DataType::WEIGHT, 50}};
+        BufferManager bm(caps);
+        
+        assert(bm.OnDataReceived(DataType::INPUT, 50) == true);
+        assert(bm.OnDataReceived(DataType::INPUT, 1) == false); // Input full
+        
+        assert(bm.OnDataReceived(DataType::WEIGHT, 40) == true);
+        assert(bm.OnDataReceived(DataType::WEIGHT, 10) == true);
+        assert(bm.OnDataReceived(DataType::WEIGHT, 1) == false); // Weight full
+    }
+
+    PrintTestSuccess("Data Reception Tests");
 }
 
-/**
- * @brief 测试2: 数据接收与空间不足处理
- * 验证OnDataReceived能正确增加数据，并在空间不足时正确拒绝。
- */
-void test_data_receive_and_space_limit() {
-    EvictionSchedule empty_schedule;
-    BufferManager buffer(100, empty_schedule);
+// 3. 查询接口测试
+void TestQueryInterface() {
+    PrintTestStatus("Query Interface Tests");
 
-    // 成功接收数据
-    bool success = buffer.OnDataReceived(DataType::INPUT, 60);
-    assert(success);
-    assert(buffer.GetCurrentSize() == 60);
-    assert(buffer.GetDataSize(DataType::INPUT) == 60);
+    BufferManager bm(100);
+    bm.OnDataReceived(DataType::INPUT, 30);
+    bm.OnDataReceived(DataType::WEIGHT, 20);
 
-    // 再次成功接收数据，达到容量上限
-    success = buffer.OnDataReceived(DataType::WEIGHT, 40);
-    assert(success);
-    assert(buffer.GetCurrentSize() == 100);
-    assert(buffer.GetDataSize(DataType::WEIGHT) == 40);
-    assert(buffer.IsFull());
+    // GetCapacity
+    assert(bm.GetCapacity() == 100);
+    assert(bm.GetCapacity(DataType::INPUT) == 100); // Shared mode returns total capacity
 
-    // 尝试接收更多数据，应该失败
-    success = buffer.OnDataReceived(DataType::OUTPUT, 1);
-    assert(!success);
-    // 验证状态没有被错误地修改
-    assert(buffer.GetCurrentSize() == 100);
-    assert(buffer.GetDataSize(DataType::OUTPUT) == 0);
-}
+    // GetCurrentSize
+    assert(bm.GetCurrentSize() == 50);
+    assert(bm.GetCurrentSize(DataType::INPUT) == 30);
+    assert(bm.GetCurrentSize(DataType::WEIGHT) == 20);
+    assert(bm.GetCurrentSize(DataType::OUTPUT) == 0);
 
-/**
- * @brief 测试3: 无提前驱逐
- * 验证在未达到预定驱逐时间点时，数据必须保持驻留。
- */
-void test_no_premature_eviction() {
-    EvictionSchedule schedule = {
-        { 20, { {DataType::INPUT, 50} } } // 驱逐计划在 t=20
-    };
-    BufferManager buffer(200, schedule);
-    buffer.OnDataReceived(DataType::INPUT, 100);
+    // IsFull
+    assert(bm.IsFull() == false);
+    bm.OnDataReceived(DataType::OUTPUT, 50);
+    assert(bm.IsFull() == true);
     
-    // 在 t=10 (早于计划时间) 调用 OnComputeFinished
-    buffer.OnComputeFinished(10);
+    // GetDataSize
+    assert(bm.GetDataSize(DataType::INPUT) == 30);
 
-    // 验证数据没有被驱逐
-    assert(buffer.GetCurrentSize() == 100);
-    assert(buffer.GetDataSize(DataType::INPUT) == 100);
+    PrintTestSuccess("Query Interface Tests");
 }
 
-/**
- * @brief 测试4: 精确的触发式驱逐
- * 验证OnComputeFinished(t)调用后，只有在t时间点被标记为可驱逐的数据被移除。
- */
-void test_precise_triggered_eviction() {
-    EvictionSchedule schedule = {
-        { 15, { {DataType::INPUT, 30}, {DataType::WEIGHT, 10} } }
-    };
-    BufferManager buffer(200, schedule);
-    buffer.OnDataReceived(DataType::INPUT, 50);
-    buffer.OnDataReceived(DataType::WEIGHT, 40);
-    buffer.OnDataReceived(DataType::OUTPUT, 20); // OUTPUT不应被驱逐
+// 4. 数据就绪检查测试
+void TestDataReadiness() {
+    PrintTestStatus("Data Readiness Tests");
 
-    assert(buffer.GetCurrentSize() == 110);
+    BufferManager bm(100);
+    bm.OnDataReceived(DataType::INPUT, 50);
+    bm.OnDataReceived(DataType::WEIGHT, 30);
 
-    // 触发驱逐
-    buffer.OnComputeFinished(15);
+    // AreDataTypeReady (Single)
+    assert(bm.AreDataTypeReady(DataType::INPUT, 50) == true);
+    assert(bm.AreDataTypeReady(DataType::INPUT, 51) == false);
+    assert(bm.AreDataTypeReady(DataType::WEIGHT, 30) == true);
+    assert(bm.AreDataTypeReady(DataType::OUTPUT, 1) == false);
 
-    // 验证驱逐结果
-    assert(buffer.GetDataSize(DataType::INPUT) == 50 - 30);   // 50 -> 20
-    assert(buffer.GetDataSize(DataType::WEIGHT) == 40 - 10);  // 40 -> 30
-    assert(buffer.GetDataSize(DataType::OUTPUT) == 20);      // 保持不变
-    assert(buffer.GetCurrentSize() == 20 + 30 + 20);         // 总大小应为 70
+    // AreDataTypesReady (Multiple)
+    std::vector<DataType> types = {DataType::INPUT, DataType::WEIGHT};
+    assert(bm.AreDataTypesReady(types, 30) == true); // Both have >= 30
+    assert(bm.AreDataTypesReady(types, 40) == false); // Weight has 30 < 40
+
+    PrintTestSuccess("Data Readiness Tests");
 }
 
-/**
- * @brief 测试5: 驱逐健壮性 (驱逐量大于实际量)
- * 验证当计划驱逐的大小超过实际存在的大小时，能正确处理而不出错。
- */
-void test_eviction_robustness() {
-    EvictionSchedule schedule = {
-        { 10, { {DataType::INPUT, 999} } } // 计划驱逐一个超大的量
-    };
-    BufferManager buffer(1000, schedule);
-    buffer.OnDataReceived(DataType::INPUT, 100);
+// 5. 数据移除测试
+void TestDataRemoval() {
+    PrintTestStatus("Data Removal Tests");
+
+    BufferManager bm(100);
+    bm.OnDataReceived(DataType::INPUT, 50);
+
+    // RemoveData
+    assert(bm.RemoveData(DataType::INPUT, 20) == true);
+    assert(bm.GetCurrentSize() == 30);
+    assert(bm.GetDataSize(DataType::INPUT) == 30);
+
+    // Remove more than available
+    assert(bm.RemoveData(DataType::INPUT, 31) == false);
+    assert(bm.GetCurrentSize() == 30);
+
+    // Remove remaining
+    assert(bm.RemoveData(DataType::INPUT, 30) == true);
+    assert(bm.GetCurrentSize() == 0);
+
+    PrintTestSuccess("Data Removal Tests");
+}
+
+// 6. 边界和错误测试
+void TestEdgeCases() {
+    PrintTestStatus("Edge Case Tests");
+
+    // 空缓冲区操作
+    {
+        BufferManager bm(100);
+        assert(bm.RemoveData(DataType::INPUT, 1) == false);
+        assert(bm.GetCurrentSize() == 0);
+        assert(bm.IsFull() == false);
+    }
+
+    // 无效数据类型处理 (DataType::UNKNOWN)
+    {
+        BufferManager bm(100);
+        // Assuming implementation handles UNKNOWN gracefully or ignores it
+        // Based on previous code view, UNKNOWN might be treated as total capacity or 0 depending on context
+        // Let's verify specific behaviors seen in BufferManager.cpp
+        
+        // GetCapacity(UNKNOWN) -> returns capacity_ in SHARED mode
+        assert(bm.GetCapacity(DataType::UNKNOWN) == 100);
+        
+        // GetCurrentSize(UNKNOWN) -> returns current_size_
+        bm.OnDataReceived(DataType::INPUT, 10);
+        assert(bm.GetCurrentSize(DataType::UNKNOWN) == 10);
+    }
+
+    // 独立模式下未配置的数据类型
+    {
+        std::map<DataType, size_t> caps = {{DataType::INPUT, 50}};
+        BufferManager bm(caps);
+        // Adding unconfigured type
+        // Based on implementation: type_capacities_.find(type) will fail, returns false
+        assert(bm.OnDataReceived(DataType::WEIGHT, 10) == false);
+    }
+
+    PrintTestSuccess("Edge Case Tests");
+}
+
+// 7. 混合模式压力测试
+void TestStress() {
+    PrintTestStatus("Stress Tests");
+
+    // 测试在独立模式下，一种类型满载不影响其他类型
+    std::map<DataType, size_t> caps = {{DataType::INPUT, 10}, {DataType::WEIGHT, 100}};
+    BufferManager bm(caps);
     
-    assert(buffer.GetCurrentSize() == 100);
-
-    // 触发驱逐
-    buffer.OnComputeFinished(10);
+    // INPUT满载
+    assert(bm.OnDataReceived(DataType::INPUT, 10) == true);
+    assert(bm.IsFull(DataType::INPUT) == true);
     
-    // 验证INPUT被完全清空，且大小不会变成负数
-    assert(buffer.GetDataSize(DataType::INPUT) == 0);
-    assert(buffer.GetCurrentSize() == 0);
+    // 尝试继续添加INPUT应该失败
+    assert(bm.OnDataReceived(DataType::INPUT, 1) == false);
+    
+    // WEIGHT应该仍然可以添加，不受INPUT影响
+    assert(bm.OnDataReceived(DataType::WEIGHT, 50) == true);
+    assert(bm.GetCurrentSize(DataType::WEIGHT) == 50);
+    assert(bm.IsFull(DataType::WEIGHT) == false);
+    
+    // 继续添加WEIGHT直到满载
+    assert(bm.OnDataReceived(DataType::WEIGHT, 50) == true);
+    assert(bm.IsFull(DataType::WEIGHT) == true);
+
+    PrintTestSuccess("Stress Tests");
 }
 
-/**
- * @brief 测试6: 策略特化 (完全驻留模式)
- * 验证传入一个空的驱逐计划，Buffer表现为“完全驻留”模式。
- */
-void test_fully_resident_mode() {
-    EvictionSchedule empty_schedule; // 空计划
-    BufferManager buffer(500, empty_schedule);
-    buffer.OnDataReceived(DataType::INPUT, 100);
-    buffer.OnDataReceived(DataType::WEIGHT, 100);
+int main() {
+    std::cout << "Starting BufferManager Tests..." << std::endl;
+    
+    TestConstructors();
+    TestDataReception();
+    TestQueryInterface();
+    TestDataReadiness();
+    TestDataRemoval();
+    TestEdgeCases();
+    TestStress();
 
-    assert(buffer.GetCurrentSize() == 200);
-
-    // 在多个时间步调用 OnComputeFinished
-    buffer.OnComputeFinished(10);
-    buffer.OnComputeFinished(20);
-    buffer.OnComputeFinished(30);
-
-    // 验证数据大小始终不变
-    assert(buffer.GetCurrentSize() == 200);
+    std::cout << "All tests passed successfully!" << std::endl;
+    return 0;
 }
-
-
-// --- 主函数：运行所有测试 ---
-
-// int main() {
-//     std::cout << "=======================================" << std::endl;
-//     std::cout << "Starting LivenessAwareBuffer Test Suite" << std::endl;
-//     std::cout << "=======================================" << std::endl;
-
-//     run_test(test_initialization, "Correct Initialization");
-//     run_test(test_data_receive_and_space_limit, "Data Receive & Space Limit");
-//     run_test(test_no_premature_eviction, "No Premature Eviction");
-//     run_test(test_precise_triggered_eviction, "Precise Triggered Eviction");
-//     run_test(test_eviction_robustness, "Eviction Robustness (Over-eviction)");
-//     run_test(test_fully_resident_mode, "Policy Specialization (Fully Resident)");
-
-//     std::cout << "=======================================" << std::endl;
-//     std::cout << "Test suite finished." << std::endl;
-//     std::cout << "=======================================" << std::endl;
-
-//     return 0;
-// }
