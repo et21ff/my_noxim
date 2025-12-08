@@ -49,7 +49,6 @@ struct Packet {
   int flit_left; // Number of remaining flits inside the packet
   bool use_low_voltage_path;
   vector<int> dst_ids;
-  bool is_multicast; // true if this packet is a multicast packet
 
   int payload_data_size; // 用来表示整个Packet的真实数据大小（以字节为单位）
   int payload_sizes[3]; // 索引0: INPUT, 1: WEIGHT, 2: OUTPUT
@@ -160,7 +159,6 @@ struct Flit {
   int payload_sizes[3]; // 索引0: INPUT, 1: WEIGHT, 2: OUTPUT
   int src_id;
   int dst_id;
-  bool is_multicast;   // true if this flit belongs to a multicast packet
   vector<int> dst_ids; // multiple destination nodes for multicast
   int vc_id;           // Virtual Channel
   FlitType flit_type;  // The flit type (FLIT_TYPE_HEAD, FLIT_TYPE_BODY,
@@ -182,9 +180,9 @@ struct Flit {
 
   inline bool operator==(const Flit &flit) const {
     return (
-        flit.src_id == src_id && flit.is_multicast == is_multicast &&
-        flit.dst_ids == dst_ids && flit.flit_type == flit_type &&
-        flit.vc_id == vc_id && flit.sequence_no == sequence_no &&
+        flit.src_id == src_id && flit.dst_ids == dst_ids &&
+        flit.flit_type == flit_type && flit.vc_id == vc_id &&
+        flit.sequence_no == sequence_no &&
         flit.sequence_length == sequence_length && flit.payload == payload &&
         flit.logical_timestamp == logical_timestamp && flit.hop_no == hop_no &&
         flit.use_low_voltage_path == use_low_voltage_path);

@@ -98,6 +98,20 @@ template <> struct convert<RoleProperties> {
       rhs.sync_per_timestep = 0; // 默认值
     }
 
+    // 新增字段：eviction_interval_cycles
+    if (node["eviction_interval_cycles"]) {
+      rhs.eviction_interval_cycles = node["eviction_interval_cycles"].as<int>();
+    } else {
+      rhs.eviction_interval_cycles = 0; // 默认值：不启用自驱逐
+    }
+
+    // 新增字段：weight_eviction_amount
+    if (node["weight_eviction_amount"]) {
+      rhs.weight_eviction_amount = node["weight_eviction_amount"].as<size_t>();
+    } else {
+      rhs.weight_eviction_amount = 0; // 默认值：不驱逐权重
+    }
+
     return true;
   }
 };
@@ -166,12 +180,6 @@ template <> struct convert<AtomicDispatchAction> {
       rhs.target_group = node["target_group"].as<std::string>();
     } else {
       rhs.target_group = ""; // 留空，表示需要继承
-    }
-
-    if (node["multicast"]) {
-      rhs.multicast = node["multicast"].as<bool>();
-    } else {
-      rhs.multicast = true; // 默认值
     }
 
     return true;

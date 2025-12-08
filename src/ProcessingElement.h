@@ -198,6 +198,12 @@ public: // 建议将内部状态变量设为私有
   bool is_compute_complete;
   int compute_cycles;
 
+  int eviction_interval_cycles_;  // 驱逐间隔周期数
+  size_t weight_eviction_amount_; // 每次驱逐的权重数量
+  //这并不是一个优雅的实现 但是我们必须这么做。。。
+
+  void evict_weights_self(); // 自驱逐权重函数
+
   sc_signal<bool> is_receiving_packet;
   std::string role_to_str(
       const PE_Role

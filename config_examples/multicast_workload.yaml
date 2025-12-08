@@ -158,18 +158,17 @@ workload:
           - trigger: { on_timestep_modulo: [3, 0] }
             name: "MULTICAST_FILL_INPUTS"
             target_group: *all_pes_group
-            multicast: true
             delta:
               - { data_space: "Inputs",  size: 16,target_role: "ROLE_BUFFER" }
-              - { data_space: "Weights", size: 1 , multicast: false ,target_role: "ROLE_BUFFER" }
-              - { data_space: "Outputs", size: 16, multicast: false , target_role: "ROLE_BUFFER" }
+              - { data_space: "Weights", size: 1 ,target_role: "ROLE_BUFFER" }
+              - { data_space: "Outputs", size: 16, target_role: "ROLE_BUFFER" }
 
           - trigger: { on_timestep: "fallback" }
             name: "MULTICAST_DELTA_INPUTS_1"
             target_group: *all_pes_group
             delta:
               - { data_space: "Inputs",  size: 1 ,target_role: "ROLE_BUFFER" }
-              - { data_space: "Weights", size: 1 , multicast: false , split_remaining: 2 ,target_role: "ROLE_BUFFER" } 
+              - { data_space: "Weights", size: 1 ,target_role: "ROLE_BUFFER" } 
       
       command_definitions:
         - command_id: 0

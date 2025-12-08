@@ -85,16 +85,19 @@ struct CommandDefinition {
  */
 struct RoleProperties {
   int compute_latency;
-  int sync_per_timestep; // 计算延迟（仅对 COMPUTE 角色有效）
+  int sync_per_timestep;        // 计算延迟（仅对 COMPUTE 角色有效）
+  int eviction_interval_cycles; // 驱逐间隔周期数
+  size_t weight_eviction_amount; // 每次驱逐的权重数量
 
-  RoleProperties() : compute_latency(0), sync_per_timestep(0) {}
+  RoleProperties()
+      : compute_latency(0), sync_per_timestep(0), eviction_interval_cycles(0),
+        weight_eviction_amount(0) {}
 };
 
 struct AtomicDispatchAction {
   std::string data_space; // "Weights", "Inputs", "Outputs"
   size_t size;
   std::string target_group;
-  bool multicast;
   PE_Role target_role;
 };
 

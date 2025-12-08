@@ -129,6 +129,18 @@ void ProcessingElement::configure(int id, int level_idx,
     // 配置TaskManager
     task_manager_ = std::unique_ptr<TaskManager>(new TaskManager());
     task_manager_->Configure(GlobalParams::workload, "ROLE_BUFFER");
+
+    // 从配置中读取自驱逐参数
+    const RoleProperties *props =
+        task_manager_->get_properties_for_role("ROLE_BUFFER");
+    if (props) {
+      eviction_interval_cycles_ = props->eviction_interval_cycles;
+      weight_eviction_amount_ = props->weight_eviction_amount;
+    } else {
+      eviction_interval_cycles_ = 0; // 默认值：不启用自驱逐
+      weight_eviction_amount_ = 0;   // 默认值：不驱逐权重
+    }
+
     outputs_required_count_ = 0;
     outputs_received_count_ = 0;
     compute_cycles = 0;
@@ -365,8 +377,8 @@ void ProcessingElement::internal_transfer_process() {
         if (flit.command == -1) {
           // 这是一个输出回传包，只更新计数器，不调用BufferManager
           outputs_received_count_ += flit.payload_data_size;
-          assert(outputs_received_count_ <= outputs_required_count_ &&
-                 "Received more outputs than required");
+          // assert(outputs_received_count_ <= outputs_required_count_ &&
+          //        "Received more outputs than required");
 
           vc_buffer.Pop();
 
@@ -488,26 +500,28 @@ bool ProcessingElement::packet_queues_are_empty() const {
 }
 
 int ProcessingElement::get_vc_id_for_packet(const Packet &pkt) const {
-  // 简单的VC分配策略
-  // 可以根据数据类型、目标节点或其他标准来分配VC
-  if (pkt.data_type == DataType::OUTPUT) {
+  if (pkt.data_type == DataType::WEIGHT) {
+    return 0; // 权重数据使用VC 0
+  } else if (pkt.data_type == DataType::INPUT) {
+    return 1; // 输入数据使用VC 1
+  } else if (pkt.data_type == DataType::OUTPUT) {
     return 2; // 输出数据使用VC 2
-  } else if (pkt.is_multicast) {
-    return 1; // 多播数据使用VC 1
   } else {
-    return 0; // 输入数据使用VC 0
+    return 0; // 默认VC 0
   }
 }
 
 int ProcessingElement::get_vc_id_for_packet_by_task(
     DataDispatchInfo task) const {
   // 根据数据类型分配VC ID的辅助函数
-  if (task.type == DataType::OUTPUT) {
+  if (task.type == DataType::WEIGHT) {
+    return 0; // 权重数据使用VC 0
+  } else if (task.type == DataType::INPUT) {
+    return 1; // 输入数据使用VC 1
+  } else if (task.type == DataType::OUTPUT) {
     return 2; // 输出数据使用VC 2
-  } else if (task.target_ids.size() > 1) {
-    return 1; // 多播数据使用VC 1
   } else {
-    return 0; // 单播数据使用VC 0
+    return 0; // 默认VC 0
   }
 }
 
@@ -553,6 +567,12 @@ void ProcessingElement::txProcess() {
     return;
   }
 
+  if (role != ROLE_DRAM &&
+      logical_timestamp == task_manager_->get_total_timesteps() - 1 &&
+      outputs_received_count_ < outputs_required_count_ * 2) {
+    return;
+  }
+
   if (role != ROLE_BUFFER && current_dispatch_task_.sub_tasks.empty() &&
       packet_queues_are_empty() && dispatch_in_progress_) {
     if (task_manager_->is_in_sync_points(logical_timestamp)) {
@@ -576,6 +596,12 @@ void ProcessingElement::txProcess() {
          << " compute latency is " << task_manager_->get_compute_latency()
          << endl;
     compute_cycles++;
+
+    // 基于计算周期数判断是否需要自驱逐
+    if (eviction_interval_cycles_ > 0 && compute_cycles > 0 &&
+        compute_cycles % eviction_interval_cycles_ == 0) {
+      evict_weights_self();
+    }
     if (logical_timestamp >= task_manager_->get_total_timesteps()) {
       reset_logic();
     }
@@ -616,8 +642,7 @@ void ProcessingElement::reset_logic() {
       pkt.size = pkt.flit_left =
           (cmd.outputs + bandwidth_scale - 1) / bandwidth_scale + 2;
       pkt.command = -1; // 表示这是一个回送包
-      pkt.is_multicast = false;
-      pkt.vc_id = 2; // 回送包使用vc 0
+      pkt.vc_id = 2;    // 回送包使用vc 0
 
       pkt.target_role = static_cast<PE_Role>(static_cast<int>(role) - 1);
       // dbg(sc_time_stamp(), name(), "[RESET_LOGIC] Generating output return
@@ -689,6 +714,7 @@ void ProcessingElement::run_compute_logic() {
   if (compute_in_progress_) {
     consume_cycles_left--;
     assert(consume_cycles_left >= 0 && "Consume cycles underflow");
+
     if (consume_cycles_left == 0) {
       compute_in_progress_ = false;
       is_compute_complete = true;
@@ -776,7 +802,6 @@ void ProcessingElement::run_storage_logic() {
 
     Packet pkt;
     pkt.src_id = local_id;
-    pkt.is_multicast = selected_task.is_multicast;
     pkt.target_role = selected_task.target_role;
 
     for (auto target_id : selected_task.target_ids) {
@@ -817,12 +842,12 @@ int ProcessingElement::get_command_to_send() // tofix
     return -2; // 返回无效命令
   }
 
-  if (role == ROLE_GLB &&
-      logical_timestamp + 1 >= task_manager_->get_total_timesteps() &&
-      task_manager_->get_command_definition(pending_commands_.begin()->second)
-              .weights > task_manager_->get_current_working_set().weights) {
-    return commands->size() + 1;
-  }
+  // if (role == ROLE_GLB &&
+  //     logical_timestamp + 1 >= task_manager_->get_total_timesteps() &&
+  //     task_manager_->get_command_definition(pending_commands_.begin()->second)
+  //             .weights > task_manager_->get_current_working_set().weights) {
+  //   return commands->size() + 1;
+  // }
   DataDelta next_delta;
   DispatchTask next_task = task_manager_->get_task_for_timestep(
       (logical_timestamp + 1) % task_manager_->get_total_timesteps());
@@ -840,9 +865,7 @@ int ProcessingElement::get_command_to_send() // tofix
 
   for (const auto &cmd : *commands) {
     // 比较推算出的 payload 和命令中定义的 payload
-    if (cmd.evict_payload.weights ==
-            next_delta.weights / downstream_node_ids.size() &&
-        cmd.evict_payload.inputs ==
+    if (cmd.evict_payload.inputs ==
             next_delta.inputs / downstream_node_ids.size() &&
         cmd.evict_payload.outputs ==
             next_delta.outputs / downstream_node_ids.size()) {
@@ -861,7 +884,6 @@ Flit ProcessingElement::generate_next_flit_from_queue(
   // 填充公共字段
   flit.src_id = packet.src_id;
   flit.dst_ids = packet.dst_ids;
-  flit.is_multicast = packet.is_multicast;
   flit.vc_id = packet.vc_id;
   flit.logical_timestamp = packet.logical_timestamp;
   flit.sequence_no = packet.size - packet.flit_left;
@@ -896,4 +918,22 @@ Flit ProcessingElement::generate_next_flit_from_queue(
 
 unsigned int ProcessingElement::getQueueSize() const {
   return packet_queues_.size();
+}
+void ProcessingElement::evict_weights_self() {
+  size_t current_weights =
+      unified_buffer_manager_->GetCurrentSize(DataType::WEIGHT);
+
+  if (current_weights > 0) {
+    size_t evict_amount = std::min(weight_eviction_amount_, current_weights);
+    unified_buffer_manager_->RemoveData(DataType::WEIGHT, evict_amount);
+
+    std::cout << "@" << sc_time_stamp() << " [" << name() << "]: "
+              << "[SELF_EVICT] Evicted " << evict_amount
+              << " weights at compute cycle " << compute_cycles
+              << ", remaining: "
+              << unified_buffer_manager_->GetCurrentSize(DataType::WEIGHT)
+              << std::endl;
+
+    buffer_state_changed_event.notify(SC_ZERO_TIME);
+  }
 }

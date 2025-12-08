@@ -336,7 +336,6 @@ void TaskManager::create_dispatch_task_from_event(DispatchTask &task,
     sub_task_info.type = type;
     sub_task_info.size = action.size;
     sub_task_info.target_ids = target_ids;
-    sub_task_info.is_multicast = action.multicast;
     sub_task_info.target_role = action.target_role;
     task.sub_tasks.push_back(sub_task_info);
   }

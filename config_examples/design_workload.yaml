@@ -96,6 +96,80 @@ hierarchical_config:
       bandwidth: 8
       fanouts: 0
 
+workload:
+  working_set:
+    - role: "ROLE_DRAM"
+      data:
+        - { data_space: "Weights", size: 23232, reuse_strategy: "resident" }
+        - { data_space: "Inputs", size: 12675, reuse_strategy: "resident" }
+        - { data_space: "Outputs", size: 193600, reuse_strategy: "resident" }
+    - role: "ROLE_GLB"
+      data:
+        - { data_space: "Weights", size: 0, reuse_strategy: "resident" }
+        - { data_space: "Inputs", size: 975, reuse_strategy: "resident" }
+        - { data_space: "Outputs", size: 17600, reuse_strategy: "resident" }
+    - role: "ROLE_BUFFER"
+      data:
+        - { data_space: "Weights", size: 22, reuse_strategy: "temporal" }
+        - { data_space: "Inputs",  size: 21, reuse_strategy: "temporal" }
+        - { data_space: "Outputs", size: 2, reuse_strategy: "temporal" }
+
+  data_flow_specs:
+    - role: "ROLE_DRAM"
+      properties:
+        sync_per_timestep: 1
+      schedule_template:
+        total_timesteps: 121
+        delta_events:
+          - trigger: { on_timestep: "default" }
+            name: "INITIAL_LOAD_DRAM_TO_GLB"
+            target_group: "1,"
+            delta:
+              - { data_space: "Weights", size: 22 ,target_role: "ROLE_GLB" }
+              - { data_space: "Inputs",  size: 975 ,target_role: "ROLE_GLB" }
+              - { data_space: "Outputs", size: 17600 ,target_role: "ROLE_GLB" }
+
+    - role: "ROLE_GLB"
+      properties:
+        sync_per_timestep: 0
+      schedule_template:
+        total_timesteps: 275
+        delta_events:
+          - trigger: { on_timestep_modulo: [11, 0] }
+            name: "MULTICAST_FILL_INPUTS"
+            target_group: *all_pes_group
+            delta:
+              - { data_space: "Inputs",  size: 11,target_role: "ROLE_BUFFER" }
+              - { data_space: "Weights", size: 0 ,target_role: "ROLE_BUFFER" }
+              - { data_space: "Outputs", size: 2, target_role: "ROLE_BUFFER" }
+
+          - trigger: { on_timestep: "fallback" }
+            name: "MULTICAST_DELTA_INPUTS_1"
+            target_group: *all_pes_group
+            delta:
+              - { data_space: "Inputs",  size: 1 ,target_role: "ROLE_BUFFER" }
+              - { data_space: "Weights", size: 0 ,target_role: "ROLE_BUFFER" }
+              - { data_space: "Outputs", size: 2 ,target_role: "ROLE_BUFFER" } 
+      
+      command_definitions:
+        - command_id: 0
+          name: "PROCESS_FULL_CONTEXT"
+          evict_payload: { Weights: 0, Inputs: 975, Outputs: 17600 }
+
+    - role: "ROLE_BUFFER"
+      properties:
+        compute_latency: 22
+      schedule_template:
+        total_timesteps: 1
+        delta_events: []
+      command_definitions:
+        - command_id: 0
+          name: "PROCESS_DELTA"
+          evict_payload: { Weights: 0, Inputs: 1, Outputs: 2 }
+        - command_id: 1
+          name: "PROCESS_FULL_CONTEXT"
+          evict_payload: { Weights: 0, Inputs: 11, Outputs: 2 }
+
 buffer_depth: 8 # <--- [建议修改] 稍微调大一点，避免初始调试时因缓冲区太小而产生干扰
 # size of flits, in bits
 flit_size: 32
