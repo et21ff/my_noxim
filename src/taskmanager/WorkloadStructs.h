@@ -97,7 +97,6 @@ struct RoleProperties {
 struct AtomicDispatchAction {
   std::string data_space; // "Weights", "Inputs", "Outputs"
   size_t size;
-  std::string target_group;
   PE_Role target_role;
 };
 

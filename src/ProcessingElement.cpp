@@ -251,7 +251,7 @@ void ProcessingElement::rxProcess() {
           // 调试日志
           std::cout << "@" << sc_time_stamp() << " [" << name() << "]: "
                     << "[RX_PORT0] Received Flit on VC " << vc_id
-                    << " src_id=" << flit.src_id << " dst_id=" << flit.dst_ids
+                    << " src_id=" << flit.src_id << " dst_id=" << flit.dst_id
                     << " flit_type=" << flit.flit_type
                     << " buffer_size=" << rx_buffer[vc_id].Size()
                     << " flit_data_type=" << DataType_to_str(flit.data_type)
@@ -473,7 +473,7 @@ void ProcessingElement::handle_tx_for_all_vcs() {
     std::cout << "@" << sc_time_stamp() << " [" << name() << "]: "
               << "[TX_VC" << vc << "] Sent Flit type=" << flit_to_send.flit_type
               << " src=" << flit_to_send.src_id
-              << " dst=" << flit_to_send.dst_ids
+              << " dst=" << flit_to_send.dst_id
               << " command_id=" << flit_to_send.command << std::endl;
 
     // 如果发送的是 TAIL Flit，从这个 VC 的队列中 pop
@@ -631,8 +631,6 @@ void ProcessingElement::reset_logic() {
     if (cmd.outputs > 0) {
       Packet pkt;
       pkt.src_id = local_id;
-      pkt.dst_ids.clear();
-      pkt.dst_ids.push_back(upstream_node_ids[0]);
       pkt.payload_data_size = cmd.outputs;
       pkt.data_type = DataType::OUTPUT;
       int bandwidth_scale =
@@ -794,19 +792,11 @@ void ProcessingElement::run_storage_logic() {
     std::cout << sc_time_stamp() << ": PE[" << local_id
               << "] Generating packet for task: "
               << "Type=" << DataType_to_str(selected_task.type)
-              << ", Size=" << selected_task.size;
-    for (auto target_id : selected_task.target_ids) {
-      std::cout << ", Target=" << target_id;
-    }
-    std::cout << std::endl;
+              << ", Size=" << selected_task.size << std::endl;
 
     Packet pkt;
     pkt.src_id = local_id;
     pkt.target_role = selected_task.target_role;
-
-    for (auto target_id : selected_task.target_ids) {
-      pkt.dst_ids.push_back(target_id);
-    }
 
     int bandwidth_scale =
         GlobalParams::hierarchical_config.get_level_config(level_index)
@@ -839,6 +829,7 @@ int ProcessingElement::get_command_to_send() // tofix
     dbg(sc_time_stamp(), name(),
         "[CMD_ERROR] No command definitions found for downstream role: " +
             role_to_str(nextRole));
+    assert(false && "cannot find available command");
     return -2; // 返回无效命令
   }
 
@@ -853,8 +844,9 @@ int ProcessingElement::get_command_to_send() // tofix
       (logical_timestamp + 1) % task_manager_->get_total_timesteps());
   // 这条命令需要在负载下被测试
 
-  for (const auto &sub_task : next_task.sub_tasks) {
-    int multicast_factor = sub_task.target_ids.size();
+  for (const DataDispatchInfo &sub_task : next_task.sub_tasks) {
+    // 不再使用 target_ids，multicast_factor 设为 1
+    int multicast_factor = 1;
     if (sub_task.type == DataType::WEIGHT)
       next_delta.weights += sub_task.size * multicast_factor;
     if (sub_task.type == DataType::INPUT)
@@ -865,15 +857,13 @@ int ProcessingElement::get_command_to_send() // tofix
 
   for (const auto &cmd : *commands) {
     // 比较推算出的 payload 和命令中定义的 payload
-    if (cmd.evict_payload.inputs ==
-            next_delta.inputs / downstream_node_ids.size() &&
-        cmd.evict_payload.outputs ==
-            next_delta.outputs / downstream_node_ids.size()) {
+    if (cmd.evict_payload.inputs == next_delta.inputs &&
+        cmd.evict_payload.outputs == next_delta.outputs) {
       // 找到了完全匹配的命令！
       return cmd.command_id;
     }
   }
-
+  assert(false && "cannot find available command");
   return -2;
 }
 Flit ProcessingElement::generate_next_flit_from_queue(
@@ -883,7 +873,6 @@ Flit ProcessingElement::generate_next_flit_from_queue(
 
   // 填充公共字段
   flit.src_id = packet.src_id;
-  flit.dst_ids = packet.dst_ids;
   flit.vc_id = packet.vc_id;
   flit.logical_timestamp = packet.logical_timestamp;
   flit.sequence_no = packet.size - packet.flit_left;

@@ -21,13 +21,11 @@
 struct DataDispatchInfo {
   int id;
   DataType type;
-  size_t size; // 数据大小（字节）
-  std::unordered_set<int> target_ids;
+  size_t size;         // 数据大小（字节）
   PE_Role target_role; // 目标角色
 
   DataDispatchInfo() : size(0) {}
-  DataDispatchInfo(size_t s, const std::unordered_set<int> &targets)
-      : size(s), target_ids(targets) {}
+  DataDispatchInfo(size_t s) : size(s) {}
 };
 
 struct DispatchTask {
@@ -37,24 +35,12 @@ struct DispatchTask {
   bool is_complete() const { return sub_tasks.empty(); }
 
   void record_completion(DataType type, int target_id, size_t size) {
-    // 遍历列表，找到匹配的子任务
-    for (auto &task : sub_tasks) {
-      // 匹配类型和大小
-      if (task.type == type && task.size == size) {
-        // [关键] 在这个任务的 target set 中检查并删除
-        if (task.target_ids.count(target_id)) {
-          task.target_ids.erase(target_id);
-          // 找到并处理后，就可以退出了
-          // 这个 break 假设了 (type, size, target_id) 的组合是唯一的
-          break;
-        }
-      }
-    }
-
-    // [核心] 使用 erase-remove idiom 一次性清理所有已完成的子任务
+    // 由于不再使用 target_ids，简化完成逻辑
+    // 直接删除匹配的子任务
     sub_tasks.erase(std::remove_if(sub_tasks.begin(), sub_tasks.end(),
-                                   [](const DataDispatchInfo &task) {
-                                     return task.target_ids.empty();
+                                   [&](const DataDispatchInfo &task) {
+                                     return task.type == type &&
+                                            task.size == size;
                                    }),
                     sub_tasks.end());
   }
@@ -69,8 +55,7 @@ struct DispatchTask {
       if (!first)
         result += ", ";
       result += std::string(DataType_to_str(task.type)) + "(" +
-                std::to_string(task.size) + "B, " +
-                std::to_string(task.target_ids.size()) + " targets)";
+                std::to_string(task.size) + "B)";
       first = false;
     }
     result += "]";
@@ -100,8 +85,6 @@ private:
   const RoleWorkingSet *
   find_working_set_for_role(const std::string &role) const;
 
-  std::unordered_set<int>
-  resolve_target_group(const std::string &target_group) const;
   void create_dispatch_task_from_event(DispatchTask &task,
                                        const DeltaEvent &event,
                                        int timestep) const;

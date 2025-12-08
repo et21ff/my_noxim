@@ -175,13 +175,6 @@ template <> struct convert<AtomicDispatchAction> {
     rhs.size = node["size"].as<size_t>();
     rhs.target_role = stringToRole(node["target_role"].as<std::string>());
 
-    // [核心修改] target_group 是可选的
-    if (node["target_group"]) {
-      rhs.target_group = node["target_group"].as<std::string>();
-    } else {
-      rhs.target_group = ""; // 留空，表示需要继承
-    }
-
     return true;
   }
 };
@@ -196,27 +189,9 @@ template <> struct convert<DeltaEvent> {
     rhs.name = node["name"].as<std::string>();
     rhs.trigger = node["trigger"].as<Trigger>();
 
-    // [核心修改] 读取顶层的、可选的 target_group
-    std::string default_target_group = "";
-    if (node["target_group"]) {
-      default_target_group = node["target_group"].as<std::string>();
-    }
-
     const Node &delta_node = node["delta"];
     if (delta_node.IsSequence()) {
       rhs.actions = delta_node.as<std::vector<AtomicDispatchAction>>();
-
-      // [核心修改] 遍历并应用继承
-      for (auto &action : rhs.actions) {
-        if (action.target_group.empty() && !default_target_group.empty()) {
-          action.target_group = default_target_group;
-        }
-        // 验证每个 action 最终都有一个 target_group
-        if (action.target_group.empty()) {
-          // 如果 action 自己没有，顶层也没有，这是一个错误
-          return false;
-        }
-      }
     } else {
       return false;
     }
@@ -489,8 +464,6 @@ inline void printWorkloadConfig(const WorkloadConfig &config) {
 
       for (const auto &event : spec.schedule_template->delta_events) {
         std::cout << "        - Event: " << event.name << std::endl;
-        std::cout << "          Target Group: " << event.actions[0].target_group
-                  << std::endl;
         std::cout << "          Trigger Type: " << event.trigger.type
                   << std::endl;
         if (!event.trigger.params.empty()) {

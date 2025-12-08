@@ -62,7 +62,7 @@ inline ostream &operator<<(ostream &os, const Flit &flit) {
 
     os << "### FLIT ###" << endl;
     os << "Source Tile[" << flit.src_id << "]" << endl;
-    os << "Destination Tile[" << flit.dst_ids << "]" << endl;
+    os << "Destination Tile[" << flit.dst_id << "]" << endl;
     switch (flit.flit_type) {
     case FLIT_TYPE_HEAD:
       os << "Flit Type is HEAD" << endl;
@@ -93,20 +93,8 @@ inline ostream &operator<<(ostream &os, const Flit &flit) {
       os << "T";
       break;
     }
-    if (flit.dst_ids.size() > 1) {
-      os << flit.sequence_no << ", " << flit.src_id << "->";
-      os << " M{";
-      for (size_t i = 0; i < flit.dst_ids.size(); i++) {
-        os << flit.dst_ids[i];
-        if (i != flit.dst_ids.size() - 1)
-          os << ",";
-      }
-      os << "}";
-      os << " VC " << flit.vc_id << ")";
-    } else {
-      os << flit.sequence_no << ", " << flit.src_id << "->" << flit.dst_ids
-         << " VC " << flit.vc_id << ")";
-    }
+    os << flit.sequence_no << ", " << flit.src_id << "->" << flit.dst_id
+       << " VC " << flit.vc_id << ")";
   }
 
   return os;
@@ -151,7 +139,7 @@ inline ostream &operator<<(ostream &os, const Coord &coord) {
 
 inline void sc_trace(sc_trace_file *tf, const Flit &flit, const string &name) {
   sc_trace(tf, flit.src_id, name + ".src_id");
-  sc_trace(tf, flit.dst_ids[0], name + ".dst_id");
+  sc_trace(tf, flit.dst_id, name + ".dst_id");
   sc_trace(tf, flit.vc_id, name + ".vc_id");
   sc_trace(tf, flit.flit_type, name + ".flit_type");
   sc_trace(tf, flit.sequence_no, name + ".sequence_no");

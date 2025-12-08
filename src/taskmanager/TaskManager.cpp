@@ -168,13 +168,9 @@ void TaskManager::Configure(const WorkloadConfig &config,
   if (!all_tasks_.empty()) {
     auto example_task = all_tasks_[0];
     size_t output_size = 0;
-    std::unordered_set<int> all_output_targets;
     for (const auto &sub_task : example_task.sub_tasks) {
       if (sub_task.type == DataType::OUTPUT) {
         output_size += sub_task.size;
-        for (auto target : sub_task.target_ids) {
-          all_output_targets.insert(target);
-        }
       }
     }
 
@@ -265,32 +261,6 @@ DataDelta TaskManager::get_current_working_set() const {
 
   return current_set;
 }
-std::unordered_set<int>
-TaskManager::resolve_target_group(const std::string &target_group) const {
-  std::unordered_set<int> targets;
-
-  if (target_group == "ALL_COMPUTE_PES") {
-    // 假设计算PE的ID从某个范围开始
-    // 这里使用简单的假设：ID 1-15 是计算PE
-    for (int i = 1; i <= 15; ++i) {
-      targets.insert(i);
-    }
-  } else {
-    // 尝试解析为具体的ID列表
-    std::stringstream ss(target_group);
-    std::string item;
-    while (std::getline(ss, item, ',')) {
-      try {
-        int id = std::stoi(item);
-        targets.insert(id);
-      } catch (const std::exception &) {
-        // 忽略无效的ID
-      }
-    }
-  }
-
-  return targets;
-}
 
 /**
  * @brief 根据单个 DeltaEvent，为 DispatchTask 填充子任务
@@ -322,20 +292,21 @@ void TaskManager::create_dispatch_task_from_event(DispatchTask &task,
 
     // 2. 解析目标组 (target_group -> vector<int>)
     // (假设 resolve_target_group 已经实现，它会查询 logical_architecture 配置)
-    std::unordered_set<int> target_ids =
-        resolve_target_group(action.target_group);
-    if (target_ids.empty()) {
-      // 如果目标组为空或未找到，则跳过这个 action
-      dbg(sc_time_stamp(), "TaskManager",
-          "[WARNING] No valid targets found for group '" + action.target_group +
-              "'. Skipping.");
-      continue;
-    }
+    // std::unordered_set<int> target_ids =
+    //     resolve_target_group(action.target_group);
+    // if (target_ids.empty()) {
+    //   // 如果目标组为空或未找到，则跳过这个 action
+    //   dbg(sc_time_stamp(), "TaskManager",
+    //       "[WARNING] No valid targets found for group '" +
+    //       action.target_group +
+    //           "'. Skipping.");
+    //   continue;
+    // }
 
     DataDispatchInfo sub_task_info;
     sub_task_info.type = type;
     sub_task_info.size = action.size;
-    sub_task_info.target_ids = target_ids;
+    // sub_task_info.target_ids = target_ids;
     sub_task_info.target_role = action.target_role;
     task.sub_tasks.push_back(sub_task_info);
   }
