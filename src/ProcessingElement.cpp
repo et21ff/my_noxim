@@ -618,7 +618,7 @@ void ProcessingElement::reset_logic() {
       pkt.command = -1; // 表示这是一个回送包
       pkt.is_multicast = false;
       pkt.vc_id = 2; // 回送包使用vc 0
-      pkt.split_remaining = 0;
+
       pkt.target_role = static_cast<PE_Role>(static_cast<int>(role) - 1);
       // dbg(sc_time_stamp(), name(), "[RESET_LOGIC] Generating output return
       // Packet to PE " + std::to_string(pkt.dst_id) +
@@ -768,8 +768,7 @@ void ProcessingElement::run_storage_logic() {
     std::cout << sc_time_stamp() << ": PE[" << local_id
               << "] Generating packet for task: "
               << "Type=" << DataType_to_str(selected_task.type)
-              << ", Size=" << selected_task.size
-              << ", Split Remaining=" << selected_task.split_remaining;
+              << ", Size=" << selected_task.size;
     for (auto target_id : selected_task.target_ids) {
       std::cout << ", Target=" << target_id;
     }
@@ -799,7 +798,6 @@ void ProcessingElement::run_storage_logic() {
         (selected_task.size + bandwidth_scale - 1) / bandwidth_scale +
         2; // 计算所需Flit数（含头尾）
     pkt.command = command_to_send;
-    pkt.split_remaining = selected_task.split_remaining;
 
     // 将Packet推入对应的VC队列
     packet_queues_[vc_id].push(pkt);
@@ -819,12 +817,16 @@ int ProcessingElement::get_command_to_send() // tofix
     return -2; // 返回无效命令
   }
 
-  if (logical_timestamp + 1 >= task_manager_->get_total_timesteps()) {
+  if (role == ROLE_GLB &&
+      logical_timestamp + 1 >= task_manager_->get_total_timesteps() &&
+      task_manager_->get_command_definition(pending_commands_.begin()->second)
+              .weights > task_manager_->get_current_working_set().weights) {
     return commands->size() + 1;
   }
   DataDelta next_delta;
-  DispatchTask next_task =
-      task_manager_->get_task_for_timestep(logical_timestamp + 1);
+  DispatchTask next_task = task_manager_->get_task_for_timestep(
+      (logical_timestamp + 1) % task_manager_->get_total_timesteps());
+  // 这条命令需要在负载下被测试
 
   for (const auto &sub_task : next_task.sub_tasks) {
     int multicast_factor = sub_task.target_ids.size();
@@ -869,7 +871,7 @@ Flit ProcessingElement::generate_next_flit_from_queue(
   flit.hub_relay_node = NOT_VALID;
   flit.data_type = packet.data_type;
   flit.command = packet.command;
-  flit.split_remaining = packet.split_remaining;
+
   flit.target_role = packet.target_role;
 
   // 确定flit类型

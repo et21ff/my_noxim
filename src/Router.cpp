@@ -735,6 +735,7 @@ void Router::configure(const int _id, const int _level,
     return_vc_id = 2;
     is_aggregation = GlobalParams::hierarchical_config.get_level_config(local_level).aggregate;
     aggregation_entry.expected_port_count = GlobalParams::fanouts_per_level[local_level];
+    int down_port_offset = (local_level > 0) ? 1 + NUM_LOCAL_PORTS : NUM_LOCAL_PORTS;
 
     const LevelConfig &level_config =
         GlobalParams::hierarchical_config.get_level_config(local_level);
@@ -743,9 +744,21 @@ void Router::configure(const int _id, const int _level,
     if (level_config.has_routing_patterns)
     {
         this->routing_patterns = level_config.routing_patterns;
+
+        // 直接应用offset到所有路由模式
+        for (auto &pair : this->routing_patterns)
+        {
+            RoutingPattern &pattern = pair.second;
+            for (auto &group : pattern.port_groups)
+            {
+                for (int &port : group)
+                {
+                    port += down_port_offset;
+                }
+            }
+        }
         this->use_predefined_routing = true;
     }
-
     start_from_port = (all_flit_rx.size() > 0) ? getLogicalPortIndex(PORT_LOCAL, 0) : 0; // Start from LOCAL port
 
     // initPorts();
@@ -824,7 +837,17 @@ bool Router::performAggregation()
 
     // 设置聚合flit的属性
     aggregated_flit = aggregation_entry.port_flits.begin()->second;
-    aggregated_flit.payload_data_size *= aggregation_entry.expected_port_count;
+    // aggregated_flit.payload_data_size *= aggregation_entry.expected_port_count;
+
+    if (routing_patterns.count(aggregated_flit.data_type) > 0)
+    {
+        aggregated_flit.payload_data_size = routing_patterns[aggregated_flit.data_type].port_groups.size() * aggregated_flit.payload_data_size;
+    }
+    else
+    {
+        aggregated_flit.payload_data_size *= aggregation_entry.expected_port_count;
+    }
+
     aggregated_flit.src_id = -1;
 
     // 路由并预留上游端口

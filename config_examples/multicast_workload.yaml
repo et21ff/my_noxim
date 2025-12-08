@@ -11,59 +11,55 @@
 # =============================================================================
 topology: "HIERARCHICAL"
 
-# 层次化详细配置
-hierarchical_config:
-  num_levels: 3
-  connection_mode: "tree"
-  word_bits: 8
+hierarchical_config:  
+  num_levels: 3  
+  connection_mode: "tree"  
+  word_bits: 8  
+    
+  level_configs:  
+    - level: 0  
+      node_type: "DRAM"  
+      buffer_size: 4164  
+      roles: "ROLE_DRAM"  
+      bandwidth: 128  
+      fanouts: 1  
+      routing_patterns:    
+        INPUT:    
+          mode: "INPUT"    
+          port_groups: [[0]]  # DOWN[0] 从0开始  
+        WEIGHT:    
+          mode: "WEIGHT"    
+          port_groups: [[0]]    
+        OUTPUT:    
+          mode: "OUTPUT"    
+          port_groups: [[0]]    
   
-  # 每层的详细配置
-  level_configs:
-    - level: 0
-      node_type: "DRAM"
-      buffer_size: 4164
-      roles: "ROLE_DRAM"
-      bandwidth: 128
-      fanouts: 1  # 该层每个节点连接到下一层的节点数
-      routing_patterns:  
-        INPUT:  
-          mode: "INPUT"  
-          port_groups: [[1]]  # 端口1是DOWN[0]  
-        WEIGHT:  
-          mode: "WEIGHT"  
-          port_groups: [[1]]  
-        OUTPUT:  
-          mode: "OUTPUT"  
-          port_groups: [[1]]  
-
-      
-    - level: 1
-      node_type: "GLB"
-      buffer_size: 4164
-      roles: "ROLE_GLB"
-      bandwidth: 128
-      fanouts: 16  # 该层每个节点连接到下一层的节点数
-      aggregate: true
-      routing_patterns:  
-        INPUT:  
-          mode: "INPUT"  
-          port_groups: [[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]]  
-        WEIGHT:  
-          mode: "WEIGHT"  
-          port_groups: [[2], [3], [4], [5], [6], [7], [8], [9],   
-                        [10], [11], [12], [13], [14], [15], [16], [17]]  
-        OUTPUT:  
-          mode: "OUTPUT"  
-          port_groups: [[2], [3], [4], [5], [6], [7], [8], [9],   
-                        [10], [11], [12], [13], [14], [15], [16], [17]]  
-      
-    - level: 2
-      node_type: "COMPUTE"
-      buffer_size: 64  
-      roles: "ROLE_BUFFER"
-      bandwidth: 8
+    - level: 1  
+      node_type: "GLB"  
+      buffer_size: 4164  
+      roles: "ROLE_GLB"  
+      bandwidth: 128  
+      fanouts: 16  
+      aggregate: true  
+      routing_patterns:    
+        INPUT:    
+          mode: "INPUT"    
+          port_groups: [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]]  # DOWN[0]到DOWN[15]  
+        WEIGHT:    
+          mode: "WEIGHT"    
+          port_groups: [[0], [1], [2], [3], [4], [5], [6], [7],   
+                        [8], [9], [10], [11], [12], [13], [14], [15]]    
+        OUTPUT:    
+          mode: "OUTPUT"    
+          port_groups: [[0], [1], [2], [3], [4], [5], [6], [7],   
+                        [8], [9], [10], [11], [12], [13], [14], [15]]    
+        
+    - level: 2  
+      node_type: "COMPUTE"  
+      buffer_size: 64    
+      roles: "ROLE_BUFFER"  
+      bandwidth: 8  
       fanouts: 0
-      
 
 buffer_depth: 8 # <--- [建议修改] 稍微调大一点，避免初始调试时因缓冲区太小而产生干扰
 # size of flits, in bits
@@ -165,8 +161,8 @@ workload:
             multicast: true
             delta:
               - { data_space: "Inputs",  size: 16,target_role: "ROLE_BUFFER" }
-              - { data_space: "Weights", size: 1 , multicast: false , split_remaining: 2 ,target_role: "ROLE_BUFFER" }
-              - { data_space: "Outputs", size: 16, multicast: false , split_remaining: 2, target_role: "ROLE_BUFFER" }
+              - { data_space: "Weights", size: 1 , multicast: false ,target_role: "ROLE_BUFFER" }
+              - { data_space: "Outputs", size: 16, multicast: false , target_role: "ROLE_BUFFER" }
 
           - trigger: { on_timestep: "fallback" }
             name: "MULTICAST_DELTA_INPUTS_1"
