@@ -227,11 +227,12 @@ template <> struct convert<RoleWorkingSet> {
     }
 
     // 必需字段检查
-    if (!node["role"] || !node["data"]) {
+    if (!node["role"] || !node["data"] || !node["outputs_required_count"]) {
       return false;
     }
 
     rhs.role = node["role"].as<std::string>();
+    rhs.outputs_required_count = node["outputs_required_count"].as<size_t>();
     rhs.data = node["data"].as<std::vector<WorkspaceData>>();
 
     return true;

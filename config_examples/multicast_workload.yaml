@@ -117,16 +117,19 @@ traffic_table_filename: "empty_traffic.txt" # <--- 创建一个空的txt文件
 workload:
   working_set:
     - role: "ROLE_DRAM"
+      outputs_required_count: 512
       data:
         - { data_space: "Weights", size: 3072, reuse_strategy: "resident" }
         - { data_space: "Inputs", size: 576, reuse_strategy: "resident" }
         - { data_space: "Outputs", size: 512, reuse_strategy: "resident" }
     - role: "ROLE_GLB"
+      outputs_required_count: 256
       data:
         - { data_space: "Weights", size: 3072, reuse_strategy: "resident" }
         - { data_space: "Inputs", size: 576, reuse_strategy: "resident" }
         - { data_space: "Outputs", size: 512, reuse_strategy: "resident" }
     - role: "ROLE_BUFFER"
+      outputs_required_count: 0
       data:
         - { data_space: "Weights", size: 1, reuse_strategy: "temporal" }
         - { data_space: "Inputs",  size: 16, reuse_strategy: "temporal" }

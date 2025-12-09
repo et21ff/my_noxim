@@ -87,7 +87,10 @@ void ProcessingElement::configure(int id, int level_idx,
                                               dataset.outputs);
     }
 
-    outputs_required_count_ = task_manager_->get_current_working_set().outputs;
+    // 使用配置的outputs_required_count值
+    auto *role_working_set =
+        task_manager_->get_working_set_for_role("ROLE_DRAM");
+    outputs_required_count_ = role_working_set->outputs_required_count;
     outputs_received_count_ = 0;
 
     // 状态初始化
@@ -104,8 +107,10 @@ void ProcessingElement::configure(int id, int level_idx,
     // 配置TaskManager
     task_manager_ = std::unique_ptr<TaskManager>(new TaskManager());
     task_manager_->Configure(GlobalParams::workload, "ROLE_GLB");
-    outputs_required_count_ =
-        task_manager_->get_current_working_set().outputs / 2;
+    // 使用配置的outputs_required_count值
+    auto *role_working_set =
+        task_manager_->get_working_set_for_role("ROLE_GLB");
+    outputs_required_count_ = role_working_set->outputs_required_count;
     outputs_received_count_ = 0;
 
     this->downstream_node_ids.clear();
@@ -142,7 +147,10 @@ void ProcessingElement::configure(int id, int level_idx,
       weight_eviction_amount_ = 0;   // 默认值：不驱逐权重
     }
 
-    outputs_required_count_ = 0;
+    // 使用配置的outputs_required_count值
+    auto *role_working_set =
+        task_manager_->get_working_set_for_role("ROLE_BUFFER");
+    outputs_required_count_ = role_working_set->outputs_required_count;
     outputs_received_count_ = 0;
     compute_cycles = 0;
 

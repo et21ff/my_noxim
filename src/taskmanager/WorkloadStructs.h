@@ -209,6 +209,7 @@ struct WorkspaceData {
 struct RoleWorkingSet {
   std::string role;                // 角色名称
   std::vector<WorkspaceData> data; // 数据列表
+  size_t outputs_required_count; // 必需字段：期望接收的输出数据量
 
   bool is_valid() const {
     if (role.empty())
