@@ -10,6 +10,7 @@
 
 #include "ProcessingElement.h"
 #include "dbg.h"
+#include <cmath>
 #include <numeric>
 int ProcessingElement::randInt(int min, int max) {
   return min + (int)((double)(max - min + 1) * rand() / (RAND_MAX + 1.0));
@@ -732,6 +733,36 @@ std::string ProcessingElement::role_to_str(const PE_Role &role) {
     return "UNKNOWN";
   }
 }
+
+// 计算从当前层到目标层之间的实际目标数量
+int ProcessingElement::calculate_target_count(int current_level,
+                                              DataType data_type,
+                                              PE_Role target_role) {
+  int target_count = 1;
+
+  // 从当前层开始，遍历到目标层之前
+  for (int level = current_level;; level++) {
+    const LevelConfig &level_config =
+        GlobalParams::hierarchical_config.get_level_config(level);
+
+    // 检查是否到达目标层
+    if (level_config.roles == target_role) {
+      break; // 到达目标层，停止累乘
+    }
+
+    // 检查该层是否有路由模式配置
+    if (level_config.has_routing_patterns) {
+      auto it = level_config.routing_patterns.find(data_type);
+      if (it != level_config.routing_patterns.end()) {
+        // 累乘该数据类型的port_groups数量
+        target_count *= it->second.port_groups.size();
+      }
+    }
+  }
+
+  return target_count;
+}
+
 // in PE.cpp
 void ProcessingElement::run_storage_logic() {
   if (role != ROLE_GLB && role != ROLE_DRAM) {
@@ -798,6 +829,10 @@ void ProcessingElement::run_storage_logic() {
     pkt.src_id = local_id;
     pkt.target_role = selected_task.target_role;
 
+    // 计算实际的目标数量
+    int target_count = calculate_target_count(level_index, selected_task.type,
+                                              selected_task.target_role);
+
     int bandwidth_scale =
         GlobalParams::hierarchical_config.get_level_config(level_index)
             .bandwidth /
@@ -806,12 +841,31 @@ void ProcessingElement::run_storage_logic() {
     pkt.payload_data_size = selected_task.size;
     pkt.logical_timestamp = logical_timestamp;
     pkt.data_type = selected_task.type;
-    // pkt.is_output = (selected_task.type == DataType::OUTPUT);
-    // pkt.size = pkt.flit_left = (selected_task.size+bandwidth_scale-1) /
-    // bandwidth_scale + 2; // 计算所需Flit数（含头尾）
-    pkt.size = pkt.flit_left =
-        (selected_task.size + bandwidth_scale - 1) / bandwidth_scale +
-        2; // 计算所需Flit数（含头尾）
+
+    if (target_count > 1) {
+      // 多目标场景：使用当前层实际带宽
+      int current_bandwidth =
+          GlobalParams::hierarchical_config.get_level_config(level_index)
+              .bandwidth;
+
+      // 步骤A：计算单层切片是否溢出
+      double R = (double)(target_count * 8) / current_bandwidth;
+
+      // 步骤B：确定单层Flit数（向上取整）
+      int Nslice;
+      if (R <= 1.0) {
+        Nslice = 1;
+      } else {
+        Nslice = (int)ceil(R);
+      }
+
+      // 步骤C：计算总长度
+      pkt.size = pkt.flit_left = Nslice * selected_task.size + 2;
+    } else {
+      // 单目标场景：保持原有计算
+      pkt.size = pkt.flit_left =
+          (selected_task.size + bandwidth_scale - 1) / bandwidth_scale + 2;
+    }
     pkt.command = command_to_send;
 
     // 将Packet推入对应的VC队列

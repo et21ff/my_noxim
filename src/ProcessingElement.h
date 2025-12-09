@@ -231,6 +231,10 @@ public: // 建议将内部状态变量设为私有
 
   unsigned int getQueueSize() const;
 
+  // 计算从当前层到目标层之间的实际目标数量
+  int calculate_target_count(int current_level, DataType data_type,
+                             PE_Role target_role);
+
   // 新增：动态配置函数
   void configure(int id, int level_idx,
                  const HierarchicalConfig &topology_config);

@@ -125,7 +125,7 @@ workload:
             name: "INITIAL_LOAD_DRAM_TO_GLB"
             target_group: "1,"
             delta:
-              - { data_space: "Weights", size: 22 ,target_role: "ROLE_GLB" }
+              - { data_space: "Weights", size: 22 ,target_role: "ROLE_BUFFER" }
               - { data_space: "Inputs",  size: 975 ,target_role: "ROLE_GLB" }
               - { data_space: "Outputs", size: 17600 ,target_role: "ROLE_GLB" }
 
