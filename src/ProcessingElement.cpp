@@ -570,22 +570,41 @@ void ProcessingElement::txProcess() {
   // --- 步骤 B: [核心替换] 调用新的统一发送处理器 ---
   handle_tx_for_all_vcs();
 
-  if (role != ROLE_BUFFER &&
-      task_manager_->is_in_sync_points(logical_timestamp) &&
-      outputs_received_count_ < outputs_required_count_) {
-    return;
+  // 计算当前需要的输出数量
+  size_t required_outputs = outputs_required_count_;
+
+  // 如果是最后一个时间步且是同步点，需要2倍输出（补偿第一个未同步的债务）
+  if (static_cast<size_t>(logical_timestamp) ==
+          task_manager_->get_total_timesteps() - 1 &&
+      task_manager_->is_in_sync_points(logical_timestamp)) {
+    required_outputs *= 2;
   }
 
-  if (role != ROLE_DRAM &&
-      logical_timestamp == task_manager_->get_total_timesteps() - 1 &&
-      outputs_received_count_ < outputs_required_count_ * 2) {
-    return;
+  // 同步检查：有sync_point的节点
+  if (role != ROLE_BUFFER &&
+      task_manager_->is_in_sync_points(logical_timestamp) &&
+      outputs_received_count_ < required_outputs) {
+    return; // 阻塞时间步递增
+  }
+
+  // 所有节点（包括无sync_point的节点）在最后一个时间步检查输出是否满足
+  if (role != ROLE_BUFFER &&
+      static_cast<size_t>(logical_timestamp) ==
+          task_manager_->get_total_timesteps() - 1 &&
+      outputs_received_count_ < outputs_required_count_) {
+    return; // 阻塞时间步递增
   }
 
   if (role != ROLE_BUFFER && current_dispatch_task_.sub_tasks.empty() &&
       packet_queues_are_empty() && dispatch_in_progress_) {
     if (task_manager_->is_in_sync_points(logical_timestamp)) {
-      outputs_received_count_ -= outputs_required_count_;
+      // 最后一个同步点重置双倍计数
+      if (static_cast<size_t>(logical_timestamp) ==
+          task_manager_->get_total_timesteps() - 1) {
+        outputs_received_count_ -= outputs_required_count_ * 2;
+      } else {
+        outputs_received_count_ -= outputs_required_count_;
+      }
     }
     logical_timestamp++;
     dispatch_in_progress_ = false;

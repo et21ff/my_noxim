@@ -190,7 +190,9 @@ void TaskManager::Configure(const WorkloadConfig &config,
       }
     }
 
-    sync_points_.erase(2);
+    if (sync_points_.size() > 1) {
+      sync_points_.erase(sync_points_.begin());
+    }
   }
 
   std::cout << "TaskManager: Configuration completed with " << all_tasks_.size()

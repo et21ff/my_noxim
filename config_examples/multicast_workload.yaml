@@ -138,7 +138,7 @@ workload:
   data_flow_specs:
     - role: "ROLE_DRAM"
       properties:
-        sync_per_timestep: 1
+        sync_per_timestep: 0
       schedule_template:
         total_timesteps: 1
         delta_events:
