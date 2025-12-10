@@ -359,10 +359,15 @@ void Router::txProcess() {
               routing_patterns.count(flit.data_type) > 0) {
             Flit &flit = (*buffers[selected.input])[selected.vc].FrontRef();
             flit.current_forward++;
-            const RoutingPattern &pattern = routing_patterns[flit.data_type];
-            if (flit.current_forward < pattern.forward_count) {
-              should_pop = false; // 还未完成转发，不pop
+            // 只有头flit和尾flit才可能复制多份
+            if (flit.flit_type == FLIT_TYPE_HEAD ||
+                flit.flit_type == FLIT_TYPE_TAIL) {
+              const RoutingPattern &pattern = routing_patterns[flit.data_type];
+              if (flit.current_forward < pattern.forward_count) {
+                should_pop = false; // 还未完成转发，不pop
+              }
             }
+            // BODY flit 直接弹出，不参与复制计数
           }
 
           flit = (*buffers[selected.input])[selected.vc].Front();
