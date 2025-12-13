@@ -12,12 +12,15 @@
 #include "dbg.h"
 #include <cmath>
 #include <numeric>
-int ProcessingElement::randInt(int min, int max) {
+int ProcessingElement::randInt(int min, int max)
+{
   return min + (int)((double)(max - min + 1) * rand() / (RAND_MAX + 1.0));
 }
 
-ProcessingElement::~ProcessingElement() {
-  if (unified_buffer_manager_) {
+ProcessingElement::~ProcessingElement()
+{
+  if (unified_buffer_manager_)
+  {
     delete unified_buffer_manager_;
     unified_buffer_manager_ = nullptr;
   }
@@ -25,7 +28,8 @@ ProcessingElement::~ProcessingElement() {
 
 // 新增：动态配置函数实现
 void ProcessingElement::configure(int id, int level_idx,
-                                  const HierarchicalConfig &topology_config) {
+                                  const HierarchicalConfig &topology_config)
+{
   //========================================================================
   // I. 保存基础信息
   //========================================================================
@@ -53,22 +57,26 @@ void ProcessingElement::configure(int id, int level_idx,
 
   // 配置上游
   int parent_id = GlobalParams::parent_map[this->local_id];
-  if (parent_id != -1) {
+  if (parent_id != -1)
+  {
     this->upstream_node_ids.push_back(parent_id);
   }
 
   // 配置下游
   int num_children = GlobalParams::fanouts_per_level[level_idx];
   int *children = GlobalParams::child_map[this->local_id];
-  for (int i = 0; i < num_children; i++) {
+  for (int i = 0; i < num_children; i++)
+  {
     this->downstream_node_ids.push_back(children[i]);
   }
 
   //========================================================================
   // IV. 执行角色专属的初始化
   //========================================================================
-  switch (this->role) {
-  case ROLE_DRAM: {
+  switch (this->role)
+  {
+  case ROLE_DRAM:
+  {
     // 共享模式
     unified_buffer_manager_ = new BufferManager(max_capacity);
 
@@ -76,13 +84,15 @@ void ProcessingElement::configure(int id, int level_idx,
     task_manager_ = std::unique_ptr<TaskManager>(new TaskManager());
     task_manager_->Configure(GlobalParams::workload, "ROLE_DRAM");
     auto dataset = task_manager_->get_current_working_set();
-    if (dataset.inputs >= 0 && dataset.weights >= 0) {
+    if (dataset.inputs >= 0 && dataset.weights >= 0)
+    {
       unified_buffer_manager_->OnDataReceived(DataType::INPUT, dataset.inputs);
       unified_buffer_manager_->OnDataReceived(DataType::WEIGHT,
                                               dataset.weights);
     }
 
-    if (dataset.outputs >= 0) {
+    if (dataset.outputs >= 0)
+    {
       unified_buffer_manager_->OnDataReceived(DataType::OUTPUT,
                                               dataset.outputs);
     }
@@ -99,7 +109,8 @@ void ProcessingElement::configure(int id, int level_idx,
     break;
   }
 
-  case ROLE_GLB: {
+  case ROLE_GLB:
+  {
     // 共享模式
     unified_buffer_manager_ = new BufferManager(max_capacity);
     current_data_size.write(unified_buffer_manager_->GetCurrentSize());
@@ -115,14 +126,16 @@ void ProcessingElement::configure(int id, int level_idx,
 
     this->downstream_node_ids.clear();
     for (auto compute_node :
-         GlobalParams::storage_to_compute_map[this->local_id]) {
+         GlobalParams::storage_to_compute_map[this->local_id])
+    {
       this->downstream_node_ids.push_back(compute_node);
     }
 
     break;
   }
 
-  case ROLE_BUFFER: {
+  case ROLE_BUFFER:
+  {
     // 独立模式
     std::map<DataType, size_t> type_caps;
     type_caps[DataType::INPUT] = level_config.buffer_size[0];
@@ -139,10 +152,13 @@ void ProcessingElement::configure(int id, int level_idx,
     // 从配置中读取自驱逐参数
     const RoleProperties *props =
         task_manager_->get_properties_for_role("ROLE_BUFFER");
-    if (props) {
+    if (props)
+    {
       eviction_interval_cycles_ = props->eviction_interval_cycles;
       weight_eviction_amount_ = props->weight_eviction_amount;
-    } else {
+    }
+    else
+    {
       eviction_interval_cycles_ = 0; // 默认值：不启用自驱逐
       weight_eviction_amount_ = 0;   // 默认值：不驱逐权重
     }
@@ -161,7 +177,8 @@ void ProcessingElement::configure(int id, int level_idx,
     break;
   }
 
-  case ROLE_DISTRIBUTOR: {
+  case ROLE_DISTRIBUTOR:
+  {
     break;
   }
 
@@ -181,27 +198,33 @@ void ProcessingElement::configure(int id, int level_idx,
        << role_to_str(role) << " at level " << level_idx << endl;
 }
 
-int ProcessingElement::find_child_id(int id) {
-  for (size_t i = 0; i < downstream_node_ids.size(); i++) {
+int ProcessingElement::find_child_id(int id)
+{
+  for (size_t i = 0; i < downstream_node_ids.size(); i++)
+  {
     if (downstream_node_ids[i] == id)
       return i;
   }
 }
 
-void ProcessingElement::rxProcess() {
+void ProcessingElement::rxProcess()
+{
   // --- 0. 复位逻辑 ---
-  if (reset.read()) {
+  if (reset.read())
+  {
     // 重置接收状态计数器
     main_receiving_size_ = 0;
     output_receiving_size_ = 0;
 
-    for (int i = 0; i < NUM_LOCAL_PORTS; ++i) {
+    for (int i = 0; i < NUM_LOCAL_PORTS; ++i)
+    {
       ack_rx[i].write(0);
       current_level_rx[i] = 0;
 
       // 重置 buffer_full_status_rx 输出端口（表示所有VC都未满）
       TBufferFullStatus reset_status;
-      for (int vc = 0; vc < MAX_VIRTUAL_CHANNELS; ++vc) {
+      for (int vc = 0; vc < MAX_VIRTUAL_CHANNELS; ++vc)
+      {
         reset_status.mask[vc] = false; // false 表示未满
       }
       buffer_full_status_rx[i].write(reset_status);
@@ -209,7 +232,8 @@ void ProcessingElement::rxProcess() {
 
     // 清空所有缓冲区
     rx_buffer.fill(Buffer()); // 重新构造所有Buffer
-    for (int vc = 0; vc < GlobalParams::n_virtual_channels; vc++) {
+    for (int vc = 0; vc < GlobalParams::n_virtual_channels; vc++)
+    {
       rx_buffer[vc].SetMaxBufferSize(GlobalParams::buffer_depth);
       rx_buffer[vc].setLabel(string(name()) + "->buffer[0]");
     }
@@ -229,13 +253,16 @@ void ProcessingElement::rxProcess() {
   // 阶段二: 接收新的入站 Flit
   // ==========================================================
   // 这部分是物理接收逻辑，负责将新来的 Flit Push 进 rx_buffer
-  for (int i = 0; i < NUM_LOCAL_PORTS; ++i) {
-    if (i == 0) {
+  for (int i = 0; i < NUM_LOCAL_PORTS; ++i)
+  {
+    if (i == 0)
+    {
       // --- Port 0: 新的支持VC的缓冲逻辑 ---
 
       // 物理握手：检查是否有新的请求req_rx[port_index].read() == 1 -
       // current_level
-      if (req_rx[0].read() == 1 - current_level_rx[0]) {
+      if (req_rx[0].read() == 1 - current_level_rx[0])
+      {
 
         // 读取 Flit
         Flit flit = flit_rx[0].read();
@@ -244,7 +271,8 @@ void ProcessingElement::rxProcess() {
         int vc_id = flit.vc_id;
 
         // 检查 VC ID 是否有效
-        if (vc_id >= 0 && vc_id < MAX_VIRTUAL_CHANNELS) {
+        if (vc_id >= 0 && vc_id < MAX_VIRTUAL_CHANNELS)
+        {
 
           // 推入 BufferBank 中对应的 VC 缓冲区
           // 使用断言确保缓冲区未满（通过流控机制保证）
@@ -266,12 +294,16 @@ void ProcessingElement::rxProcess() {
                     << " flit_data_type=" << DataType_to_str(flit.data_type)
                     << " flit_seq_no=" << flit.sequence_no
                     << " flit_command=" << flit.command << std::endl;
-        } else {
+        }
+        else
+        {
           // 无效的 VC ID - 这是编程错误，应该使用断言
           assert(false && "Invalid VC ID received");
         }
       }
-    } else if (i == 1) {
+    }
+    else if (i == 1)
+    {
       // --- Port 1: 暂时保留旧逻辑或占位符 ---
       // TODO: 为 port 1 实现新的缓冲逻辑
 
@@ -286,17 +318,23 @@ void ProcessingElement::rxProcess() {
   // 阶段三: 更新对上游的流控信号
   // ==========================================================
   // 这个逻辑报告的是物理缓冲区 rx_buffer 的状态
-  for (int i = 0; i < NUM_LOCAL_PORTS; ++i) {
+  for (int i = 0; i < NUM_LOCAL_PORTS; ++i)
+  {
     TBufferFullStatus status;
 
-    if (i == 0) {
+    if (i == 0)
+    {
       // Port 0: 检查每个 VC 的缓冲区状态
-      for (int vc = 0; vc < MAX_VIRTUAL_CHANNELS; ++vc) {
+      for (int vc = 0; vc < MAX_VIRTUAL_CHANNELS; ++vc)
+      {
         status.mask[vc] = rx_buffer[vc].IsFull(); // true 表示已满
       }
-    } else {
+    }
+    else
+    {
       // Port 1: 暂时返回默认状态（所有VC都未满）
-      for (int vc = 0; vc < MAX_VIRTUAL_CHANNELS; ++vc) {
+      for (int vc = 0; vc < MAX_VIRTUAL_CHANNELS; ++vc)
+      {
         status.mask[vc] = false; // false 表示未满
       }
     }
@@ -307,19 +345,24 @@ void ProcessingElement::rxProcess() {
 }
 
 // 新增：内部流式处理函数实现
-void ProcessingElement::internal_transfer_process() {
+void ProcessingElement::internal_transfer_process()
+{
   // 遍历所有虚拟通道
-  for (int vc = 0; vc < GlobalParams::n_virtual_channels; ++vc) {
+  for (int vc = 0; vc < GlobalParams::n_virtual_channels; ++vc)
+  {
     Buffer &vc_buffer = rx_buffer[vc];
 
     // 流式处理循环：处理该VC中所有可以处理的Flit
-    while (!vc_buffer.IsEmpty()) {
+    while (!vc_buffer.IsEmpty())
+    {
       // 窥视队首Flit
       const Flit &flit = vc_buffer.Front();
 
-      if (flit.flit_type == FLIT_TYPE_HEAD) {
+      if (flit.flit_type == FLIT_TYPE_HEAD)
+      {
         // [特殊处理] 如果是回传包 (command == -1)，跳过流控检查
-        if (flit.command == -1) {
+        if (flit.command == -1)
+        {
           // 回传包无条件接受（假设已预留空间）
           vc_buffer.Pop();
 
@@ -335,9 +378,12 @@ void ProcessingElement::internal_transfer_process() {
         // 正常数据包的流控检查
         size_t *receiving_size = nullptr;
 
-        if (flit.data_type == DataType::OUTPUT) {
+        if (flit.data_type == DataType::OUTPUT)
+        {
           receiving_size = &output_receiving_size_;
-        } else {
+        }
+        else
+        {
           receiving_size = &main_receiving_size_;
         }
 
@@ -347,13 +393,15 @@ void ProcessingElement::internal_transfer_process() {
             *receiving_size + flit.payload_data_size;
 
         if (required_capacity <=
-            unified_buffer_manager_->GetCapacity(flit.data_type)) {
+            unified_buffer_manager_->GetCapacity(flit.data_type))
+        {
           // 检查通过：预留空间
           *receiving_size += flit.payload_data_size;
           vc_buffer.Pop();
 
           // 处理command_id等元数据
-          if (flit.command != -1) {
+          if (flit.command != -1)
+          {
             pending_commands_[flit.logical_timestamp] = flit.command;
           }
 
@@ -363,7 +411,9 @@ void ProcessingElement::internal_transfer_process() {
                     << " payload=" << flit.payload_data_size
                     << " reserved_space=" << *receiving_size
                     << " command_id=" << flit.command << std::endl;
-        } else {
+        }
+        else
+        {
           // 逻辑缓冲区空间不足，阻塞当前VC
           std::cout << "@" << sc_time_stamp() << " [" << name() << "]: "
                     << "[INTERNAL_TRANSFER] HEAD Flit BLOCKED on VC " << vc
@@ -372,7 +422,9 @@ void ProcessingElement::internal_transfer_process() {
                     << std::endl;
           break;
         }
-      } else if (flit.flit_type == FLIT_TYPE_BODY) {
+      }
+      else if (flit.flit_type == FLIT_TYPE_BODY)
+      {
         // BODY Flit无条件丢弃
         vc_buffer.Pop();
         std::cout
@@ -381,9 +433,12 @@ void ProcessingElement::internal_transfer_process() {
             << vc << " src_id=" << flit.src_id
             << " payload=" << flit.payload_data_size
             << "seq_no=" << flit.sequence_no << std::endl;
-      } else if (flit.flit_type == FLIT_TYPE_TAIL) {
+      }
+      else if (flit.flit_type == FLIT_TYPE_TAIL)
+      {
         // [核心修改] 特殊处理回传包
-        if (flit.command == -1) {
+        if (flit.command == -1)
+        {
           // 这是一个输出回传包，只更新计数器，不调用BufferManager
           outputs_received_count_ += flit.payload_data_size;
           // assert(outputs_received_count_ <= outputs_required_count_ &&
@@ -407,9 +462,12 @@ void ProcessingElement::internal_transfer_process() {
         // 正常数据包的TAIL处理
         size_t *receiving_size = nullptr;
 
-        if (flit.data_type == DataType::OUTPUT) {
+        if (flit.data_type == DataType::OUTPUT)
+        {
           receiving_size = &output_receiving_size_;
-        } else {
+        }
+        else
+        {
           receiving_size = &main_receiving_size_;
         }
 
@@ -441,16 +499,20 @@ void ProcessingElement::internal_transfer_process() {
   }
 }
 // 新增：统一的VC发送处理函数实现
-void ProcessingElement::handle_tx_for_all_vcs() {
+void ProcessingElement::handle_tx_for_all_vcs()
+{
   // [核心] 遍历所有 VC 发送队列
-  for (int vc = 0; vc < GlobalParams::n_virtual_channels; ++vc) {
+  for (int vc = 0; vc < GlobalParams::n_virtual_channels; ++vc)
+  {
     // 如果这个 VC 的队列里没有包，跳过
-    if (packet_queues_[vc].empty()) {
+    if (packet_queues_[vc].empty())
+    {
       continue;
     }
 
     // 检查当前端口是否正在等待ACK（简化模型：假设统一使用port 0）
-    if (ack_tx[0].read() != current_level_tx[0]) {
+    if (ack_tx[0].read() != current_level_tx[0])
+    {
       // 端口正忙，跳过这个VC
       continue;
     }
@@ -461,7 +523,8 @@ void ProcessingElement::handle_tx_for_all_vcs() {
     // 检查下游邻居的 VC 流控状态
     TBufferFullStatus downstream_status = buffer_full_status_tx[0].read();
 
-    if (downstream_status.mask[vc] == true || packet_queues_[vc].empty()) {
+    if (downstream_status.mask[vc] == true || packet_queues_[vc].empty())
+    {
       // 这个 VC 被阻塞了，跳过，去处理下一个 VC
       continue;
     }
@@ -486,7 +549,8 @@ void ProcessingElement::handle_tx_for_all_vcs() {
               << " command_id=" << flit_to_send.command << std::endl;
 
     // 如果发送的是 TAIL Flit，从这个 VC 的队列中 pop
-    if (flit_to_send.flit_type == FLIT_TYPE_TAIL) {
+    if (flit_to_send.flit_type == FLIT_TYPE_TAIL)
+    {
       // packet_queues_[vc].pop();
       std::cout << "@" << sc_time_stamp() << " [" << name() << "]: "
                 << "[TX_VC" << vc << "] Completed packet transmission"
@@ -499,44 +563,65 @@ void ProcessingElement::handle_tx_for_all_vcs() {
 }
 
 // 新增：辅助函数实现
-bool ProcessingElement::packet_queues_are_empty() const {
-  for (const auto &q : packet_queues_) {
-    if (!q.empty()) {
+bool ProcessingElement::packet_queues_are_empty() const
+{
+  for (const auto &q : packet_queues_)
+  {
+    if (!q.empty())
+    {
       return false;
     }
   }
   return true;
 }
 
-int ProcessingElement::get_vc_id_for_packet(const Packet &pkt) const {
-  if (pkt.data_type == DataType::WEIGHT) {
+int ProcessingElement::get_vc_id_for_packet(const Packet &pkt) const
+{
+  if (pkt.data_type == DataType::WEIGHT)
+  {
     return 0; // 权重数据使用VC 0
-  } else if (pkt.data_type == DataType::INPUT) {
+  }
+  else if (pkt.data_type == DataType::INPUT)
+  {
     return 1; // 输入数据使用VC 1
-  } else if (pkt.data_type == DataType::OUTPUT) {
+  }
+  else if (pkt.data_type == DataType::OUTPUT)
+  {
     return 2; // 输出数据使用VC 2
-  } else {
+  }
+  else
+  {
     return 0; // 默认VC 0
   }
 }
 
 int ProcessingElement::get_vc_id_for_packet_by_task(
-    DataDispatchInfo task) const {
+    DataDispatchInfo task) const
+{
   // 根据数据类型分配VC ID的辅助函数
-  if (task.type == DataType::WEIGHT) {
+  if (task.type == DataType::WEIGHT)
+  {
     return 0; // 权重数据使用VC 0
-  } else if (task.type == DataType::INPUT) {
+  }
+  else if (task.type == DataType::INPUT)
+  {
     return 1; // 输入数据使用VC 1
-  } else if (task.type == DataType::OUTPUT) {
+  }
+  else if (task.type == DataType::OUTPUT)
+  {
     return 2; // 输出数据使用VC 2
-  } else {
+  }
+  else
+  {
     return 0; // 默认VC 0
   }
 }
 
-void ProcessingElement::txProcess() {
+void ProcessingElement::txProcess()
+{
   // 复位逻辑保持不变（更新以清空新的VC队列）
-  if (reset.read()) {
+  if (reset.read())
+  {
     req_tx[0].write(0);
     current_level_tx[0] = 0;
     compute_in_progress_ = false;
@@ -544,7 +629,8 @@ void ProcessingElement::txProcess() {
     compute_cycles = 0;
 
     // 清空所有VC队列
-    for (auto &q : packet_queues_) {
+    for (auto &q : packet_queues_)
+    {
       while (!q.empty())
         q.pop();
     }
@@ -559,11 +645,13 @@ void ProcessingElement::txProcess() {
   // 根据角色调用生成逻辑。
   // run_storage_logic 内部已经包含了所有"意图"和"能力"的匹配检查。
   // 如果条件不满足，它什么也不会做，VC队列依然为空。
-  if (role == ROLE_DRAM || role == ROLE_GLB) {
+  if (role == ROLE_DRAM || role == ROLE_GLB)
+  {
     run_storage_logic();
   }
 
-  else if (role == ROLE_BUFFER) {
+  else if (role == ROLE_BUFFER)
+  {
     run_compute_logic();
   }
 
@@ -576,14 +664,16 @@ void ProcessingElement::txProcess() {
   // 如果是最后一个时间步且是同步点，需要2倍输出（补偿第一个未同步的债务）
   if (static_cast<size_t>(logical_timestamp) ==
           task_manager_->get_total_timesteps() - 1 &&
-      task_manager_->is_in_sync_points(logical_timestamp)) {
+      task_manager_->is_in_sync_points(logical_timestamp))
+  {
     required_outputs *= 2;
   }
 
   // 同步检查：有sync_point的节点
   if (role != ROLE_BUFFER &&
       task_manager_->is_in_sync_points(logical_timestamp) &&
-      outputs_received_count_ < required_outputs) {
+      outputs_received_count_ < required_outputs)
+  {
     return; // 阻塞时间步递增
   }
 
@@ -591,32 +681,41 @@ void ProcessingElement::txProcess() {
   if (role != ROLE_BUFFER &&
       static_cast<size_t>(logical_timestamp) ==
           task_manager_->get_total_timesteps() - 1 &&
-      outputs_received_count_ < outputs_required_count_) {
+      outputs_received_count_ < outputs_required_count_)
+  {
     return; // 阻塞时间步递增
   }
 
   if (role != ROLE_BUFFER && current_dispatch_task_.sub_tasks.empty() &&
-      packet_queues_are_empty() && dispatch_in_progress_) {
-    if (task_manager_->is_in_sync_points(logical_timestamp)) {
+      packet_queues_are_empty() && dispatch_in_progress_)
+  {
+    if (task_manager_->is_in_sync_points(logical_timestamp))
+    {
       // 最后一个同步点重置双倍计数
       if (static_cast<size_t>(logical_timestamp) ==
-          task_manager_->get_total_timesteps() - 1) {
+          task_manager_->get_total_timesteps() - 1)
+      {
         outputs_received_count_ -= outputs_required_count_ * 2;
-      } else {
+      }
+      else
+      {
         outputs_received_count_ -= outputs_required_count_;
       }
     }
     logical_timestamp++;
     dispatch_in_progress_ = false;
-    cout << sc_time_stamp() << ": PE[" << local_id
-         << "] Completed dispatch for timestamp " << logical_timestamp - 1
-         << endl;
-    if (logical_timestamp >= task_manager_->get_total_timesteps()) {
+    if (role == ROLE_DRAM)
+      cout << sc_time_stamp() << ": PE[" << local_id
+           << "] Completed dispatch for timestamp " << logical_timestamp - 1
+           << endl;
+    if (logical_timestamp >= task_manager_->get_total_timesteps())
+    {
       reset_logic();
     }
   }
 
-  if (role == ROLE_BUFFER && is_compute_complete == true) {
+  if (role == ROLE_BUFFER && is_compute_complete == true)
+  {
     logical_timestamp++;
     is_compute_complete = false;
     cout << sc_time_stamp() << ": PE[" << local_id
@@ -627,36 +726,45 @@ void ProcessingElement::txProcess() {
 
     // 基于计算周期数判断是否需要自驱逐
     if (eviction_interval_cycles_ > 0 && compute_cycles > 0 &&
-        compute_cycles % eviction_interval_cycles_ == 0) {
+        compute_cycles % eviction_interval_cycles_ == 0)
+    {
       evict_weights_self();
     }
-    if (logical_timestamp >= task_manager_->get_total_timesteps()) {
+    if (logical_timestamp >= task_manager_->get_total_timesteps())
+    {
       reset_logic();
     }
   }
 }
 
-void ProcessingElement::reset_logic() {
-  if (role == ROLE_DRAM) {
+void ProcessingElement::reset_logic()
+{
+  if (role == ROLE_DRAM)
+  {
     dbg(sc_time_stamp(), "All tasks completed quiting simulation");
-    // sc_stop();
+    sc_stop();
     return;
   }
 
-  if ((role == ROLE_GLB || role == ROLE_BUFFER) && !pending_commands_.empty()) {
+  if ((role == ROLE_GLB || role == ROLE_BUFFER) && !pending_commands_.empty())
+  {
 
     auto it = pending_commands_.begin();
     int command = it->second;
     pending_commands_.erase(it);
     DataDelta cmd;
-    if (command >= task_manager_->get_command_count()) {
+    if (command >= task_manager_->get_command_count())
+    {
       cmd = task_manager_->get_current_working_set();
-    } else {
+    }
+    else
+    {
       cmd = task_manager_->get_command_definition(command);
     }
     unified_buffer_manager_->RemoveData(DataType::WEIGHT, cmd.weights);
     unified_buffer_manager_->RemoveData(DataType::INPUT, cmd.inputs);
-    if (cmd.outputs > 0) {
+    if (cmd.outputs > 0)
+    {
       Packet pkt;
       pkt.src_id = local_id;
       pkt.payload_data_size = cmd.outputs;
@@ -676,7 +784,7 @@ void ProcessingElement::reset_logic() {
       //     " for " + std::to_string(cmd.outputs) + " bytes.");
       std::cout << "@ " << sc_time_stamp() << " [" << name() << "]: "
                 << "[RESET_LOGIC] Generating output return Packet to PE "
-                << pkt.dst_id << " for " << cmd.outputs << " bytes."
+                << pkt.target_role << " for " << cmd.outputs << " bytes."
                 << std::endl;
 
       packet_queues_[pkt.vc_id].push(pkt);
@@ -695,13 +803,16 @@ void ProcessingElement::reset_logic() {
   outputs_received_count_ = 0;
 }
 
-void ProcessingElement::run_compute_logic() {
+void ProcessingElement::run_compute_logic()
+{
 
-  if (role != ROLE_BUFFER) {
+  if (role != ROLE_BUFFER)
+  {
     return;
   }
 
-  if (!compute_in_progress_) {
+  if (!compute_in_progress_)
+  {
     // 4. Dependency Check: Verify that all required data for the *current*
     // timestep's computation is present. A compute task's dependencies are
     // its required Inputs and Weights.
@@ -709,14 +820,17 @@ void ProcessingElement::run_compute_logic() {
         task_manager_->get_working_set_for_role(role_to_str(role))
             ->get_data_map();
 
-    for (const auto &entry : required_data) {
+    for (const auto &entry : required_data)
+    {
       DataType type = entry.first;
       size_t size = entry.second;
 
       // For a compute PE, the working set should only define dependencies
       // (Inputs, Weights), not Outputs.
-      if (type == DataType::INPUT || type == DataType::WEIGHT) {
-        if (!unified_buffer_manager_->AreDataTypeReady(type, size)) {
+      if (type == DataType::INPUT || type == DataType::WEIGHT)
+      {
+        if (!unified_buffer_manager_->AreDataTypeReady(type, size))
+        {
           // cout<< sc_time_stamp() << ": PE[" << local_id << "] Waiting for "
           //     << size << " bytes of " << DataType_to_str(type)
           //     << " to start computation at cycle " << compute_cycles <<
@@ -727,8 +841,10 @@ void ProcessingElement::run_compute_logic() {
         }
       }
 
-      if (type == DataType::OUTPUT) {
-        if (!unified_buffer_manager_->AreDataTypeReady(type, size)) {
+      if (type == DataType::OUTPUT)
+      {
+        if (!unified_buffer_manager_->AreDataTypeReady(type, size))
+        {
           return;
         }
       }
@@ -737,25 +853,31 @@ void ProcessingElement::run_compute_logic() {
     compute_in_progress_ = true;
   }
 
-  if (compute_in_progress_) {
+  if (compute_in_progress_)
+  {
     consume_cycles_left--;
     assert(consume_cycles_left >= 0 && "Consume cycles underflow");
 
-    if (consume_cycles_left == 0) {
+    if (consume_cycles_left == 0)
+    {
       compute_in_progress_ = false;
       is_compute_complete = true;
     }
   }
 }
 
-std::string ProcessingElement::role_to_str(const PE_Role &role) {
-  switch (role) {
+std::string ProcessingElement::role_to_str(const PE_Role &role)
+{
+  switch (role)
+  {
   case ROLE_DRAM:
     return "ROLE_DRAM";
   case ROLE_GLB:
     return "ROLE_GLB";
   case ROLE_BUFFER:
     return "ROLE_BUFFER";
+  case ROLE_DISTRIBUTOR:
+    return "ROLE_DISTRIBUTOR";
   default:
     return "UNKNOWN";
   }
@@ -764,23 +886,28 @@ std::string ProcessingElement::role_to_str(const PE_Role &role) {
 // 计算从当前层到目标层之间的实际目标数量
 int ProcessingElement::calculate_target_count(int current_level,
                                               DataType data_type,
-                                              PE_Role target_role) {
+                                              PE_Role target_role)
+{
   int target_count = 1;
 
   // 从当前层开始，遍历到目标层之前
-  for (int level = current_level;; level++) {
+  for (int level = current_level;; level++)
+  {
     const LevelConfig &level_config =
         GlobalParams::hierarchical_config.get_level_config(level);
 
     // 检查是否到达目标层
-    if (level_config.roles == target_role) {
+    if (level_config.roles == target_role)
+    {
       break; // 到达目标层，停止累乘
     }
 
     // 检查该层是否有路由模式配置
-    if (level_config.has_routing_patterns) {
+    if (level_config.has_routing_patterns)
+    {
       auto it = level_config.routing_patterns.find(data_type);
-      if (it != level_config.routing_patterns.end()) {
+      if (it != level_config.routing_patterns.end())
+      {
         // 累乘该数据类型的port_groups数量
         target_count *= it->second.port_groups.size();
       }
@@ -791,26 +918,34 @@ int ProcessingElement::calculate_target_count(int current_level,
 }
 
 // in PE.cpp
-void ProcessingElement::run_storage_logic() {
-  if (role != ROLE_GLB && role != ROLE_DRAM) {
+void ProcessingElement::run_storage_logic()
+{
+  if (role != ROLE_GLB && role != ROLE_DRAM)
+  {
     return;
   }
 
-  if (logical_timestamp >= task_manager_->get_total_timesteps()) {
+  if (logical_timestamp >= task_manager_->get_total_timesteps())
+  {
     all_transfer_tasks_finished = true;
     return;
   }
 
-  if (!dispatch_in_progress_) {
+  if (!dispatch_in_progress_)
+  {
     std::map<DataType, size_t> data_map =
         task_manager_->get_working_set_for_role(role_to_str(role))
             ->get_data_map();
-    for (const auto &entry : data_map) {
-      if (entry.first != DataType::OUTPUT) {
+    for (const auto &entry : data_map)
+    {
+      if (entry.first != DataType::OUTPUT)
+      {
         if (!unified_buffer_manager_->AreDataTypeReady(entry.first,
                                                        entry.second))
           return;
-      } else {
+      }
+      else
+      {
         if (!unified_buffer_manager_->AreDataTypeReady(entry.first,
                                                        entry.second))
           return;
@@ -828,7 +963,8 @@ void ProcessingElement::run_storage_logic() {
     dispatch_in_progress_ = true;
   }
 
-  if (current_dispatch_task_.sub_tasks.empty()) {
+  if (current_dispatch_task_.sub_tasks.empty())
+  {
     return;
   }
 
@@ -836,13 +972,15 @@ void ProcessingElement::run_storage_logic() {
   int num_pending_subtasks = current_dispatch_task_.sub_tasks.size();
   auto it = current_dispatch_task_.sub_tasks.begin();
 
-  while (it != current_dispatch_task_.sub_tasks.end()) {
+  while (it != current_dispatch_task_.sub_tasks.end())
+  {
     DataDispatchInfo &selected_task = *it;
     // 计算此数据类型对应的VC ID
     int vc_id = get_vc_id_for_packet_by_task(selected_task);
 
     // 检查对应的VC队列是否为空（实现"size只为1"的规则）
-    if (!packet_queues_[vc_id].empty()) {
+    if (!packet_queues_[vc_id].empty())
+    {
       ++it;
       continue; // 该VC通道忙，跳过
     }
@@ -869,7 +1007,8 @@ void ProcessingElement::run_storage_logic() {
     pkt.logical_timestamp = logical_timestamp;
     pkt.data_type = selected_task.type;
 
-    if (target_count > 1) {
+    if (target_count > 1)
+    {
       // 多目标场景：使用当前层实际带宽
       int current_bandwidth =
           GlobalParams::hierarchical_config.get_level_config(level_index)
@@ -880,15 +1019,20 @@ void ProcessingElement::run_storage_logic() {
 
       // 步骤B：确定单层Flit数（向上取整）
       int Nslice;
-      if (R <= 1.0) {
+      if (R <= 1.0)
+      {
         Nslice = 1;
-      } else {
+      }
+      else
+      {
         Nslice = (int)ceil(R);
       }
 
       // 步骤C：计算总长度
       pkt.size = pkt.flit_left = Nslice * selected_task.size + 2;
-    } else {
+    }
+    else
+    {
       // 单目标场景：保持原有计算
       pkt.size = pkt.flit_left =
           (selected_task.size + bandwidth_scale - 1) / bandwidth_scale + 2;
@@ -906,7 +1050,8 @@ int ProcessingElement::get_command_to_send() // tofix
 {
   PE_Role nextRole = static_cast<PE_Role>(static_cast<int>(role) + 1);
   auto commands = task_manager_->get_commands_for_role(role_to_str(nextRole));
-  if (commands == nullptr || commands->empty()) {
+  if (commands == nullptr || commands->empty())
+  {
     dbg(sc_time_stamp(), name(),
         "[CMD_ERROR] No command definitions found for downstream role: " +
             role_to_str(nextRole));
@@ -925,7 +1070,8 @@ int ProcessingElement::get_command_to_send() // tofix
       (logical_timestamp + 1) % task_manager_->get_total_timesteps());
   // 这条命令需要在负载下被测试
 
-  for (const DataDispatchInfo &sub_task : next_task.sub_tasks) {
+  for (const DataDispatchInfo &sub_task : next_task.sub_tasks)
+  {
     // 不再使用 target_ids，multicast_factor 设为 1
     int multicast_factor = 1;
     if (sub_task.type == DataType::WEIGHT)
@@ -936,10 +1082,12 @@ int ProcessingElement::get_command_to_send() // tofix
       next_delta.outputs += sub_task.size * multicast_factor;
   }
 
-  for (const auto &cmd : *commands) {
+  for (const auto &cmd : *commands)
+  {
     // 比较推算出的 payload 和命令中定义的 payload
     if (cmd.evict_payload.inputs == next_delta.inputs &&
-        cmd.evict_payload.outputs == next_delta.outputs) {
+        cmd.evict_payload.outputs == next_delta.outputs)
+    {
       // 找到了完全匹配的命令！
       return cmd.command_id;
     }
@@ -948,7 +1096,8 @@ int ProcessingElement::get_command_to_send() // tofix
   return -2;
 }
 Flit ProcessingElement::generate_next_flit_from_queue(
-    std::queue<Packet> &queue) {
+    std::queue<Packet> &queue)
+{
   Flit flit;
   Packet packet = queue.front();
 
@@ -967,33 +1116,42 @@ Flit ProcessingElement::generate_next_flit_from_queue(
   flit.target_role = packet.target_role;
 
   // 确定flit类型
-  if (packet.size == packet.flit_left) {
+  if (packet.size == packet.flit_left)
+  {
     flit.flit_type = FLIT_TYPE_HEAD;
     std::copy(std::begin(packet.payload_sizes), std::end(packet.payload_sizes),
               flit.payload_sizes);
-  } else if (packet.flit_left == 1) {
+  }
+  else if (packet.flit_left == 1)
+  {
     flit.flit_type = FLIT_TYPE_TAIL;
-  } else {
+  }
+  else
+  {
     flit.flit_type = FLIT_TYPE_BODY;
   }
 
   // 处理flit_left和队列pop
   queue.front().flit_left--;
-  if (queue.front().flit_left == 0) {
+  if (queue.front().flit_left == 0)
+  {
     queue.pop();
   }
 
   return flit;
 }
 
-unsigned int ProcessingElement::getQueueSize() const {
+unsigned int ProcessingElement::getQueueSize() const
+{
   return packet_queues_.size();
 }
-void ProcessingElement::evict_weights_self() {
+void ProcessingElement::evict_weights_self()
+{
   size_t current_weights =
       unified_buffer_manager_->GetCurrentSize(DataType::WEIGHT);
 
-  if (current_weights > 0) {
+  if (current_weights > 0)
+  {
     size_t evict_amount = std::min(weight_eviction_amount_, current_weights);
     unified_buffer_manager_->RemoveData(DataType::WEIGHT, evict_amount);
 
