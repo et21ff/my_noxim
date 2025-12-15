@@ -175,32 +175,44 @@ inline void sc_trace(sc_core::sc_trace_file *tf, const TBufferFullStatus &bfs,
   }
 }
 
-// Flit -- Flit definition
 struct Flit
 {
-  int payload_data_size;
-  // 只在HEAD flit中有意义，用来携带整个Packet的真实数据大小（以字节为单位）
-  int payload_sizes[3]; // 索引0: INPUT, 1: WEIGHT, 2: OUTPUT
-  int src_id;
-  int dst_id;
-  int vc_id;          // Virtual Channel
-  FlitType flit_type; // The flit type (FLIT_TYPE_HEAD, FLIT_TYPE_BODY,
-                      // FLIT_TYPE_TAIL)
-  int sequence_no;    // The sequence number of the flit inside the packet
-  int sequence_length;
-  Payload payload; // Optional payload
-  int hop_no;      // Current number of hops from source to destination
-  bool use_low_voltage_path;
-  bool is_output; // true if the flit belongs to an output packet
-  int logical_timestamp;
-  DataType data_type; // flit携带的数据种类
-  int command;        // 用于存储来自txprocess的命令 (timestamp,command)
-  PE_Role target_role;
-  int forward_count;
-  int current_forward;
+  int payload_data_size = 0; // <--- 初始化
 
-  int hub_relay_node;
+  // 数组初始化：全部置为 0
+  int payload_sizes[3] = {0, 0, 0};
 
+  int src_id = -2; // <--- 建议初始化为 -1，表示无效ID
+  int dst_id = -2;
+  int vc_id = -2;
+
+  // 给枚举类型一个默认值，或者 FLIT_TYPE_HEAD
+  FlitType flit_type;
+
+  int sequence_no = -1;
+  int sequence_length = -1;
+
+  Payload payload; // Payload 是个结构体，如果它里面也没有构造函数，也需要去 Payload 定义里加初始化！
+
+  int hop_no = -1;
+  bool use_low_voltage_path = false;
+  bool is_output = false;
+
+  int logical_timestamp = -1;
+
+  // 枚举类型默认值
+  DataType data_type = DataType::UNKNOWN;
+
+  // *** 导致 Valgrind 报错的关键变量 ***
+  int command = -2; // 之前是垃圾值，导致 if (command == -1) 失效
+  PE_Role target_role = PE_Role::ROLE_UNUSED;
+  int forward_count = 0;   // 之前是垃圾值，导致逻辑判断错误
+  int current_forward = 0; // 之前是垃圾值
+  // **********************************
+
+  int hub_relay_node = -1;
+
+  // 比较运算符保持不变
   inline bool operator==(const Flit &flit) const
   {
     return (

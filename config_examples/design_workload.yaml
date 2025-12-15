@@ -30,7 +30,8 @@ hierarchical_config:
           port_groups: [[0]] 
         WEIGHT:  
           mode: "WEIGHT"  
-          port_groups: [[0]]  
+          port_groups: [[0]]
+
         OUTPUT:  
           mode: "OUTPUT"  
           port_groups: [[0]]  
@@ -49,6 +50,7 @@ hierarchical_config:
           port_groups: [[0,1,2,3,4,5,6,7]]
         WEIGHT:  
           port_groups: [[0], [1], [2], [3], [4], [5], [6], [7]]
+          forward_count: 2  
         OUTPUT:  
           port_groups: [[0], [1], [2], [3], [4], [5], [6], [7]]
 
@@ -123,7 +125,7 @@ workload:
       properties:
         sync_per_timestep: 1
       schedule_template:
-        total_timesteps: 22
+        total_timesteps: 121
         delta_events:
           - trigger: { on_timestep_modulo: [11, 0] }
             name: "INITIAL_LOAD_DRAM_TO_GLB"

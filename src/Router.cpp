@@ -408,19 +408,19 @@ void Router::txProcess()
         }
         else
         {
+          Flit &flit_ref = (*buffers[selected.input])[selected.vc].FrontRef();
           // 检查是否完成所有转发
           bool should_pop = true;
           if (use_predefined_routing &&
-              routing_patterns.count(flit.data_type) > 0)
+              routing_patterns.count(flit_ref.data_type) > 0)
           {
-            Flit &flit = (*buffers[selected.input])[selected.vc].FrontRef();
-            flit.current_forward++;
+            flit_ref.current_forward++;
             // 只有头flit和尾flit才可能复制多份
-            if (flit.flit_type == FLIT_TYPE_HEAD ||
-                flit.flit_type == FLIT_TYPE_TAIL)
+            if (flit_ref.flit_type == FLIT_TYPE_HEAD ||
+                flit_ref.flit_type == FLIT_TYPE_TAIL)
             {
-              const RoutingPattern &pattern = routing_patterns[flit.data_type];
-              if (flit.current_forward < pattern.forward_count)
+              const RoutingPattern &pattern = routing_patterns[flit_ref.data_type];
+              if (flit_ref.current_forward < pattern.forward_count)
               {
                 should_pop = false; // 还未完成转发，不pop
               }
@@ -522,7 +522,7 @@ void Router::txProcess()
           TReservation r;
           r.input = selected.input;
           r.vc = selected.vc;
-          if (!(flit.current_forward > 1) ||
+          if (
               flit.current_forward >= flit.forward_count || flit.command == -1)
             reservation_table.release(r, selected.target_outputs);
 
