@@ -65,14 +65,13 @@ void Router::rxProcess()
         {
 
           if (use_predefined_routing &&
-              routing_patterns.count(received_flit.data_type) > 0)
+              routing_patterns.count(received_flit.data_type) > 0 && received_flit.command != -1)
           {
 
             const RoutingPattern &pattern =
                 routing_patterns[received_flit.data_type];
-            received_flit.forward_count =
-                pattern
-                    .forward_count; // 从配置获取                   // 重置计数
+            if (received_flit.target_role != role)
+              received_flit.forward_count = pattern.forward_count; // 从配置获取                   // 重置计数
           }
 
           received_flit.current_forward = 0;
@@ -420,7 +419,7 @@ void Router::txProcess()
                 flit_ref.flit_type == FLIT_TYPE_TAIL)
             {
               const RoutingPattern &pattern = routing_patterns[flit_ref.data_type];
-              if (flit_ref.current_forward < pattern.forward_count)
+              if (flit_ref.current_forward < flit_ref.forward_count)
               {
                 should_pop = false; // 还未完成转发，不pop
               }

@@ -1,0 +1,4 @@
+
+ target_role=ROLE_DRAM@291446500 ps [NoC.HNode_0.ProcessingElement]:  cycle= 0[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=1 payload=35584 total_outputs_received=71168/35584
+[..rocessingElement.cpp:751 (reset_logic)] sc_time_stamp() = 291447 ns (const sc_core::sc_time&), All tasks completed quiting simulation
+root@debian-desktop:~/my_noxim/build#

@@ -30,7 +30,8 @@
 
 using namespace std;
 
-SC_MODULE(ProcessingElement) {
+SC_MODULE(ProcessingElement)
+{
 
   // I/O Ports
 
@@ -41,7 +42,7 @@ SC_MODULE(ProcessingElement) {
 
   // Primary and Secondary connections as arrays
   sc_in<Flit>
-      flit_rx[NUM_LOCAL_PORTS]; // The input channels [0: PRIMARY, 1: SECONDARY]
+      flit_rx[NUM_LOCAL_PORTS];         // The input channels [0: PRIMARY, 1: SECONDARY]
   sc_in<bool> req_rx[NUM_LOCAL_PORTS];  // The request signals associated with
                                         // input channels
   sc_out<bool> ack_rx[NUM_LOCAL_PORTS]; // The outgoing ack signals associated
@@ -57,13 +58,13 @@ SC_MODULE(ProcessingElement) {
   sc_in<TBufferFullStatus> buffer_full_status_tx[NUM_LOCAL_PORTS];
 
   // Registers
-  int local_id;                           // Unique identification number
-  bool current_level_rx[NUM_LOCAL_PORTS]; // Current level for Alternating Bit
-                                          // Protocol (ABP)
-  bool current_level_tx[NUM_LOCAL_PORTS]; // Current level for Alternating Bit
-                                          // Protocol (ABP)
+  int local_id;                                   // Unique identification number
+  bool current_level_rx[NUM_LOCAL_PORTS];         // Current level for Alternating Bit
+                                                  // Protocol (ABP)
+  bool current_level_tx[NUM_LOCAL_PORTS];         // Current level for Alternating Bit
+                                                  // Protocol (ABP)
   std::vector<std::queue<Packet>> packet_queues_; // VC-aware packet queues
-  bool transmittedAtPreviousCycle; // Used for distributions with memory
+  bool transmittedAtPreviousCycle;                // Used for distributions with memory
 
   BufferBank rx_buffer; // 物理输入缓冲区
 
@@ -90,7 +91,7 @@ SC_MODULE(ProcessingElement) {
   // Packet trafficULocal();
 
   GlobalTrafficTable *traffic_table; // Reference to the Global traffic Table
-  bool never_transmit; // true if the PE does not transmit any packet
+  bool never_transmit;               // true if the PE does not transmit any packet
   //  (valid only for the table based traffic)
 
   // Utility functions - only keeping used ones
@@ -139,7 +140,8 @@ public:
   // III. 任务与循环控制 (Task & Loop Control) - 通用机制
   //========================================================================
 
-  struct LoopTask {
+  struct LoopTask
+  {
     int iterations;
   };
 
@@ -156,7 +158,11 @@ public:
   bool all_transfer_tasks_finished;
 
   // --- 通用阶段控制 ---
-  enum DataStage { STAGE_FILL, STAGE_DELTA };
+  enum DataStage
+  {
+    STAGE_FILL,
+    STAGE_DELTA
+  };
   DataStage current_stage;
 
   //========================================================================
@@ -200,7 +206,9 @@ public: // 建议将内部状态变量设为私有
 
   int eviction_interval_cycles_;  // 驱逐间隔周期数
   size_t weight_eviction_amount_; // 每次驱逐的权重数量
-  //这并不是一个优雅的实现 但是我们必须这么做。。。
+
+  int last_serviced_vc_; // 上一个服务的虚拟通道ID
+  // 这并不是一个优雅的实现 但是我们必须这么做。。。
 
   void evict_weights_self(); // 自驱逐权重函数
 
@@ -214,7 +222,7 @@ public: // 建议将内部状态变量设为私有
 
   int get_command_to_send();
 
-  void reset_logic(); //达到timestamp上限时的重置行为
+  void reset_logic(); // 达到timestamp上限时的重置行为
 
   void internal_transfer_process();
 
@@ -240,7 +248,8 @@ public: // 建议将内部状态变量设为私有
                  const HierarchicalConfig &topology_config);
   // Constructor
 
-  SC_CTOR(ProcessingElement) {
+  SC_CTOR(ProcessingElement)
+  {
     // 初始化新的成员变量
     main_receiving_size_ = 0;
     output_receiving_size_ = 0;

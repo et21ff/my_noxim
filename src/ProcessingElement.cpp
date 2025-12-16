@@ -138,8 +138,8 @@ void ProcessingElement::configure(int id, int level_idx,
   {
     // 独立模式
     std::map<DataType, size_t> type_caps;
-    type_caps[DataType::INPUT] = level_config.buffer_size[0];
-    type_caps[DataType::WEIGHT] = level_config.buffer_size[1];
+    type_caps[DataType::WEIGHT] = level_config.buffer_size[0];
+    type_caps[DataType::INPUT] = level_config.buffer_size[1];
     type_caps[DataType::OUTPUT] = level_config.buffer_size[2];
     unified_buffer_manager_ = new BufferManager(type_caps);
 
@@ -293,7 +293,8 @@ void ProcessingElement::rxProcess()
                     << " buffer_size=" << rx_buffer[vc_id].Size()
                     << " flit_data_type=" << DataType_to_str(flit.data_type)
                     << " flit_seq_no=" << flit.sequence_no
-                    << " flit_command=" << flit.command << std::endl;
+                    << " flit_command=" << flit.command << std::endl
+                    << " target_role=" << role_to_str(flit.target_role);
         }
         else
         {
@@ -369,9 +370,11 @@ void ProcessingElement::internal_transfer_process()
           std::cout
               << "@" << sc_time_stamp() << " [" << name() << "]: "
               << "[INTERNAL_TRANSFER] Accepted OUTPUT_RETURN HEAD Flit on VC "
+              << " cycle= " << compute_cycles
               << vc << " src_id=" << flit.src_id
               << " payload=" << flit.payload_data_size
-              << " command_id=" << flit.command << std::endl;
+              << " command_id=" << flit.command
+              << std::endl;
           continue; // 继续处理下一个flit
         }
 
@@ -448,6 +451,7 @@ void ProcessingElement::internal_transfer_process()
 
           std::cout
               << "@" << sc_time_stamp() << " [" << name() << "]: "
+              << " cycle= " << current_cycle
               << "[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC "
               << vc << " src_id=" << flit.src_id
               << " payload=" << flit.payload_data_size
@@ -501,9 +505,15 @@ void ProcessingElement::internal_transfer_process()
 // 新增：统一的VC发送处理函数实现
 void ProcessingElement::handle_tx_for_all_vcs()
 {
-  // [核心] 遍历所有 VC 发送队列
-  for (int vc = 0; vc < GlobalParams::n_virtual_channels; ++vc)
+  if (ack_tx[0].read() != current_level_tx[0])
   {
+    // 端口正忙，跳过这个VC
+    return;
+  }
+  // [核心] 遍历所有 VC 发送队列
+  for (int i = 0; i < GlobalParams::n_virtual_channels; ++i)
+  {
+    int vc = (last_serviced_vc_ + 1 + i) % GlobalParams::n_virtual_channels;
     // 如果这个 VC 的队列里没有包，跳过
     if (packet_queues_[vc].empty())
     {
@@ -511,11 +521,6 @@ void ProcessingElement::handle_tx_for_all_vcs()
     }
 
     // 检查当前端口是否正在等待ACK（简化模型：假设统一使用port 0）
-    if (ack_tx[0].read() != current_level_tx[0])
-    {
-      // 端口正忙，跳过这个VC
-      continue;
-    }
 
     // "窥视"队首的包
     Packet &packet_to_send = packet_queues_[vc].front();
@@ -535,6 +540,7 @@ void ProcessingElement::handle_tx_for_all_vcs()
 
     // 设置VC ID
     flit_to_send.vc_id = vc;
+    last_serviced_vc_ = vc;
 
     // 物理发送 (统一到 Port 0)
     flit_tx[0].write(flit_to_send);
@@ -627,6 +633,7 @@ void ProcessingElement::txProcess()
     compute_in_progress_ = false;
     is_compute_complete = false;
     compute_cycles = 0;
+    last_serviced_vc_ = -1;
 
     // 清空所有VC队列
     for (auto &q : packet_queues_)
@@ -801,6 +808,7 @@ void ProcessingElement::reset_logic()
 
   logical_timestamp = 0;
   outputs_received_count_ = 0;
+  current_cycle++;
 }
 
 void ProcessingElement::run_compute_logic()
@@ -1092,6 +1100,10 @@ int ProcessingElement::get_command_to_send() // tofix
       return cmd.command_id;
     }
   }
+
+  if (commands->size() == 1)
+    return commands->front().command_id;
+
   assert(false && "cannot find available command");
   return -2;
 }

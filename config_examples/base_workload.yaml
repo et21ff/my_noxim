@@ -50,9 +50,10 @@ hierarchical_config:
           port_groups: [[0,1,2,3,4,5,6,7]]
         WEIGHT:  
           port_groups: [[0], [1], [2], [3], [4], [5], [6], [7]]
-          forward_count: 2  
+          forward_count: 8  
         OUTPUT:  
           port_groups: [[0], [1], [2], [3], [4], [5], [6], [7]]
+          forward_count: 8
 
     # Level 2: DISTRIBUTOR (对应 8x12 中的 "12" 这一维 - 日志来源层)
     - level: 2
@@ -71,6 +72,7 @@ hierarchical_config:
             [0], [1], [2], [3], [4], [5], 
             [6], [7], [8], [9], [10], [11]
           ]
+          forward_count: 12
           
         # pv=1 (INPUT): 日志显示 num_matches=4, 且索引跨度为3 (如0,3,6,9) -> 交错多播
         # 数据被多播到间隔为3的4个PE上
@@ -80,6 +82,7 @@ hierarchical_config:
             [1, 4, 7, 10], 
             [2, 5, 8, 11]
           ]
+          forward_count: 3
             
         # pv=2 (OUTPUT): 日志显示 num_matches=3, 且索引连续 (如0,1,2) -> 块状多播
         # 数据被多播/收集自连续的3个PE
@@ -90,6 +93,7 @@ hierarchical_config:
             [6, 7, 8], 
             [9, 10, 11]
           ]
+          forward_count: 4
       
     # Level 3: COMPUTE (PE)
     - level: 3
