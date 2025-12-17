@@ -166,6 +166,29 @@ void loadConfiguration() {
     // GlobalParams::hierarchical_connection_mode =
     // hierarchical_config["connection_mode"].as<string>();
 
+    // Parse transmission_mode with validation
+    if (hierarchical_config["transmission_mode"]) {
+      GlobalParams::transmission_mode =
+          hierarchical_config["transmission_mode"].as<string>();
+
+      // Validate transmission_mode value
+      if (GlobalParams::transmission_mode != "traditional" &&
+          GlobalParams::transmission_mode != "optimized") {
+        cerr << "Error: transmission_mode must be either 'traditional' or "
+                "'optimized', got: "
+             << GlobalParams::transmission_mode << endl;
+        exit(1);
+      }
+
+      cout << "Transmission mode set to: " << GlobalParams::transmission_mode
+           << endl;
+    } else {
+      GlobalParams::transmission_mode =
+          "optimized"; // Default to optimized mode
+      cout << "Transmission mode not specified, using default: optimized"
+           << endl;
+    }
+
     // 读取每层配置
     YAML::Node level_configs = hierarchical_config["level_configs"];
     GlobalParams::fanouts_per_level = new int[GlobalParams::num_levels];

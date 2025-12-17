@@ -46,7 +46,7 @@ int GlobalParams::rnd_generator_seed;
 bool GlobalParams::detailed;
 double GlobalParams::dyad_threshold;
 unsigned int GlobalParams::max_volume_to_be_drained;
-vector <pair <int, double> > GlobalParams::hotspots;
+vector<pair<int, double>> GlobalParams::hotspots;
 bool GlobalParams::show_buffer_stats;
 bool GlobalParams::use_winoc;
 int GlobalParams::winoc_dst_hops;
@@ -62,19 +62,23 @@ bool GlobalParams::ascii_monitor;
 int GlobalParams::channel_selection;
 
 int GlobalParams::num_levels;
-int* GlobalParams::fanouts_per_level;
+int *GlobalParams::fanouts_per_level;
 int GlobalParams::word_bits;
 
-int* GlobalParams::node_level_map = nullptr;
-int* GlobalParams::parent_map = nullptr;
-int** GlobalParams::child_map = nullptr;
+int *GlobalParams::node_level_map = nullptr;
+int *GlobalParams::parent_map = nullptr;
+int **GlobalParams::child_map = nullptr;
 int GlobalParams::total_hierarchical_nodes = 0;
 int GlobalParams::num_nodes = 0;
 
 WorkloadConfig GlobalParams::workload;
 
-map<PE_Role,RoleChannelCapabilities> GlobalParams::CapabilityMap;
+map<PE_Role, RoleChannelCapabilities> GlobalParams::CapabilityMap;
 HierarchicalConfig GlobalParams::hierarchical_config;
 
-map<int, vector<int>> GlobalParams::storage_to_compute_map;  // GLB -> COMPUTE 节点列表  
+map<int, vector<int>>
+    GlobalParams::storage_to_compute_map; // GLB -> COMPUTE 节点列表
 map<int, int> GlobalParams::compute_to_storage_map;
+
+string GlobalParams::transmission_mode =
+    "optimized"; // Default to optimized mode

@@ -14,7 +14,12 @@ topology: "HIERARCHICAL"
 hierarchical_config:  
   num_levels: 3  
   connection_mode: "tree"  
-  word_bits: 8  
+  word_bits: 8
+  
+  # Transmission mode: "traditional" or "optimized"
+  # - "traditional": forward_count = port_groups size, packet_size = 1+1+target_count*(size/bandwidth_scale)
+  # - "optimized": forward_count based on target_role, packet_size uses hierarchical slicing
+  transmission_mode: "optimized"  # Default: "optimized", can be changed to "traditional"
     
   level_configs:  
     - level: 0  

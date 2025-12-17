@@ -22,7 +22,7 @@ hierarchical_config:
       node_type: "DRAM"
       buffer_size: 37748736
       roles: "ROLE_DRAM"
-      bandwidth: 512
+      bandwidth: 64
       fanouts: 1
       routing_patterns:  
         INPUT:  
@@ -42,7 +42,7 @@ hierarchical_config:
       node_type: "GLB"
       buffer_size: 3715000
       roles: "ROLE_GLB"
-      bandwidth: 512
+      bandwidth: 64
       fanouts: 8
       aggregate: true
       routing_patterns:  
@@ -61,7 +61,7 @@ hierarchical_config:
       node_type: "DISTRIBUTOR"
       buffer_size: 0 # 维持您提供的buffer配置
       roles: "ROLE_DISTRIBUTOR"
-      bandwidth: 128
+      bandwidth: 64
       fanouts: 12
       aggregate: true
       routing_patterns:  
@@ -100,9 +100,9 @@ hierarchical_config:
     # Level 3: COMPUTE (PE)
     - level: 3
       node_type: "ROLE_BUFFER"
-      buffer_size: [384, 32, 32]    
+      buffer_size: [384, 64, 64]    
       roles: "ROLE_BUFFER"
-      bandwidth: 8
+      bandwidth: 64
       fanouts: 0
 
 workload:

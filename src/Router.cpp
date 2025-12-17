@@ -65,13 +65,28 @@ void Router::rxProcess()
         {
 
           if (use_predefined_routing &&
-              routing_patterns.count(received_flit.data_type) > 0 && received_flit.command != -1)
+              routing_patterns.count(received_flit.data_type) > 0 &&
+              received_flit.command != -1)
           {
 
             const RoutingPattern &pattern =
                 routing_patterns[received_flit.data_type];
-            if (received_flit.target_role != role)
-              received_flit.forward_count = pattern.forward_count; // 从配置获取                   // 重置计数
+            if (received_flit.target_role == role)
+            {
+              received_flit.forward_count = 1;
+            }
+            // Transmission mode switching logic
+            else if (GlobalParams::transmission_mode == "traditional")
+            {
+              // Traditional mode: forward_count equals number of port_groups
+              received_flit.forward_count = pattern.port_groups.size();
+            }
+            else
+            {
+              // Optimized mode: based on target_role setting
+              received_flit.forward_count =
+                  pattern.forward_count; // 从配置获取
+            }
           }
 
           received_flit.current_forward = 0;
@@ -418,7 +433,8 @@ void Router::txProcess()
             if (flit_ref.flit_type == FLIT_TYPE_HEAD ||
                 flit_ref.flit_type == FLIT_TYPE_TAIL)
             {
-              const RoutingPattern &pattern = routing_patterns[flit_ref.data_type];
+              const RoutingPattern &pattern =
+                  routing_patterns[flit_ref.data_type];
               if (flit_ref.current_forward < flit_ref.forward_count)
               {
                 should_pop = false; // 还未完成转发，不pop
@@ -521,8 +537,7 @@ void Router::txProcess()
           TReservation r;
           r.input = selected.input;
           r.vc = selected.vc;
-          if (
-              flit.current_forward >= flit.forward_count || flit.command == -1)
+          if (flit.current_forward >= flit.forward_count || flit.command == -1)
             reservation_table.release(r, selected.target_outputs);
 
           // 功耗与统计（对所有目标端口进行统计）

@@ -10,33 +10,33 @@
  */
 
 #ifndef __NOXIMGLOBALPARAMS_H__
-#define __NOXIMGLOBALPARAMS_H__ 
+#define __NOXIMGLOBALPARAMS_H__
 
+#include "DataTypes.h"
+#include "taskmanager/WorkloadStructs.h"
 #include <map>
+#include <string>
 #include <utility>
 #include <vector>
-#include <string>
-#include "taskmanager/WorkloadStructs.h"
-#include "DataTypes.h" 
 using namespace std;
 
-#define CONFIG_FILENAME        "config.yaml"
-#define POWER_CONFIG_FILENAME  "power.yaml"
+#define CONFIG_FILENAME "config.yaml"
+#define POWER_CONFIG_FILENAME "power.yaml"
 
 // Define the directions as numbers
-#define DIRECTIONS              4
-#define DIRECTION_NORTH         0
-#define DIRECTION_EAST          1
-#define DIRECTION_SOUTH         2
-#define DIRECTION_WEST          3
-#define DIRECTION_LOCAL         4
-#define DIRECTION_HUB           5
-#define DIRECTION_LOCAL_2       6
-#define DIRECTION_HUB_RELAY     5000
-#define DIRECTION_WIRELESS    747
+#define DIRECTIONS 4
+#define DIRECTION_NORTH 0
+#define DIRECTION_EAST 1
+#define DIRECTION_SOUTH 2
+#define DIRECTION_WEST 3
+#define DIRECTION_LOCAL 4
+#define DIRECTION_HUB 5
+#define DIRECTION_LOCAL_2 6
+#define DIRECTION_HUB_RELAY 5000
+#define DIRECTION_WIRELESS 747
 
-#define MAX_VIRTUAL_CHANNELS	8
-#define DEFAULT_VC 		0
+#define MAX_VIRTUAL_CHANNELS 8
+#define DEFAULT_VC 0
 
 #define RT_AVAILABLE 1
 #define RT_ALREADY_SAME -1
@@ -44,172 +44,172 @@ using namespace std;
 #define RT_OUTVC_BUSY -3
 
 // Generic not reserved resource
-#define NOT_RESERVED          -2
+#define NOT_RESERVED -2
 
 // To mark invalid or non exhistent values
-#define NOT_VALID             -1
+#define NOT_VALID -1
 
-//Topologies
-#define TOPOLOGY_MESH          "MESH"
-//Delta Networks Topologies
-#define TOPOLOGY_BASELINE      "BASELINE"
-#define TOPOLOGY_BUTTERFLY     "BUTTERFLY"
-#define TOPOLOGY_OMEGA         "OMEGA"
-//Hierarchical Topology
-#define TOPOLOGY_HIERARCHICAL  "HIERARCHICAL"
+// Topologies
+#define TOPOLOGY_MESH "MESH"
+// Delta Networks Topologies
+#define TOPOLOGY_BASELINE "BASELINE"
+#define TOPOLOGY_BUTTERFLY "BUTTERFLY"
+#define TOPOLOGY_OMEGA "OMEGA"
+// Hierarchical Topology
+#define TOPOLOGY_HIERARCHICAL "HIERARCHICAL"
 
 // Routing algorithms
-#define ROUTING_DYAD           "DYAD"
-#define ROUTING_TABLE_BASED    "TABLE_BASED"
+#define ROUTING_DYAD "DYAD"
+#define ROUTING_TABLE_BASED "TABLE_BASED"
 
-
-// Channel selection 
+// Channel selection
 #define CHSEL_RANDOM 0
 #define CHSEL_FIRST_FREE 1
 
 // Traffic distribution
-#define TRAFFIC_RANDOM         "TRAFFIC_RANDOM"
-#define TRAFFIC_TRANSPOSE1     "TRAFFIC_TRANSPOSE1"
-#define TRAFFIC_TRANSPOSE2     "TRAFFIC_TRANSPOSE2"
-#define TRAFFIC_HOTSPOT        "TRAFFIC_HOTSPOT"
-#define TRAFFIC_TABLE_BASED    "TRAFFIC_TABLE_BASED"
-#define TRAFFIC_BIT_REVERSAL   "TRAFFIC_BIT_REVERSAL"
-#define TRAFFIC_SHUFFLE        "TRAFFIC_SHUFFLE"
-#define TRAFFIC_BUTTERFLY      "TRAFFIC_BUTTERFLY"
-#define TRAFFIC_LOCAL	       "TRAFFIC_LOCAL"
-#define TRAFFIC_ULOCAL	       "TRAFFIC_ULOCAL"
+#define TRAFFIC_RANDOM "TRAFFIC_RANDOM"
+#define TRAFFIC_TRANSPOSE1 "TRAFFIC_TRANSPOSE1"
+#define TRAFFIC_TRANSPOSE2 "TRAFFIC_TRANSPOSE2"
+#define TRAFFIC_HOTSPOT "TRAFFIC_HOTSPOT"
+#define TRAFFIC_TABLE_BASED "TRAFFIC_TABLE_BASED"
+#define TRAFFIC_BIT_REVERSAL "TRAFFIC_BIT_REVERSAL"
+#define TRAFFIC_SHUFFLE "TRAFFIC_SHUFFLE"
+#define TRAFFIC_BUTTERFLY "TRAFFIC_BUTTERFLY"
+#define TRAFFIC_LOCAL "TRAFFIC_LOCAL"
+#define TRAFFIC_ULOCAL "TRAFFIC_ULOCAL"
 
 // Verbosity levels
-#define VERBOSE_OFF            "VERBOSE_OFF"
-#define VERBOSE_LOW            "VERBOSE_LOW"
-#define VERBOSE_MEDIUM         "VERBOSE_MEDIUM"
-#define VERBOSE_HIGH           "VERBOSE_HIGH"
-
+#define VERBOSE_OFF "VERBOSE_OFF"
+#define VERBOSE_LOW "VERBOSE_LOW"
+#define VERBOSE_MEDIUM "VERBOSE_MEDIUM"
+#define VERBOSE_HIGH "VERBOSE_HIGH"
 
 // Wireless MAC constants
 #define RELEASE_CHANNEL 1
-#define HOLD_CHANNEL 	2
+#define HOLD_CHANNEL 2
 
-#define TOKEN_HOLD             "TOKEN_HOLD"
-#define TOKEN_MAX_HOLD         "TOKEN_MAX_HOLD"
-#define TOKEN_PACKET           "TOKEN_PACKET"
-
+#define TOKEN_HOLD "TOKEN_HOLD"
+#define TOKEN_MAX_HOLD "TOKEN_MAX_HOLD"
+#define TOKEN_PACKET "TOKEN_PACKET"
 
 typedef struct {
-    pair<double, double> ber;
-    int dataRate;
-    vector<string> macPolicy;
+  pair<double, double> ber;
+  int dataRate;
+  vector<string> macPolicy;
 } ChannelConfig;
 
 typedef struct {
-    vector<int> attachedNodes;
-    vector<int> rxChannels;
-    vector<int> txChannels;
-    int toTileBufferSize;
-    int fromTileBufferSize;
-    int txBufferSize;
-    int rxBufferSize;
+  vector<int> attachedNodes;
+  vector<int> rxChannels;
+  vector<int> txChannels;
+  int toTileBufferSize;
+  int fromTileBufferSize;
+  int txBufferSize;
+  int rxBufferSize;
 } HubConfig;
 
 typedef struct {
-    map<pair <int, int>, double> front;
-    map<pair <int, int>, double> pop;
-    map<pair <int, int>, double> push;
-    map<pair <int, int>, double> leakage;
+  map<pair<int, int>, double> front;
+  map<pair<int, int>, double> pop;
+  map<pair<int, int>, double> push;
+  map<pair<int, int>, double> leakage;
 } BufferPowerConfig;
 
-typedef map<double, pair <double, double> > LinkBitLinePowerConfig;
+typedef map<double, pair<double, double>> LinkBitLinePowerConfig;
 
 typedef struct {
-    map<pair<double, double>, pair<double, double> > crossbar_pm;
-    map<int, pair<double, double> > network_interface;
-    map<string, pair<double, double> > routing_algorithm_pm;
-    map<string, pair<double, double> > selection_strategy_pm;
+  map<pair<double, double>, pair<double, double>> crossbar_pm;
+  map<int, pair<double, double>> network_interface;
+  map<string, pair<double, double>> routing_algorithm_pm;
+  map<string, pair<double, double>> selection_strategy_pm;
 } RouterPowerConfig;
 
 typedef struct {
-    pair<double, double> transceiver_leakage;
-    pair<double, double> transceiver_biasing;
-    double rx_dynamic;
-    double rx_snooping;
-    double default_tx_energy;
-    map<pair <int, int>, double> transmitter_attenuation_map;
+  pair<double, double> transceiver_leakage;
+  pair<double, double> transceiver_biasing;
+  double rx_dynamic;
+  double rx_snooping;
+  double default_tx_energy;
+  map<pair<int, int>, double> transmitter_attenuation_map;
 } HubPowerConfig;
 
 typedef struct {
-    BufferPowerConfig bufferPowerConfig;
-    LinkBitLinePowerConfig linkBitLinePowerConfig;
-    RouterPowerConfig routerPowerConfig;
-    HubPowerConfig hubPowerConfig;
+  BufferPowerConfig bufferPowerConfig;
+  LinkBitLinePowerConfig linkBitLinePowerConfig;
+  RouterPowerConfig routerPowerConfig;
+  HubPowerConfig hubPowerConfig;
 } PowerConfig;
 
 struct GlobalParams {
-    static string verbose_mode;
-    static int trace_mode;
-    static string trace_filename;
-    static string topology;
-    static int mesh_dim_x;
-    static int mesh_dim_y;
-    static int n_delta_tiles;
-    static double r2r_link_length;
-    static double r2h_link_length;
-    static int buffer_depth;
-    static int flit_size;
-    static int min_packet_size;
-    static int max_packet_size;
-    static string routing_algorithm;
-    static string routing_table_filename;
-    static string selection_strategy;
-    static double packet_injection_rate;
-    static double probability_of_retransmission;
-    static double locality;
-    static string traffic_distribution;
-    static string traffic_table_filename;
-    static string config_filename;
-    static string power_config_filename;
-    static int clock_period_ps;
-    static int simulation_time;
-    static int n_virtual_channels;
-    static int reset_time;
-    static int stats_warm_up_time;
-    static int rnd_generator_seed;
-    static bool detailed;
-    static vector <pair <int, double> > hotspots;
-    static double dyad_threshold;
-    static unsigned int max_volume_to_be_drained;
-    static bool show_buffer_stats;
-    static bool use_winoc;
-    static int winoc_dst_hops;
-    static bool use_powermanager;
-    static ChannelConfig default_channel_configuration;
-    static map<int, ChannelConfig> channel_configuration;
-    static HubConfig default_hub_configuration;
-    static map<int, HubConfig> hub_configuration;
-    static map<int, int> hub_for_tile;
-    static PowerConfig power_configuration;
-    // out of yaml configuration
-    static bool ascii_monitor;
-    static int channel_selection;
+  static string verbose_mode;
+  static int trace_mode;
+  static string trace_filename;
+  static string topology;
+  static int mesh_dim_x;
+  static int mesh_dim_y;
+  static int n_delta_tiles;
+  static double r2r_link_length;
+  static double r2h_link_length;
+  static int buffer_depth;
+  static int flit_size;
+  static int min_packet_size;
+  static int max_packet_size;
+  static string routing_algorithm;
+  static string routing_table_filename;
+  static string selection_strategy;
+  static double packet_injection_rate;
+  static double probability_of_retransmission;
+  static double locality;
+  static string traffic_distribution;
+  static string traffic_table_filename;
+  static string config_filename;
+  static string power_config_filename;
+  static int clock_period_ps;
+  static int simulation_time;
+  static int n_virtual_channels;
+  static int reset_time;
+  static int stats_warm_up_time;
+  static int rnd_generator_seed;
+  static bool detailed;
+  static vector<pair<int, double>> hotspots;
+  static double dyad_threshold;
+  static unsigned int max_volume_to_be_drained;
+  static bool show_buffer_stats;
+  static bool use_winoc;
+  static int winoc_dst_hops;
+  static bool use_powermanager;
+  static ChannelConfig default_channel_configuration;
+  static map<int, ChannelConfig> channel_configuration;
+  static HubConfig default_hub_configuration;
+  static map<int, HubConfig> hub_configuration;
+  static map<int, int> hub_for_tile;
+  static PowerConfig power_configuration;
+  // out of yaml configuration
+  static bool ascii_monitor;
+  static int channel_selection;
 
-    static int num_levels;
-    static int word_bits;
-    static int* fanouts_per_level;
-    static int num_nodes;
+  static int num_levels;
+  static int word_bits;
+  static int *fanouts_per_level;
+  static int num_nodes;
 
-    // Hierarchical topology mapping
-    static int* node_level_map;      // 节点->层级映射
-    static int* parent_map;          // 节点->父节点映射
-    static int** child_map;          // 节点->子节点映射
-    static int* child_map_size;      // 记录每个节点的子节点数量
-    static int total_hierarchical_nodes;  // 总层次化节点数
+  // Hierarchical topology mapping
+  static int *node_level_map;          // 节点->层级映射
+  static int *parent_map;              // 节点->父节点映射
+  static int **child_map;              // 节点->子节点映射
+  static int *child_map_size;          // 记录每个节点的子节点数量
+  static int total_hierarchical_nodes; // 总层次化节点数
 
-    static WorkloadConfig workload;
-    static map<PE_Role,RoleChannelCapabilities> CapabilityMap;
+  static WorkloadConfig workload;
+  static map<PE_Role, RoleChannelCapabilities> CapabilityMap;
 
-    static HierarchicalConfig hierarchical_config;
-    static map<int, vector<int>> storage_to_compute_map;  // GLB -> COMPUTE 节点列表  
-    static map<int, int> compute_to_storage_map;
+  static HierarchicalConfig hierarchical_config;
+  static map<int, vector<int>>
+      storage_to_compute_map; // GLB -> COMPUTE 节点列表
+  static map<int, int> compute_to_storage_map;
 
+  // Transmission mode: "traditional" or "optimized"
+  static string transmission_mode;
 };
 
 #endif
