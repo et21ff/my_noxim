@@ -125,7 +125,7 @@ workload:
       properties:
         sync_per_timestep: 1
       schedule_template:
-        total_timesteps: 121
+        total_timesteps: 11
         delta_events:
           - trigger: { on_timestep_modulo: [11, 0] }
             name: "INITIAL_LOAD_DRAM_TO_GLB"

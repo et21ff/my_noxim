@@ -13,10 +13,7 @@
 
 using namespace std;
 
-inline int toggleKthBit(int n, int k)
-{
-    return (n ^ (1 << (k - 1)));
-}
+inline int toggleKthBit(int n, int k) { return (n ^ (1 << (k - 1))); }
 
 void NoC::buildCommon()
 {
@@ -25,9 +22,9 @@ void NoC::buildCommon()
     token_ring->reset(reset);
 
     char channel_name[16];
-    for (map<int, ChannelConfig>::iterator it = GlobalParams::channel_configuration.begin();
-         it != GlobalParams::channel_configuration.end();
-         ++it)
+    for (map<int, ChannelConfig>::iterator it =
+             GlobalParams::channel_configuration.begin();
+         it != GlobalParams::channel_configuration.end(); ++it)
     {
         int channel_id = it->first;
         sprintf(channel_name, "Channel_%d", channel_id);
@@ -35,9 +32,9 @@ void NoC::buildCommon()
     }
 
     char hub_name[16];
-    for (map<int, HubConfig>::iterator it = GlobalParams::hub_configuration.begin();
-         it != GlobalParams::hub_configuration.end();
-         ++it)
+    for (map<int, HubConfig>::iterator it =
+             GlobalParams::hub_configuration.begin();
+         it != GlobalParams::hub_configuration.end(); ++it)
     {
         int hub_id = it->first;
         // LOG << " hub id " <<  hub_id;
@@ -50,41 +47,46 @@ void NoC::buildCommon()
 
         // Determine, from configuration file, which Hub is connected to which Tile
         for (vector<int>::iterator iit = hub_config.attachedNodes.begin();
-             iit != hub_config.attachedNodes.end();
-             ++iit)
+             iit != hub_config.attachedNodes.end(); ++iit)
         {
             GlobalParams::hub_for_tile[*iit] = hub_id;
             // LOG<<"I am hub "<<hub_id<<" and I amconnecting to "<<*iit<<endl;
         }
-        // for (map<int, int>::iterator it1 = GlobalParams::hub_for_tile.begin(); it1 != GlobalParams::hub_for_tile.end(); it1++ )
-        // LOG<<"it1 first "<< it1->first<< "second"<< it1->second<<endl;
+        // for (map<int, int>::iterator it1 = GlobalParams::hub_for_tile.begin();
+        // it1 != GlobalParams::hub_for_tile.end(); it1++ ) LOG<<"it1 first "<<
+        // it1->first<< "second"<< it1->second<<endl;
 
-        // Determine, from configuration file, which Hub is connected to which Channel
+        // Determine, from configuration file, which Hub is connected to which
+        // Channel
         for (vector<int>::iterator iit = hub_config.txChannels.begin();
-             iit != hub_config.txChannels.end();
-             ++iit)
+             iit != hub_config.txChannels.end(); ++iit)
         {
             int channel_id = *iit;
-            // LOG << "Binding " << hub[hub_id]->name() << " to txChannel " << channel_id << endl;
-            hub[hub_id]->init[channel_id]->socket.bind(channel[channel_id]->targ_socket);
-            // LOG << "Binding " << hub[hub_id]->name() << " to txChannel " << channel_id << endl;
-            hub[hub_id]->setFlitTransmissionCycles(channel[channel_id]->getFlitTransmissionCycles(), channel_id);
+            // LOG << "Binding " << hub[hub_id]->name() << " to txChannel " <<
+            // channel_id << endl;
+            hub[hub_id]->init[channel_id]->socket.bind(
+                channel[channel_id]->targ_socket);
+            // LOG << "Binding " << hub[hub_id]->name() << " to txChannel " <<
+            // channel_id << endl;
+            hub[hub_id]->setFlitTransmissionCycles(
+                channel[channel_id]->getFlitTransmissionCycles(), channel_id);
         }
 
         for (vector<int>::iterator iit = hub_config.rxChannels.begin();
-             iit != hub_config.rxChannels.end();
-             ++iit)
+             iit != hub_config.rxChannels.end(); ++iit)
         {
             int channel_id = *iit;
-            // LOG << "Binding " << hub[hub_id]->name() << " to rxChannel " << channel_id << endl;
-            channel[channel_id]->init_socket.bind(hub[hub_id]->target[channel_id]->socket);
+            // LOG << "Binding " << hub[hub_id]->name() << " to rxChannel " <<
+            // channel_id << endl;
+            channel[channel_id]->init_socket.bind(
+                hub[hub_id]->target[channel_id]->socket);
             channel[channel_id]->addHub(hub[hub_id]);
         }
 
         // TODO FIX
-        // Hub Power model does not currently support different data rates for single hub
-        // If multiple channels are connected to an Hub, the data rate
-        // of the first channel will be used as default
+        // Hub Power model does not currently support different data rates for
+        // single hub If multiple channels are connected to an Hub, the data rate of
+        // the first channel will be used as default
 
         int no_channels = hub_config.txChannels.size();
 
@@ -92,22 +94,25 @@ void NoC::buildCommon()
 
         if (no_channels > 0)
         {
-            data_rate_gbs = GlobalParams::channel_configuration[hub_config.txChannels[0]].dataRate;
+            data_rate_gbs =
+                GlobalParams::channel_configuration[hub_config.txChannels[0]]
+                    .dataRate;
         }
         else
             data_rate_gbs = NOT_VALID;
 
-        // TODO: update power model (configureHub to support different tx/tx buffer depth in the power breakdown
-        // Currently, an averaged value is used when accounting in Power class methods
+        // TODO: update power model (configureHub to support different tx/tx buffer
+        // depth in the power breakdown Currently, an averaged value is used when
+        // accounting in Power class methods
 
-        hub[hub_id]->power.configureHub(GlobalParams::flit_size,
-                                        GlobalParams::hub_configuration[hub_id].toTileBufferSize,
-                                        GlobalParams::hub_configuration[hub_id].fromTileBufferSize,
-                                        GlobalParams::flit_size,
-                                        GlobalParams::hub_configuration[hub_id].rxBufferSize,
-                                        GlobalParams::hub_configuration[hub_id].txBufferSize,
-                                        GlobalParams::flit_size,
-                                        data_rate_gbs);
+        hub[hub_id]->power.configureHub(
+            GlobalParams::flit_size,
+            GlobalParams::hub_configuration[hub_id].toTileBufferSize,
+            GlobalParams::hub_configuration[hub_id].fromTileBufferSize,
+            GlobalParams::flit_size,
+            GlobalParams::hub_configuration[hub_id].rxBufferSize,
+            GlobalParams::hub_configuration[hub_id].txBufferSize,
+            GlobalParams::flit_size, data_rate_gbs);
     }
 
     // Check for routing table availability
@@ -119,7 +124,8 @@ void NoC::buildCommon()
         assert(gttable.load(GlobalParams::traffic_table_filename.c_str()));
 
     // Var to track Hub connected ports
-    hub_connected_ports = (int *)calloc(GlobalParams::hub_configuration.size(), sizeof(int));
+    hub_connected_ports =
+        (int *)calloc(GlobalParams::hub_configuration.size(), sizeof(int));
 }
 
 //======================================================================
@@ -152,13 +158,17 @@ void NoC::buildHierarchical()
     //==================================================================
     // 1. 初始化层次化拓扑参数
     //==================================================================
-    if (GlobalParams::num_levels <= 0 || GlobalParams::fanouts_per_level == nullptr)
+    if (GlobalParams::num_levels <= 0 ||
+        GlobalParams::fanouts_per_level == nullptr)
     {
         // 使用 cerr 输出错误信息，这是标准错误流
         std::cerr << "错误: 全局配置 (GlobalParams) 无效或未初始化。" << std::endl;
-        std::cerr << "  - GlobalParams::num_levels: " << GlobalParams::num_levels << std::endl;
+        std::cerr << "  - GlobalParams::num_levels: " << GlobalParams::num_levels
+                  << std::endl;
         std::cerr << "  - GlobalParams::nodes_per_level is "
-                  << (GlobalParams::fanouts_per_level == nullptr ? "nullptr" : "not null") << std::endl;
+                  << (GlobalParams::fanouts_per_level == nullptr ? "nullptr"
+                                                                 : "not null")
+                  << std::endl;
 
         // 验证失败，终止当前函数的执行
         return;
@@ -172,7 +182,8 @@ void NoC::buildHierarchical()
             nodes_per_level[i] = 1; // 根节点
         else
         {
-            nodes_per_level[i] = nodes_per_level[i - 1] * GlobalParams::fanouts_per_level[i - 1];
+            nodes_per_level[i] =
+                nodes_per_level[i - 1] * GlobalParams::fanouts_per_level[i - 1];
             dbg(i, GlobalParams::fanouts_per_level[i - 1], nodes_per_level[i]);
         }
     }
@@ -204,14 +215,16 @@ void NoC::buildHierarchical()
     //==================================================================
     // hierarchical_req = new sc_signal_Hierarchical<bool>*[total_nodes];
     // hierarchical_ack = new sc_signal_Hierarchical<bool>*[total_nodes];
-    // hierarchical_buffer_full_status = new sc_signal_Hierarchical<TBufferFullStatus>*[total_nodes];
-    // hierarchical_flit = new sc_signal_Hierarchical<Flit>*[total_nodes];
+    // hierarchical_buffer_full_status = new
+    // sc_signal_Hierarchical<TBufferFullStatus>*[total_nodes]; hierarchical_flit
+    // = new sc_signal_Hierarchical<Flit>*[total_nodes];
 
     // for (int i = 0; i < total_nodes; i++) {
     //     hierarchical_req[i] = new sc_signal_Hierarchical<bool>();
     //     hierarchical_ack[i] = new sc_signal_Hierarchical<bool>();
-    //     hierarchical_buffer_full_status[i] = new sc_signal_Hierarchical<TBufferFullStatus>();
-    //     hierarchical_flit[i] = new sc_signal_Hierarchical<Flit>();
+    //     hierarchical_buffer_full_status[i] = new
+    //     sc_signal_Hierarchical<TBufferFullStatus>(); hierarchical_flit[i] = new
+    //     sc_signal_Hierarchical<Flit>();
     // }
 
     //==================================================================
@@ -233,13 +246,28 @@ void NoC::buildHierarchical()
         // 配置Router
         t[node_id]->r->configure(node_id, GlobalParams::node_level_map[node_id],
                                  GlobalParams::stats_warm_up_time,
-                                 GlobalParams::buffer_depth,
-                                 grtable);
-        t[node_id]->r->power.configureRouter(GlobalParams::flit_size,
-                                             GlobalParams::buffer_depth,
-                                             GlobalParams::flit_size,
-                                             string(GlobalParams::routing_algorithm),
-                                             "default");
+                                 GlobalParams::buffer_depth, grtable);
+        // 获取当前层和下一层的带宽配置
+        const LevelConfig &current_level_config =
+            GlobalParams::hierarchical_config.get_level_config(
+                node_level_map[node_id]);
+
+        // 获取下一层带宽（用于链路传输）
+        int next_level_bandwidth = current_level_config.bandwidth;
+        if (node_level_map[node_id] < GlobalParams::num_levels - 1)
+        {
+            const LevelConfig &next_level_config =
+                GlobalParams::hierarchical_config.get_level_config(
+                    node_level_map[node_id] + 1);
+            next_level_bandwidth = next_level_config.bandwidth;
+        }
+
+        // 配置功耗参数：链路带宽使用下一层，处理带宽使用当前层
+        t[node_id]->r->power.configureRouter(
+            next_level_bandwidth, // 下一层链路带宽
+            GlobalParams::buffer_depth,
+            current_level_config.bandwidth, // 当前层处理带宽
+            string(GlobalParams::routing_algorithm), "default");
 
         // 配置ProcessingElement
         t[node_id]->pe->local_id = node_id;
@@ -266,7 +294,8 @@ void NoC::buildHierarchical()
     hierarchical_flit = new sc_signal<Flit> *[GlobalParams::num_nodes];
     hierarchical_req = new sc_signal<bool> *[GlobalParams::num_nodes];
     hierarchical_ack = new sc_signal<bool> *[GlobalParams::num_nodes];
-    hierarchical_buffer_full_status = new sc_signal<TBufferFullStatus> *[GlobalParams::num_nodes];
+    hierarchical_buffer_full_status =
+        new sc_signal<TBufferFullStatus> *[GlobalParams::num_nodes];
     downstream_ready_signals = new sc_signal<int> *[GlobalParams::num_nodes];
 
     // 为每个节点的连接分配两个方向的信号
@@ -454,25 +483,13 @@ void NoC::findComputeNodes(int node_id, int target_level, vector<int> &result)
     }
 }
 
-void NoC::buildButterfly()
-{
-    return;
-}
+void NoC::buildButterfly() { return; }
 
-void NoC::buildBaseline()
-{
-    return;
-}
+void NoC::buildBaseline() { return; }
 
-void NoC::buildMesh()
-{
-    return;
-}
+void NoC::buildMesh() { return; }
 
-void NoC::buildOmega()
-{
-    return;
-}
+void NoC::buildOmega() { return; }
 
 //======================================================================
 // 方法: setupHierarchicalConnections()
@@ -484,7 +501,8 @@ void NoC::setupHierarchicalConnections()
 {
     cout << "[连接] 正在建立 Tile 间的层次化连接..." << endl;
 
-    // t[0]->pe->downstream_ready_out.bind(dummy_signal); // make systemc satisfied
+    // t[0]->pe->downstream_ready_out.bind(dummy_signal); // make systemc
+    // satisfied
 
     // 遍历所有非根节点（从1开始）
     for (int i = 1; i < GlobalParams::num_nodes; i++)
@@ -494,7 +512,8 @@ void NoC::setupHierarchicalConnections()
 
         // 找到当前节点在其父节点的子节点列表中的索引
         int child_index = -1;
-        int num_children = GlobalParams::fanouts_per_level[GlobalParams::node_level_map[parent_id]];
+        int num_children = GlobalParams::fanouts_per_level
+            [GlobalParams::node_level_map[parent_id]];
         for (int j = 0; j < num_children; j++)
         {
             if (GlobalParams::child_map[parent_id][j] == i)
@@ -506,40 +525,59 @@ void NoC::setupHierarchicalConnections()
         assert(child_index != -1 && "无法在父节点的子节点列表中找到当前节点");
 
         // --- [DEBUG] 打印当前正在处理的连接 ---
-        cout << "--- [DEBUG] 开始连接 Node " << i << " (UP) <--> Node " << parent_id << " (DOWN " << child_index << ") ---" << endl;
+        cout << "--- [DEBUG] 开始连接 Node " << i << " (UP) <--> Node " << parent_id
+             << " (DOWN " << child_index << ") ---" << endl;
 
         // =================================================================
         //                 方向 1: 子节点 -> 父节点
         // =================================================================
         {
 
-            cout << "  [NOC BIND DEBUG] Child " << i << " UP TX status port addr: " << t[i]->hierarchical_buffer_full_status_up_tx << endl;
-            assert(t[i]->hierarchical_buffer_full_status_up_tx != nullptr && "Tile's own UP TX status port is NULL!");
+            cout << "  [NOC BIND DEBUG] Child " << i << " UP TX status port addr: "
+                 << t[i]->hierarchical_buffer_full_status_up_tx << endl;
+            assert(t[i]->hierarchical_buffer_full_status_up_tx != nullptr &&
+                   "Tile's own UP TX status port is NULL!");
 
             cout << "  [DEBUG] 方向 C->P: 正在绑定..." << endl;
 
             // --- [DEBUG] 打印关键指针地址 ---
-            cout << "    - Child  (UP) TX flit   port addr: " << t[i]->hierarchical_flit_up_tx << endl;
-            cout << "    - Parent (DW) RX flit   port addr: " << t[parent_id]->hierarchical_flit_down_rx[child_index] << endl;
-            cout << "    - Child  (UP) TX status port addr: " << t[i]->hierarchical_buffer_full_status_up_tx << endl;
-            cout << "    - Parent (DW) RX status port addr: " << t[parent_id]->hierarchical_buffer_full_status_down_rx[child_index] << endl;
+            cout << "    - Child  (UP) TX flit   port addr: "
+                 << t[i]->hierarchical_flit_up_tx << endl;
+            cout << "    - Parent (DW) RX flit   port addr: "
+                 << t[parent_id]->hierarchical_flit_down_rx[child_index] << endl;
+            cout << "    - Child  (UP) TX status port addr: "
+                 << t[i]->hierarchical_buffer_full_status_up_tx << endl;
+            cout << "    - Parent (DW) RX status port addr: "
+                 << t[parent_id]->hierarchical_buffer_full_status_down_rx[child_index]
+                 << endl;
 
             // --- [DEBUG] 添加断言进行运行时检查 ---
-            assert(t[i]->hierarchical_flit_up_tx != nullptr && "Child UP TX Flit Port is NULL!");
-            assert(t[parent_id]->hierarchical_flit_down_rx[child_index] != nullptr && "Parent DOWN RX Flit Port is NULL!");
-            assert(t[i]->hierarchical_buffer_full_status_up_tx != nullptr && "Child UP TX Status Port is NULL!");
-            assert(t[parent_id]->hierarchical_buffer_full_status_down_rx[child_index] != nullptr && "Parent DOWN RX Status Port is NULL!");
+            assert(t[i]->hierarchical_flit_up_tx != nullptr &&
+                   "Child UP TX Flit Port is NULL!");
+            assert(t[parent_id]->hierarchical_flit_down_rx[child_index] != nullptr &&
+                   "Parent DOWN RX Flit Port is NULL!");
+            assert(t[i]->hierarchical_buffer_full_status_up_tx != nullptr &&
+                   "Child UP TX Status Port is NULL!");
+            assert(
+                t[parent_id]->hierarchical_buffer_full_status_down_rx[child_index] !=
+                    nullptr &&
+                "Parent DOWN RX Status Port is NULL!");
 
             // --- 执行绑定 ---
             t[i]->hierarchical_flit_up_tx->bind(hierarchical_flit[i][0]);
             t[i]->hierarchical_req_up_tx->bind(hierarchical_req[i][0]);
             t[i]->hierarchical_ack_up_tx->bind(hierarchical_ack[i][0]);
-            t[i]->hierarchical_buffer_full_status_up_tx->bind(hierarchical_buffer_full_status[i][0]);
+            t[i]->hierarchical_buffer_full_status_up_tx->bind(
+                hierarchical_buffer_full_status[i][0]);
 
-            t[parent_id]->hierarchical_flit_down_rx[child_index]->bind(hierarchical_flit[i][0]);
-            t[parent_id]->hierarchical_req_down_rx[child_index]->bind(hierarchical_req[i][0]);
-            t[parent_id]->hierarchical_ack_down_rx[child_index]->bind(hierarchical_ack[i][0]);
-            t[parent_id]->hierarchical_buffer_full_status_down_rx[child_index]->bind(hierarchical_buffer_full_status[i][0]);
+            t[parent_id]->hierarchical_flit_down_rx[child_index]->bind(
+                hierarchical_flit[i][0]);
+            t[parent_id]->hierarchical_req_down_rx[child_index]->bind(
+                hierarchical_req[i][0]);
+            t[parent_id]->hierarchical_ack_down_rx[child_index]->bind(
+                hierarchical_ack[i][0]);
+            t[parent_id]->hierarchical_buffer_full_status_down_rx[child_index]->bind(
+                hierarchical_buffer_full_status[i][0]);
 
             // t[parent_id]->pe->downstream_ready_in[child_index]->bind(downstream_ready_signals[i][0]);
             // t[i]->pe->downstream_ready_out.bind(downstream_ready_signals[i][0]);
@@ -555,27 +593,43 @@ void NoC::setupHierarchicalConnections()
             cout << "  [DEBUG] 方向 P->C: 正在绑定..." << endl;
 
             // --- [DEBUG] 打印关键指针地址 ---
-            cout << "    - Parent (DW) TX flit   port addr: " << t[parent_id]->hierarchical_flit_down_tx[child_index] << endl;
-            cout << "    - Child  (UP) RX flit   port addr: " << t[i]->hierarchical_flit_up_rx << endl;
-            cout << "    - Parent (DW) TX status port addr: " << t[parent_id]->hierarchical_buffer_full_status_down_tx[child_index] << endl;
-            cout << "    - Child  (UP) RX status port addr: " << t[i]->hierarchical_buffer_full_status_up_rx << endl;
+            cout << "    - Parent (DW) TX flit   port addr: "
+                 << t[parent_id]->hierarchical_flit_down_tx[child_index] << endl;
+            cout << "    - Child  (UP) RX flit   port addr: "
+                 << t[i]->hierarchical_flit_up_rx << endl;
+            cout << "    - Parent (DW) TX status port addr: "
+                 << t[parent_id]->hierarchical_buffer_full_status_down_tx[child_index]
+                 << endl;
+            cout << "    - Child  (UP) RX status port addr: "
+                 << t[i]->hierarchical_buffer_full_status_up_rx << endl;
 
             // --- [DEBUG] 添加断言进行运行时检查 ---
-            assert(t[parent_id]->hierarchical_flit_down_tx[child_index] != nullptr && "Parent DOWN TX Flit Port is NULL!");
-            assert(t[i]->hierarchical_flit_up_rx != nullptr && "Child UP RX Flit Port is NULL!");
-            assert(t[parent_id]->hierarchical_buffer_full_status_down_tx[child_index] != nullptr && "Parent DOWN TX Status Port is NULL!");
-            assert(t[i]->hierarchical_buffer_full_status_up_rx != nullptr && "Child UP RX Status Port is NULL!");
+            assert(t[parent_id]->hierarchical_flit_down_tx[child_index] != nullptr &&
+                   "Parent DOWN TX Flit Port is NULL!");
+            assert(t[i]->hierarchical_flit_up_rx != nullptr &&
+                   "Child UP RX Flit Port is NULL!");
+            assert(
+                t[parent_id]->hierarchical_buffer_full_status_down_tx[child_index] !=
+                    nullptr &&
+                "Parent DOWN TX Status Port is NULL!");
+            assert(t[i]->hierarchical_buffer_full_status_up_rx != nullptr &&
+                   "Child UP RX Status Port is NULL!");
 
             // --- 执行绑定 ---
-            t[parent_id]->hierarchical_flit_down_tx[child_index]->bind(hierarchical_flit[i][1]);
-            t[parent_id]->hierarchical_req_down_tx[child_index]->bind(hierarchical_req[i][1]);
-            t[parent_id]->hierarchical_ack_down_tx[child_index]->bind(hierarchical_ack[i][1]);
-            t[parent_id]->hierarchical_buffer_full_status_down_tx[child_index]->bind(hierarchical_buffer_full_status[i][1]);
+            t[parent_id]->hierarchical_flit_down_tx[child_index]->bind(
+                hierarchical_flit[i][1]);
+            t[parent_id]->hierarchical_req_down_tx[child_index]->bind(
+                hierarchical_req[i][1]);
+            t[parent_id]->hierarchical_ack_down_tx[child_index]->bind(
+                hierarchical_ack[i][1]);
+            t[parent_id]->hierarchical_buffer_full_status_down_tx[child_index]->bind(
+                hierarchical_buffer_full_status[i][1]);
 
             t[i]->hierarchical_flit_up_rx->bind(hierarchical_flit[i][1]);
             t[i]->hierarchical_req_up_rx->bind(hierarchical_req[i][1]);
             t[i]->hierarchical_ack_up_rx->bind(hierarchical_ack[i][1]);
-            t[i]->hierarchical_buffer_full_status_up_rx->bind(hierarchical_buffer_full_status[i][1]);
+            t[i]->hierarchical_buffer_full_status_up_rx->bind(
+                hierarchical_buffer_full_status[i][1]);
 
             cout << "    - P->C Bind OK." << endl;
         }
@@ -656,11 +710,15 @@ void NoC::asciiMonitor()
         {
             {
                 if (s == 0)
-                    std::printf("|  %d  ", (*t[i]->r->buffers[s])[0].getCurrentFreeSlots());
+                    std::printf("|  %d  ",
+                                (*t[i]->r->buffers[s])[0].getCurrentFreeSlots());
                 else if (s == 1)
-                    std::printf("|%d   %d", (*t[i]->r->buffers[s])[0].getCurrentFreeSlots(), (*t[i]->r->buffers[3])[0].getCurrentFreeSlots());
+                    std::printf("|%d   %d",
+                                (*t[i]->r->buffers[s])[0].getCurrentFreeSlots(),
+                                (*t[i]->r->buffers[3])[0].getCurrentFreeSlots());
                 else
-                    std::printf("|__%d__", (*t[i]->r->buffers[2])[0].getCurrentFreeSlots());
+                    std::printf("|__%d__",
+                                (*t[i]->r->buffers[2])[0].getCurrentFreeSlots());
             }
             cout << endl;
         }
@@ -685,12 +743,14 @@ void NoC::setupLocalConnections()
             t[i]->r->h_flit_rx_up->bind(*(t[i]->hierarchical_flit_up_rx));
             t[i]->r->h_req_rx_up->bind(*(t[i]->hierarchical_req_up_rx));
             t[i]->r->h_ack_rx_up->bind(*(t[i]->hierarchical_ack_up_rx));
-            t[i]->r->h_buffer_full_status_rx_up->bind(*(t[i]->hierarchical_buffer_full_status_up_rx));
+            t[i]->r->h_buffer_full_status_rx_up->bind(
+                *(t[i]->hierarchical_buffer_full_status_up_rx));
 
             t[i]->r->h_flit_tx_up->bind(*(t[i]->hierarchical_flit_up_tx));
             t[i]->r->h_req_tx_up->bind(*(t[i]->hierarchical_req_up_tx));
             t[i]->r->h_ack_tx_up->bind(*(t[i]->hierarchical_ack_up_tx));
-            t[i]->r->h_buffer_full_status_tx_up->bind(*(t[i]->hierarchical_buffer_full_status_up_tx));
+            t[i]->r->h_buffer_full_status_tx_up->bind(
+                *(t[i]->hierarchical_buffer_full_status_up_tx));
 
             cout << "[连接] Tile" << i << "和其Router的UP绑定建立完成。" << endl;
         }
@@ -704,14 +764,17 @@ void NoC::setupLocalConnections()
             t[i]->r->h_flit_rx_down[j]->bind(*(t[i]->hierarchical_flit_down_rx[j]));
             t[i]->r->h_req_rx_down[j]->bind(*(t[i]->hierarchical_req_down_rx[j]));
             t[i]->r->h_ack_rx_down[j]->bind(*(t[i]->hierarchical_ack_down_rx[j]));
-            t[i]->r->h_buffer_full_status_rx_down[j]->bind(*(t[i]->hierarchical_buffer_full_status_down_rx[j]));
+            t[i]->r->h_buffer_full_status_rx_down[j]->bind(
+                *(t[i]->hierarchical_buffer_full_status_down_rx[j]));
 
             t[i]->r->h_flit_tx_down[j]->bind(*(t[i]->hierarchical_flit_down_tx[j]));
             t[i]->r->h_req_tx_down[j]->bind(*(t[i]->hierarchical_req_down_tx[j]));
             t[i]->r->h_ack_tx_down[j]->bind(*(t[i]->hierarchical_ack_down_tx[j]));
-            t[i]->r->h_buffer_full_status_tx_down[j]->bind(*(t[i]->hierarchical_buffer_full_status_down_tx[j]));
+            t[i]->r->h_buffer_full_status_tx_down[j]->bind(
+                *(t[i]->hierarchical_buffer_full_status_down_tx[j]));
 
-            cout << "[连接] Tile" << i << "和其Router的DOWN" << j << "绑定建立完成。" << endl;
+            cout << "[连接] Tile" << i << "和其Router的DOWN" << j << "绑定建立完成。"
+                 << endl;
         }
     }
 }

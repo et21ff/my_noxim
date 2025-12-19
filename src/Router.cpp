@@ -84,8 +84,7 @@ void Router::rxProcess()
             else
             {
               // Optimized mode: based on target_role setting
-              received_flit.forward_count =
-                  pattern.forward_count; // 从配置获取
+              received_flit.forward_count = pattern.forward_count; // 从配置获取
             }
           }
 
@@ -452,6 +451,9 @@ void Router::txProcess()
           }
         }
 
+        // 定义统一的功耗计算端口变量
+        vector<int> power_calc_ports = selected.target_outputs;
+
         if (flit.target_role == this->role)
         {
           int output_port = selected.target_outputs[0];
@@ -475,6 +477,14 @@ void Router::txProcess()
           vector<vector<int>> current_groups =
               getCurrentPortGroups(flit.forward_count, flit.current_forward - 1,
                                    pattern.port_groups);
+
+          // 重新设置功耗计算端口为实际转发的端口
+          power_calc_ports.clear();
+          for (const vector<int> &group : current_groups)
+          {
+            power_calc_ports.insert(power_calc_ports.end(), group.begin(),
+                                    group.end());
+          }
 
           // 关键判断:port_groups 的数量决定是否分裂
           bool need_split = (current_groups.size() > 1);
@@ -531,7 +541,48 @@ void Router::txProcess()
           }
         }
 
-        // 处理 TAIL Flit 的资源释放
+        // 统一的功耗计算（对所有flit类型执行）
+        power.crossBar(); // CrossBar只计算一次
+
+        for (int output_port : power_calc_ports)
+        {
+          if (output_port == DIRECTION_HUB)
+          {
+            power.r2hLink();
+          }
+          else
+          {
+            power.r2rLink();
+          }
+
+          if (output_port == DIRECTION_LOCAL)
+          {
+            power.networkInterface();
+            LOG << "Consumed flit " << flit << endl;
+            stats.receivedFlit(sc_time_stamp().to_double() /
+                                   GlobalParams::clock_period_ps,
+                               flit);
+            if (GlobalParams::max_volume_to_be_drained)
+            {
+              if (drained_volume >= GlobalParams::max_volume_to_be_drained)
+              {
+                sc_stop();
+              }
+              else
+              {
+                drained_volume++;
+                local_drained++;
+              }
+            }
+          }
+          else if (selected.input != DIRECTION_LOCAL &&
+                   selected.input != DIRECTION_LOCAL_2)
+          {
+            routed_flits++;
+          }
+        }
+
+        // TAIL flit的资源释放逻辑独立处理
         if (flit.flit_type == FLIT_TYPE_TAIL)
         {
           TReservation r;
@@ -539,46 +590,6 @@ void Router::txProcess()
           r.vc = selected.vc;
           if (flit.current_forward >= flit.forward_count || flit.command == -1)
             reservation_table.release(r, selected.target_outputs);
-
-          // 功耗与统计（对所有目标端口进行统计）
-          for (int output_port : selected.target_outputs)
-          {
-            if (output_port == DIRECTION_HUB)
-            {
-              power.r2hLink();
-            }
-            else
-            {
-              power.r2rLink();
-            }
-            power.crossBar();
-
-            if (output_port == DIRECTION_LOCAL)
-            {
-              power.networkInterface();
-              LOG << "Consumed flit " << flit << endl;
-              stats.receivedFlit(sc_time_stamp().to_double() /
-                                     GlobalParams::clock_period_ps,
-                                 flit);
-              if (GlobalParams::max_volume_to_be_drained)
-              {
-                if (drained_volume >= GlobalParams::max_volume_to_be_drained)
-                {
-                  sc_stop();
-                }
-                else
-                {
-                  drained_volume++;
-                  local_drained++;
-                }
-              }
-            }
-            else if (selected.input != DIRECTION_LOCAL &&
-                     selected.input != DIRECTION_LOCAL_2)
-            {
-              routed_flits++;
-            }
-          }
         }
         // 标记已使用的资源
         used_inputs.insert(selected.input);
@@ -619,7 +630,8 @@ void Router::perCycleUpdate()
   {
 
     power.leakageRouter();
-    for (size_t i = 0; i < all_flit_rx.size() - NUM_LOCAL_PORTS; i++)
+    // 修正：遍历所有端口，包括本地端口
+    for (size_t i = 0; i < all_flit_rx.size(); i++)
     {
       for (int vc = 0; vc < GlobalParams::n_virtual_channels; vc++)
       {
