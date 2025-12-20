@@ -1,0 +1,101 @@
+0.yaml
+cle= 120[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=64 total_outp
+ cycle= 120[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=64 total_outp
+ cycle= 120[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=64 total_outp
+ cycle= 120[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=64 total_outp
+ cycle= 120[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=64 total_outp
+ cycle= 120[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=64 total_outp
+ cycle= 120[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=64 total_outp
+ cycle= 120[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=64 total_outp
+ cycle= 120[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=64 total_outp
+ cycle= 120[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=64 total_outp
+ cycle= 120[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=64 total_outp
+ cycle= 120[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=64 total_outputs_received=17408/17600
+ cycle= 120[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=64 total_outputs_received=17472/17600
+ cycle= 120[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=64 total_outputs_received=17536/17600
+ cycle= 120[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=64 total_outputs_received=17600/17600
+ cycle= 0[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=1 payload=17600 total_outputs_received=35200/17600
+770354 ns: PE[0] Completed dispatch for timestamp 120
+[..rocessingElement.cpp:734 (reset_logic)] sc_time_stamp() = 770354 ns (const sc_core::sc_time&), All tasks completed quiting simulation
+
+Info: /OSCI/SystemC: Simulation stopped by user.
+% Total received packets: 599049
+% Total received flits: 2371193
+% Received/Ideal flits Ratio: inf
+% Average wireless utilization: 0
+% Global average delay (cycles): 384706
+% Max delay (cycles): -1
+% Network throughput (flits/cycle): 0.592798
+% Average IP throughput (flits/cycle/IP): inf
+% Total energy (J): 0.00627532
+%       Dynamic energy (J): 0.000186846
+%       Static energy (J): 0.00608847
+
+0_1.yaml
+received=15488/17600
+ cycle= 120[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=704 total_outputs_received=16192/17600
+ cycle= 120[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=704 total_outputs_received=16896/17600
+ cycle= 120[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=704 total_outputs_received=17600/17600
+ cycle= 0[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=1 payload=17600 total_outputs_received=35200/17600
+1041480 ns: PE[0] Completed dispatch for timestamp 120
+[..rocessingElement.cpp:734 (reset_logic)] sc_time_stamp() = 1041480 ns (const sc_core::sc_time&), All tasks completed quiting simulation
+
+Info: /OSCI/SystemC: Simulation stopped by user.
+% Total received packets: 54549
+% Total received flits: 426723
+% Received/Ideal flits Ratio: inf
+% Average wireless utilization: 0
+% Global average delay (cycles): 520239
+% Max delay (cycles): -1
+% Network throughput (flits/cycle): 0.106681
+% Average IP throughput (flits/cycle/IP): inf
+% Total energy (J): 0.00798179
+%       Dynamic energy (J): 6.04512e-05
+%       Static energy (J): 0.00792134
+root@debian-desktop:~/my_noxim/build#
+
+0_2.yaml
+payload=704 total_out
+ cycle= 120[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=704 total_out
+ cycle= 120[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=704 total_outputs_received=15488/17600
+ cycle= 120[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=704 total_outputs_received=16192/17600
+ cycle= 120[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=704 total_outputs_received=16896/17600
+ cycle= 120[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=704 total_outputs_received=17600/17600
+ cycle= 0[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=1 payload=17600 total_outputs_received=35200/17600
+805261 ns: PE[0] Completed dispatch for timestamp 120
+[..rocessingElement.cpp:734 (reset_logic)] sc_time_stamp() = 805261 ns (const sc_core::sc_time&), All tasks completed quiting simulation
+
+Info: /OSCI/SystemC: Simulation stopped by user.
+% Total received packets: 54549
+% Total received flits: 426723
+% Received/Ideal flits Ratio: inf
+% Average wireless utilization: 0
+% Global average delay (cycles): 402192
+% Max delay (cycles): -1
+% Network throughput (flits/cycle): 0.106681
+% Average IP throughput (flits/cycle/IP): inf
+% Total energy (J): 0.00770488
+%       Dynamic energy (J): 6.99814e-05
+%       Static energy (J): 0.0076349
+root@debian-desktop:~/my_noxim/build#
+
+Summary Stats
+-------------
+GFLOPs (@1GHz): 191.74
+Utilization: 100.00%
+Cycles: 732050
+Energy: 679.20 uJ
+EDP(J*cycle): 4.97e+02
+Area: 0.00 mm^2
+
+Computes = 70276800
+fJ/Compute
+    mac                                           = 1408.83
+    psum_spad                                     = 1189.63
+    weights_spad                                  = 2372.37
+    ifmap_spad                                    = 267.66
+    shared_glb                                    = 595.06
+    DRAM                                          = 3831.08
+    Total                                         = 9664.62
+
+

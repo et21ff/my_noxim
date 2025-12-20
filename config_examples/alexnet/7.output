@@ -1,0 +1,104 @@
+cycle= 7[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=25 total_output
+ cycle= 7[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=25 total_output
+ cycle= 7[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=25 total_output
+ cycle= 7[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=25 total_output
+ cycle= 7[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=25 total_output
+ cycle= 7[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=25 total_output
+ cycle= 7[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=25 total_output
+ cycle= 7[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=25 total_output
+ cycle= 7[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=25 total_output
+ cycle= 7[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=25 total_outputs_received=1925/2000
+ cycle= 7[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=25 total_outputs_received=1950/2000
+ cycle= 7[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=25 total_outputs_received=1975/2000
+ cycle= 7[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=25 total_outputs_received=2000/2000
+ cycle= 0[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=1 payload=1000 total_outputs_received=1000/1000
+110036 ns: PE[0] Completed dispatch for timestamp 7
+[..rocessingElement.cpp:734 (reset_logic)] sc_time_stamp() = 110036 ns (const sc_core::sc_time&), All tasks completed quiting simulation
+
+Info: /OSCI/SystemC: Simulation stopped by user.
+% Total received packets: 11664
+% Total received flits: 566432
+% Received/Ideal flits Ratio: inf
+% Average wireless utilization: 0
+% Global average delay (cycles): 54298.5
+% Max delay (cycles): -1
+% Network throughput (flits/cycle): 0.141608
+% Average IP throughput (flits/cycle/IP): inf
+% Total energy (J): 0.000893801
+%       Dynamic energy (J): 2.41957e-05
+%       Static energy (J): 0.000869606
+root@debian-desktop:~/my_noxim/build#
+
+
+ cycle= 7[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=25 total_output
+ cycle= 7[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=25 total_output
+ cycle= 7[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=25 total_output
+ cycle= 7[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=25 total_output
+ cycle= 7[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=25 total_output
+ cycle= 7[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=25 total_output
+ cycle= 7[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=25 total_output
+ cycle= 7[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=25 total_output
+ cycle= 7[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=25 total_outputs_received=1925/2000
+ cycle= 7[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=25 total_outputs_received=1950/2000
+ cycle= 7[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=25 total_outputs_received=1975/2000
+ cycle= 7[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=25 total_outputs_received=2000/2000
+ cycle= 0[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=1 payload=1000 total_outputs_received=1000/1000
+535847 ns: PE[0] Completed dispatch for timestamp 7
+[..rocessingElement.cpp:734 (reset_logic)] sc_time_stamp() = 535847 ns (const sc_core::sc_time&), All tasks completed quiting simulation
+
+Info: /OSCI/SystemC: Simulation stopped by user.
+% Total received packets: 11664
+% Total received flits: 26528
+% Received/Ideal flits Ratio: inf
+% Average wireless utilization: 0
+% Global average delay (cycles): 264278
+% Max delay (cycles): -1
+% Network throughput (flits/cycle): 0.006632
+% Average IP throughput (flits/cycle/IP): inf
+% Total energy (J): 0.00409479
+%       Dynamic energy (J): 1.92546e-05
+%       Static energy (J): 0.00407554
+root@debian-desktop:~/my_noxim/build#
+
+
+le= 1[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=8 total_outputs_received=71144/71168
+ cycle= 1[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=8 total_outputs_received=71152/71168
+ cycle= 1[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=8 total_outputs_received=71160/71168
+ cycle= 1[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=8 total_outputs_received=71168/71168
+ cycle= 0[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=1 payload=35584 total_outputs_received=71168/35584
+326419 ns: PE[0] Completed dispatch for timestamp 1
+[..rocessingElement.cpp:734 (reset_logic)] sc_time_stamp() = 326419 ns (const sc_core::sc_time&), All tasks completed quiting simulation
+
+Info: /OSCI/SystemC: Simulation stopped by user.
+% Total received packets: 170208
+% Total received flits: 696256
+% Received/Ideal flits Ratio: inf
+% Average wireless utilization: 0
+% Global average delay (cycles): 163063
+% Max delay (cycles): -1
+% Network throughput (flits/cycle): 0.174064
+% Average IP throughput (flits/cycle/IP): inf
+% Total energy (J): 0.0026048
+%       Dynamic energy (J): 0.000122154
+%       Static energy (J): 0.00248265
+root@debian-desktop:~/my_noxim/build#
+
+Summary Stats
+-------------
+GFLOPs (@1GHz): 15.98
+Utilization: 8.33%
+Cycles: 512512
+Energy: 293.48 uJ
+EDP(J*cycle): 1.50e+02
+Area: 0.00 mm^2
+
+Computes = 4096000
+fJ/Compute
+    mac                                           = 1408.83
+    psum_spad                                     = 1182.28
+    weights_spad                                  = 4660.60
+    ifmap_spad                                    = 252.01
+    shared_glb                                    = 67.84
+    DRAM                                          = 64079.62
+    Total                                         = 71651.19
+

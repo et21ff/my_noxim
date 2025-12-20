@@ -23,7 +23,7 @@ hierarchical_config:
       node_type: "DRAM"
       buffer_size: 37748736
       roles: "ROLE_DRAM"
-      bandwidth: 64
+      bandwidth: 512
       fanouts: 1
       routing_patterns:  
         INPUT:  
@@ -43,7 +43,7 @@ hierarchical_config:
       node_type: "GLB"
       buffer_size: 3715000
       roles: "ROLE_GLB"
-      bandwidth: 64
+      bandwidth: 512
       fanouts: 8
       aggregate: true
       routing_patterns:  

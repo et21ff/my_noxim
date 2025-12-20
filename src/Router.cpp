@@ -93,16 +93,14 @@ void Router::rxProcess()
           (*buffers[i])[vc].Push(received_flit);
           LOG << " Flit " << received_flit << " " << received_flit.flit_type
               << " collected from Input[" << i << "][" << vc << "]" << endl;
-          std::cout << "@" << sc_time_stamp() << " [" << name() << "]: "
-                    << "[RX_PORT0] Received Flit on VC " << vc
-                    << " src_id=" << received_flit.src_id
-                    << " dst_id=" << received_flit.dst_id
-                    << " flit_type=" << received_flit.flit_type
-                    << " buffer_size=" << (*buffers[i])[vc].Size()
-                    << " flit_data_type="
-                    << DataType_to_str(received_flit.data_type)
-                    << " flit_seq_no=" << received_flit.sequence_no
-                    << " flit_command=" << received_flit.command << std::endl;
+          LOG << "[RX_PORT0] Received Flit on VC " << vc
+              << " src_id=" << received_flit.src_id
+              << " dst_id=" << received_flit.dst_id
+              << " flit_type=" << received_flit.flit_type
+              << " buffer_size=" << (*buffers[i])[vc].Size()
+              << " flit_data_type=" << DataType_to_str(received_flit.data_type)
+              << " flit_seq_no=" << received_flit.sequence_no
+              << " flit_command=" << received_flit.command << endl;
 
           power.bufferRouterPush();
 
@@ -227,14 +225,15 @@ void Router::txProcess()
             vector<int> output_ports = route(route_data);
 
             // 调试输出
-            cout << "Router " << local_id << " route from input " << i
-                 << " to outputs: ";
+            // 调试输出
+            LOG << "Router " << local_id << " route from input " << i
+                << " to outputs: ";
             for (size_t idx = 0; idx < output_ports.size(); idx++)
             {
-              cout << output_ports[idx]
-                   << (idx < output_ports.size() - 1 ? ", " : "");
+              LOG << output_ports[idx]
+                  << (idx < output_ports.size() - 1 ? ", " : "");
             }
-            cout << endl;
+            LOG << endl;
 
             // 处理Hub中继的特殊情况
             if (output_ports.size() == 1 &&
@@ -299,9 +298,8 @@ void Router::txProcess()
             aggregation_entry.expected_port_count &&
         is_aggregation)
     {
-      cout << name() << " " << sc_time_stamp() << " All "
-           << aggregation_entry.expected_port_count
-           << " downstream ports ready, triggering aggregation" << endl;
+      LOG << "All " << aggregation_entry.expected_port_count
+          << " downstream ports ready, triggering aggregation" << endl;
 
       if (performAggregation())
       {
@@ -828,8 +826,22 @@ void Router::configure(const int _id, const int _level,
         }
       }
     }
+
+    int total_ports = 0;
+    auto output_it = this->routing_patterns.find(DataType::OUTPUT);
+    if (output_it != this->routing_patterns.end())
+    {
+      const RoutingPattern &output_pattern = output_it->second;
+      for (const auto &group : output_pattern.port_groups)
+      {
+        total_ports += group.size();
+      }
+    }
+    aggregation_entry.expected_port_count = total_ports;
+
     this->use_predefined_routing = true;
   }
+
   start_from_port = (all_flit_rx.size() > 0)
                         ? getLogicalPortIndex(PORT_LOCAL, 0)
                         : 0; // Start from LOCAL port

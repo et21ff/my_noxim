@@ -194,8 +194,8 @@ void ProcessingElement::configure(int id, int level_idx,
   logical_timestamp = 0;
 
   // 调试日志
-  cout << sc_time_stamp() << ": PE[" << local_id << "] configured as "
-       << role_to_str(role) << " at level " << level_idx << endl;
+  LOG << "PE[" << local_id << "] configured as " << role_to_str(role)
+      << " at level " << level_idx << endl;
 }
 
 int ProcessingElement::find_child_id(int id)
@@ -286,15 +286,15 @@ void ProcessingElement::rxProcess()
           ack_rx[0].write(current_level_rx[0]);
 
           // 调试日志
-          std::cout << "@" << sc_time_stamp() << " [" << name() << "]: "
-                    << "[RX_PORT0] Received Flit on VC " << vc_id
-                    << " src_id=" << flit.src_id << " dst_id=" << flit.dst_id
-                    << " flit_type=" << flit.flit_type
-                    << " buffer_size=" << rx_buffer[vc_id].Size()
-                    << " flit_data_type=" << DataType_to_str(flit.data_type)
-                    << " flit_seq_no=" << flit.sequence_no
-                    << " flit_command=" << flit.command << std::endl
-                    << " target_role=" << role_to_str(flit.target_role);
+          LOG << "@" << sc_time_stamp() << " [" << name() << "]: "
+              << "[RX_PORT0] Received Flit on VC " << vc_id
+              << " src_id=" << flit.src_id << " dst_id=" << flit.dst_id
+              << " flit_type=" << flit.flit_type
+              << " buffer_size=" << rx_buffer[vc_id].Size()
+              << " flit_data_type=" << DataType_to_str(flit.data_type)
+              << " flit_seq_no=" << flit.sequence_no
+              << " flit_command=" << flit.command << std::endl
+              << " target_role=" << role_to_str(flit.target_role);
         }
         else
         {
@@ -367,12 +367,10 @@ void ProcessingElement::internal_transfer_process()
           // 回传包无条件接受（假设已预留空间）
           vc_buffer.Pop();
 
-          std::cout
-              << "@" << sc_time_stamp() << " [" << name() << "]: "
-              << "[INTERNAL_TRANSFER] Accepted OUTPUT_RETURN HEAD Flit on VC "
+          LOG << "[INTERNAL_TRANSFER] Accepted OUTPUT_RETURN HEAD Flit on VC "
               << " cycle= " << compute_cycles << vc << " src_id=" << flit.src_id
               << " payload=" << flit.payload_data_size
-              << " command_id=" << flit.command << std::endl;
+              << " command_id=" << flit.command << endl;
           continue; // 继续处理下一个flit
         }
 
@@ -401,26 +399,23 @@ void ProcessingElement::internal_transfer_process()
           vc_buffer.Pop();
 
           // 处理command_id等元数据
-          if (flit.command != -1)
-          {
+          if (flit.command != -1 && flit.data_type != DataType::WEIGHT)
+          { // need fix
             pending_commands_[flit.logical_timestamp] = flit.command;
           }
 
-          std::cout << "@" << sc_time_stamp() << " [" << name() << "]: "
-                    << "[INTERNAL_TRANSFER] Accepted HEAD Flit on VC " << vc
-                    << " src_id=" << flit.src_id
-                    << " payload=" << flit.payload_data_size
-                    << " reserved_space=" << *receiving_size
-                    << " command_id=" << flit.command << std::endl;
+          LOG << "[INTERNAL_TRANSFER] Accepted HEAD Flit on VC " << vc
+              << " src_id=" << flit.src_id
+              << " payload=" << flit.payload_data_size
+              << " reserved_space=" << *receiving_size
+              << " command_id=" << flit.command << endl;
         }
         else
         {
           // 逻辑缓冲区空间不足，阻塞当前VC
-          std::cout << "@" << sc_time_stamp() << " [" << name() << "]: "
-                    << "[INTERNAL_TRANSFER] HEAD Flit BLOCKED on VC " << vc
-                    << " required=" << required_capacity << " capacity="
-                    << unified_buffer_manager_->GetCapacity(flit.data_type)
-                    << std::endl;
+          LOG << "[INTERNAL_TRANSFER] HEAD Flit BLOCKED on VC " << vc
+              << " required=" << required_capacity << " capacity="
+              << unified_buffer_manager_->GetCapacity(flit.data_type) << endl;
           break;
         }
       }
@@ -428,12 +423,10 @@ void ProcessingElement::internal_transfer_process()
       {
         // BODY Flit无条件丢弃
         vc_buffer.Pop();
-        std::cout
-            << "@" << sc_time_stamp() << " [" << name() << "]: "
-            << "[INTERNAL_TRANSFER] Processed OUTPUT_RETURN body Flit on VC "
+        LOG << "[INTERNAL_TRANSFER] Processed OUTPUT_RETURN body Flit on VC "
             << vc << " src_id=" << flit.src_id
             << " payload=" << flit.payload_data_size
-            << "seq_no=" << flit.sequence_no << std::endl;
+            << "seq_no=" << flit.sequence_no << endl;
       }
       else if (flit.flit_type == FLIT_TYPE_TAIL)
       {
@@ -447,14 +440,12 @@ void ProcessingElement::internal_transfer_process()
 
           vc_buffer.Pop();
 
-          std::cout
-              << "@" << sc_time_stamp() << " [" << name() << "]: "
-              << " cycle= " << current_cycle
-              << "[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC "
-              << vc << " src_id=" << flit.src_id
-              << " payload=" << flit.payload_data_size
-              << " total_outputs_received=" << outputs_received_count_ << "/"
-              << outputs_required_count_ << std::endl;
+          cout << " cycle= " << current_cycle
+               << "[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC "
+               << vc << " src_id=" << flit.src_id
+               << " payload=" << flit.payload_data_size
+               << " total_outputs_received=" << outputs_received_count_ << "/"
+               << outputs_required_count_ << endl;
 
           // 通知可能等待输出的逻辑
           buffer_state_changed_event.notify(SC_ZERO_TIME);
@@ -486,16 +477,14 @@ void ProcessingElement::internal_transfer_process()
         // 通知计算逻辑
         buffer_state_changed_event.notify(SC_ZERO_TIME);
 
-        std::cout << "@" << sc_time_stamp() << " [" << name() << "]: "
-                  << "[RECEIVE_EVENT] Processed TAIL Flit on VC " << vc
-                  << " src_id=" << flit.src_id
-                  << " type=" << DataType_to_str(flit.data_type)
-                  << " payload=" << flit.payload_data_size
-                  << " committed_to_logic_buffer"
-                  << "buffer_size="
-                  << unified_buffer_manager_->GetCurrentSize(flit.data_type)
-                  << "/" << unified_buffer_manager_->GetCapacity(flit.data_type)
-                  << std::endl;
+        LOG << "[RECEIVE_EVENT] Processed TAIL Flit on VC " << vc
+            << " src_id=" << flit.src_id
+            << " type=" << DataType_to_str(flit.data_type)
+            << " payload=" << flit.payload_data_size
+            << " committed_to_logic_buffer"
+            << "buffer_size="
+            << unified_buffer_manager_->GetCurrentSize(flit.data_type) << "/"
+            << unified_buffer_manager_->GetCapacity(flit.data_type) << endl;
       }
     }
   }
@@ -546,19 +535,15 @@ void ProcessingElement::handle_tx_for_all_vcs()
     req_tx[0].write(current_level_tx[0]);
 
     // 打印发送日志
-    std::cout << "@" << sc_time_stamp() << " [" << name() << "]: "
-              << "[TX_VC" << vc << "] Sent Flit type=" << flit_to_send.flit_type
-              << " src=" << flit_to_send.src_id
-              << " dst=" << flit_to_send.dst_id
-              << " command_id=" << flit_to_send.command << std::endl;
+    LOG << "[TX_VC" << vc << "] Sent Flit type=" << flit_to_send.flit_type
+        << " src=" << flit_to_send.src_id << " dst=" << flit_to_send.dst_id
+        << " command_id=" << flit_to_send.command << endl;
 
     // 如果发送的是 TAIL Flit，从这个 VC 的队列中 pop
     if (flit_to_send.flit_type == FLIT_TYPE_TAIL)
     {
       // packet_queues_[vc].pop();
-      std::cout << "@" << sc_time_stamp() << " [" << name() << "]: "
-                << "[TX_VC" << vc << "] Completed packet transmission"
-                << std::endl;
+      LOG << "[TX_VC" << vc << "] Completed packet transmission" << endl;
     }
 
     // 既然我们每周期只发送一个 Flit，就在成功发送后退出循环
@@ -723,10 +708,10 @@ void ProcessingElement::txProcess()
   {
     logical_timestamp++;
     is_compute_complete = false;
-    cout << sc_time_stamp() << ": PE[" << local_id
-         << "] Completed compute for cycle " << compute_cycles
-         << " compute latency is " << task_manager_->get_compute_latency()
-         << endl;
+    LOG << sc_time_stamp() << ": PE[" << local_id
+        << "] Completed compute for cycle " << compute_cycles
+        << " compute latency is " << task_manager_->get_compute_latency()
+        << endl;
     compute_cycles++;
 
     // 基于计算周期数判断是否需要自驱逐
@@ -761,6 +746,7 @@ void ProcessingElement::reset_logic()
     if (command >= task_manager_->get_command_count())
     {
       cmd = task_manager_->get_current_working_set();
+      cmd.weights = 0;
     }
     else
     {
@@ -787,10 +773,8 @@ void ProcessingElement::reset_logic()
       // dbg(sc_time_stamp(), name(), "[RESET_LOGIC] Generating output return
       // Packet to PE " + std::to_string(pkt.dst_id) +
       //     " for " + std::to_string(cmd.outputs) + " bytes.");
-      std::cout << "@ " << sc_time_stamp() << " [" << name() << "]: "
-                << "[RESET_LOGIC] Generating output return Packet to PE "
-                << pkt.target_role << " for " << cmd.outputs << " bytes."
-                << std::endl;
+      LOG << "[RESET_LOGIC] Generating output return Packet to PE "
+          << pkt.target_role << " for " << cmd.outputs << " bytes." << endl;
 
       packet_queues_[pkt.vc_id].push(pkt);
     }
@@ -923,6 +907,30 @@ int ProcessingElement::calculate_target_count(int current_level,
   return target_count;
 }
 
+int ProcessingElement::get_target_bandwidth(int current_level, PE_Role target_role)
+{
+  int bandwidth = GlobalParams::hierarchical_config.get_level_config(
+                                                       current_level)
+                      .bandwidth;
+
+  // 从当前层开始，遍历到目标层之前
+  for (int level = current_level + 1;; level++)
+  {
+    const LevelConfig &level_config =
+        GlobalParams::hierarchical_config.get_level_config(level);
+
+    // 检查是否到达目标层
+    if (level_config.roles == target_role)
+    {
+      break; // 到达目标层，停止累乘
+    }
+
+    bandwidth = std::min(bandwidth, level_config.bandwidth);
+  }
+
+  return bandwidth;
+}
+
 // in PE.cpp
 void ProcessingElement::run_storage_logic()
 {
@@ -960,10 +968,9 @@ void ProcessingElement::run_storage_logic()
 
     current_dispatch_task_ =
         task_manager_->get_task_for_timestep(logical_timestamp);
-    std::cout << sc_time_stamp() << ": PE[" << local_id
-              << "] Starting dispatch for timestep " << logical_timestamp
-              << " with " << current_dispatch_task_.sub_tasks.size()
-              << " subtasks." << std::endl;
+    LOG << "PE[" << local_id << "] Starting dispatch for timestep "
+        << logical_timestamp << " with "
+        << current_dispatch_task_.sub_tasks.size() << " subtasks." << endl;
     command_to_send = get_command_to_send();
 
     dispatch_in_progress_ = true;
@@ -991,10 +998,9 @@ void ProcessingElement::run_storage_logic()
       continue; // 该VC通道忙，跳过
     }
 
-    std::cout << sc_time_stamp() << ": PE[" << local_id
-              << "] Generating packet for task: "
-              << "Type=" << DataType_to_str(selected_task.type)
-              << ", Size=" << selected_task.size << std::endl;
+    LOG << "PE[" << local_id << "] Generating packet for task: "
+        << "Type=" << DataType_to_str(selected_task.type)
+        << ", Size=" << selected_task.size << endl;
 
     Packet pkt;
     pkt.src_id = local_id;
@@ -1023,6 +1029,8 @@ void ProcessingElement::run_storage_logic()
       // Transmission mode switching logic for packet size calculation
       if (GlobalParams::transmission_mode == "traditional")
       {
+        current_bandwidth =
+            get_target_bandwidth(level_index, selected_task.target_role);
         // Traditional mode: 1+1+target_count*(size/bandwidth_scale rounded up)
         int bandwidth_scale = current_bandwidth / GlobalParams::word_bits;
         int single_packet_size =
@@ -1079,6 +1087,11 @@ int ProcessingElement::get_command_to_send() // tofix
     return -2; // 返回无效命令
   }
 
+  if (logical_timestamp + 1 >= task_manager_->get_total_timesteps())
+  {
+    return commands->size() + 1;
+  }
+
   // if (role == ROLE_GLB &&
   //     logical_timestamp + 1 >= task_manager_->get_total_timesteps() &&
   //     task_manager_->get_command_definition(pending_commands_.begin()->second)
@@ -1108,11 +1121,9 @@ int ProcessingElement::get_command_to_send() // tofix
     if (cmd.evict_payload.inputs == next_delta.inputs &&
         cmd.evict_payload.outputs == next_delta.outputs)
     {
-      // 找到了完全匹配的命令！
       return cmd.command_id;
     }
   }
-
   if (commands->size() == 1)
     return commands->front().command_id;
 
@@ -1179,12 +1190,9 @@ void ProcessingElement::evict_weights_self()
     size_t evict_amount = std::min(weight_eviction_amount_, current_weights);
     unified_buffer_manager_->RemoveData(DataType::WEIGHT, evict_amount);
 
-    std::cout << "@" << sc_time_stamp() << " [" << name() << "]: "
-              << "[SELF_EVICT] Evicted " << evict_amount
-              << " weights at compute cycle " << compute_cycles
-              << ", remaining: "
-              << unified_buffer_manager_->GetCurrentSize(DataType::WEIGHT)
-              << std::endl;
+    LOG << "[SELF_EVICT] Evicted " << evict_amount
+        << " weights at compute cycle " << compute_cycles << ", remaining: "
+        << unified_buffer_manager_->GetCurrentSize(DataType::WEIGHT) << endl;
 
     buffer_state_changed_event.notify(SC_ZERO_TIME);
   }

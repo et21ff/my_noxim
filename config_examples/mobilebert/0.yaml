@@ -113,7 +113,7 @@ workload:
       data:
         - { data_space: "Weights", size: 0, reuse_strategy: "resident" }
         - { data_space: "Inputs", size: 53376, reuse_strategy: "resident" }
-        - { data_space: "Outputs", size: 35384, reuse_strategy: "resident" }
+        - { data_space: "Outputs", size: 35584, reuse_strategy: "resident" }
     - role: "ROLE_BUFFER"
       outputs_required_count: 0
       data:
