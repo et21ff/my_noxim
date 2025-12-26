@@ -10,50 +10,45 @@
 
 #include "Router.h"
 #include <dbg.h>
+#include <iomanip>
 #include <systemc.h>
 
 inline int toggleKthBit(int n, int k) { return (n ^ (1 << (k - 1))); }
 
-void Router::process()
-{
+void Router::process() {
   txProcess();
   rxProcess();
 }
 
-void Router::rxProcess()
-{
-  if (reset.read())
-  {
+void Router::rxProcess() {
+  if (reset.read()) {
     TBufferFullStatus bfs;
     // Clear outputs and indexes of receiving protocol
-    for (size_t i = 0; i < all_flit_rx.size(); i++)
-    {
+    for (size_t i = 0; i < all_flit_rx.size(); i++) {
       all_ack_rx[i]->write(0);
       current_level_rx[i] = 0;
       all_buffer_full_status_rx[i]->write(bfs);
     }
     routed_flits = 0;
+    routed_flits = 0;
     local_drained = 0;
-  }
-  else
-  {
+    has_rx_activity = false;
+  } else {
+    has_rx_activity = false; // Reset per cycle
     // This process simply sees a flow of incoming flits. All arbitration
     // and wormhole related issues are addressed in the txProcess()
     // assert(false);
-    for (size_t i = 0; i < all_flit_rx.size(); i++)
-    {
+    for (size_t i = 0; i < all_flit_rx.size(); i++) {
       // To accept a new flit, the following conditions must match:
       // 1) there is an incoming request
       // 2) there is a free slot in the input buffer of direction i
       // LOG<<"****RX****DIRECTION ="<<i<<  endl;
-      if (i == 1)
-      {
+      if (i == 1) {
         LOG << " h_flit_rx_down[0] req=" << all_req_rx[i]->read()
             << " current_level_rx=" << current_level_rx[i] << endl;
       }
 
-      if (all_req_rx[i]->read() == 1 - current_level_rx[i])
-      {
+      if (all_req_rx[i]->read() == 1 - current_level_rx[i]) {
         Flit received_flit = all_flit_rx[i]->read();
 
         // LOG<<"request opposite to the current_level, reading flit
@@ -61,28 +56,22 @@ void Router::rxProcess()
 
         int vc = received_flit.vc_id;
         assert(buffers[i] != nullptr && "Pointer to BufferBank is null!");
-        if (!(*buffers[i])[vc].IsFull())
-        {
+        if (!(*buffers[i])[vc].IsFull()) {
 
           if (use_predefined_routing &&
               routing_patterns.count(received_flit.data_type) > 0 &&
-              received_flit.command != -1)
-          {
+              received_flit.command != -1) {
 
             const RoutingPattern &pattern =
                 routing_patterns[received_flit.data_type];
-            if (received_flit.target_role == role)
-            {
+            if (received_flit.target_role == role) {
               received_flit.forward_count = 1;
             }
             // Transmission mode switching logic
-            else if (GlobalParams::transmission_mode == "traditional")
-            {
+            else if (GlobalParams::transmission_mode == "traditional") {
               // Traditional mode: forward_count equals number of port_groups
               received_flit.forward_count = pattern.port_groups.size();
-            }
-            else
-            {
+            } else {
               // Optimized mode: based on target_role setting
               received_flit.forward_count = pattern.forward_count; // 从配置获取
             }
@@ -109,9 +98,10 @@ void Router::rxProcess()
           // current_level_rx[i]<<endl;
           current_level_rx[i] = 1 - current_level_rx[i];
 
-          // if a new flit is injected from local PE
           if (received_flit.src_id == local_id)
             power.networkInterface();
+
+          has_rx_activity = true; // Mark RX activity
         }
 
         else // buffer full
@@ -129,8 +119,7 @@ void Router::rxProcess()
       all_ack_rx[i]->write(current_level_rx[i]);
       // updates the mask of VCs to prevent incoming data on full buffers
       TBufferFullStatus bfs;
-      for (int vc = 0; vc < GlobalParams::n_virtual_channels; vc++)
-      {
+      for (int vc = 0; vc < GlobalParams::n_virtual_channels; vc++) {
         bfs.mask[vc] = (*buffers[i])[vc].IsFull();
       }
       all_buffer_full_status_rx[i]->write(bfs);
@@ -140,8 +129,7 @@ void Router::rxProcess()
 
 vector<vector<int>>
 Router::getCurrentPortGroups(int forward_count, int current_forward,
-                             const vector<vector<int>> &all_groups)
-{
+                             const vector<vector<int>> &all_groups) {
   vector<vector<int>> current_groups;
 
   // 计算每批发送的group数量
@@ -152,36 +140,29 @@ Router::getCurrentPortGroups(int forward_count, int current_forward,
   int end_idx = min(start_idx + batch_size, (int)all_groups.size());
 
   // 提取当前批次的groups
-  for (int i = start_idx; i < end_idx; i++)
-  {
+  for (int i = start_idx; i < end_idx; i++) {
     current_groups.push_back(all_groups[i]);
   }
 
   return current_groups;
 }
 
-void Router::txProcess()
-{
+void Router::txProcess() {
 
-  if (reset.read())
-  {
+  if (reset.read()) {
     // Clear outputs and indexes of transmitting protocol
-    for (size_t i = 0; i < all_flit_tx.size(); i++)
-    {
+    for (size_t i = 0; i < all_flit_tx.size(); i++) {
       all_req_tx[i]->write(0);
       current_level_tx[i] = 0;
     }
     reservation_table.reset();
-  }
-  else
-  {
+    has_tx_activity = false;
+  } else {
 
-    for (size_t j = 0; j < all_flit_rx.size(); j++)
-    {
+    for (size_t j = 0; j < all_flit_rx.size(); j++) {
       size_t i = (start_from_port + j) % all_flit_rx.size();
 
-      for (int k = 0; k < GlobalParams::n_virtual_channels; k++)
-      {
+      for (int k = 0; k < GlobalParams::n_virtual_channels; k++) {
 
         int vc = (start_from_vc[i] + k) % (GlobalParams::n_virtual_channels);
 
@@ -189,17 +170,14 @@ void Router::txProcess()
         // Please also set the appropriate threshold.
         // (*buffers[i]).deadlockCheck();
 
-        if (!(*buffers[i])[vc].IsEmpty())
-        {
+        if (!(*buffers[i])[vc].IsEmpty()) {
 
           Flit flit = (*buffers[i])[vc].Front();
           power.bufferRouterFront();
 
           if (port_info_map[i].type == PORT_DOWN && vc == return_vc_id &&
-              is_aggregation)
-          {
-            if (tryAggregation(i, flit))
-            {
+              is_aggregation) {
+            if (tryAggregation(i, flit)) {
               (*buffers[i])[vc].Pop();
               power.bufferRouterPop();
             }
@@ -207,8 +185,7 @@ void Router::txProcess()
             continue;
           }
 
-          if (flit.flit_type == FLIT_TYPE_HEAD && flit.current_forward == 0)
-          {
+          if (flit.flit_type == FLIT_TYPE_HEAD && flit.current_forward == 0) {
             // 统一准备路由数据
             RouteData route_data;
             route_data.current_id = local_id;
@@ -228,8 +205,7 @@ void Router::txProcess()
             // 调试输出
             LOG << "Router " << local_id << " route from input " << i
                 << " to outputs: ";
-            for (size_t idx = 0; idx < output_ports.size(); idx++)
-            {
+            for (size_t idx = 0; idx < output_ports.size(); idx++) {
               LOG << output_ports[idx]
                   << (idx < output_ports.size() - 1 ? ", " : "");
             }
@@ -237,8 +213,7 @@ void Router::txProcess()
 
             // 处理Hub中继的特殊情况
             if (output_ports.size() == 1 &&
-                output_ports[0] >= DIRECTION_HUB_RELAY)
-            {
+                output_ports[0] >= DIRECTION_HUB_RELAY) {
               Flit f = (*buffers[i])[vc].Pop();
               f.hub_relay_node = output_ports[0] - DIRECTION_HUB_RELAY;
               (*buffers[i])[vc].Push(f);
@@ -256,8 +231,7 @@ void Router::txProcess()
             int reservation_status =
                 reservation_table.checkReservation(r, output_ports);
 
-            if (reservation_status == RT_AVAILABLE)
-            {
+            if (reservation_status == RT_AVAILABLE) {
               LOG << " reserving outputs for flit " << flit << endl;
               reservation_table.reserve(r, output_ports);
 
@@ -265,24 +239,16 @@ void Router::txProcess()
               // map<int, set<int>> output_to_dsts = buildOutputMapping(flit,
               // output_ports, i); reservation_table.setOutputMapping(r.input,
               // r.vc, output_to_dsts);
-            }
-            else if (reservation_status == RT_ALREADY_SAME)
-            {
+            } else if (reservation_status == RT_ALREADY_SAME) {
               LOG << " RT_ALREADY_SAME reserved outputs for flit " << flit
                   << endl;
-            }
-            else if (reservation_status == RT_OUTVC_BUSY)
-            {
+            } else if (reservation_status == RT_OUTVC_BUSY) {
               LOG << " RT_OUTVC_BUSY reservation for flit " << flit << endl;
-            }
-            else if (reservation_status == RT_ALREADY_OTHER_OUT)
-            {
+            } else if (reservation_status == RT_ALREADY_OTHER_OUT) {
               LOG << "RT_ALREADY_OTHER_OUT: another outputs previously "
                      "reserved for the same flit"
                   << endl;
-            }
-            else
-            {
+            } else {
               assert(false);
             }
           }
@@ -296,13 +262,11 @@ void Router::txProcess()
 
     if (aggregation_entry.port_flits.size() ==
             aggregation_entry.expected_port_count &&
-        is_aggregation)
-    {
+        is_aggregation) {
       LOG << "All " << aggregation_entry.expected_port_count
           << " downstream ports ready, triggering aggregation" << endl;
 
-      if (performAggregation())
-      {
+      if (performAggregation()) {
         aggregation_entry.port_flits.clear();
       }
     }
@@ -311,8 +275,7 @@ void Router::txProcess()
     // 2nd phase: Two-Phase Arbitration & Atomic Forwarding
     // 阶段A: 候选筛选 - 收集所有准备就绪的VC
     //==================================================================
-    struct ForwardCandidate
-    {
+    struct ForwardCandidate {
       int input;
       int vc;
       vector<int> target_outputs;
@@ -321,8 +284,7 @@ void Router::txProcess()
     vector<ForwardCandidate> candidates;
 
     for (int i = 0; i < all_flit_rx.size(); i++)
-      for (int vc = 0; vc < GlobalParams::n_virtual_channels; vc++)
-      {
+      for (int vc = 0; vc < GlobalParams::n_virtual_channels; vc++) {
         if ((*buffers[i])[vc].IsEmpty())
           continue;
 
@@ -332,38 +294,31 @@ void Router::txProcess()
           continue;
 
         bool all_outputs_ready = true;
-        for (int output_port : target_outputs)
-        {
+        for (int output_port : target_outputs) {
           if (current_level_tx[output_port] !=
                   all_ack_tx[output_port]->read() ||
-              all_buffer_full_status_tx[output_port]->read().mask[vc] == 1)
-          {
+              all_buffer_full_status_tx[output_port]->read().mask[vc] == 1) {
             all_outputs_ready = false;
             break;
           }
         }
-        if (all_outputs_ready)
-        {
+        if (all_outputs_ready) {
           candidates.push_back({i, vc, target_outputs});
         }
       }
 
-    if (!aggregated_flit_queue.empty())
-    {
+    if (!aggregated_flit_queue.empty()) {
       auto target_outputs = reservation_table.getReservations(-1, return_vc_id);
       bool all_outputs_ready = true;
-      for (int output_port : target_outputs)
-      {
+      for (int output_port : target_outputs) {
         if (current_level_tx[output_port] != all_ack_tx[output_port]->read() ||
             all_buffer_full_status_tx[output_port]->read().mask[return_vc_id] ==
-                1)
-        {
+                1) {
           all_outputs_ready = false;
           break;
         }
       }
-      if (all_outputs_ready)
-      {
+      if (all_outputs_ready) {
         candidates.push_back({-1, return_vc_id, target_outputs});
       }
     }
@@ -371,28 +326,23 @@ void Router::txProcess()
     //==================================================================
     // 阶段B: 仲裁与原子转发
     //==================================================================
-    if (!candidates.empty())
-    {
+    if (!candidates.empty()) {
       // 用于跟踪已使用的资源
       std::set<int> used_inputs;
       std::set<int> used_outputs;
 
-      while (!candidates.empty())
-      {
+      while (!candidates.empty()) {
         // 过滤出仍然可用的候选
         vector<ForwardCandidate> available;
-        for (auto &c : candidates)
-        {
+        for (auto &c : candidates) {
           // 检查 input 是否已被使用
           if (used_inputs.count(c.input))
             continue;
 
           // 检查所有 output 是否都未被使用
           bool output_conflict = false;
-          for (int o : c.target_outputs)
-          {
-            if (used_outputs.count(o))
-            {
+          for (int o : c.target_outputs) {
+            if (used_outputs.count(o)) {
               output_conflict = true;
               break;
             }
@@ -411,29 +361,23 @@ void Router::txProcess()
         int winner_idx = rand() % available.size();
         ForwardCandidate &selected = available[winner_idx];
         Flit flit;
-        if (selected.input == -1)
-        {
+        if (selected.input == -1) {
           flit = aggregated_flit_queue.front();
           aggregated_flit_queue.pop();
           power.bufferRouterPop();
-        }
-        else
-        {
+        } else {
           Flit &flit_ref = (*buffers[selected.input])[selected.vc].FrontRef();
           // 检查是否完成所有转发
           bool should_pop = true;
           if (use_predefined_routing &&
-              routing_patterns.count(flit_ref.data_type) > 0)
-          {
+              routing_patterns.count(flit_ref.data_type) > 0) {
             flit_ref.current_forward++;
             // 只有头flit和尾flit才可能复制多份
             if (flit_ref.flit_type == FLIT_TYPE_HEAD ||
-                flit_ref.flit_type == FLIT_TYPE_TAIL)
-            {
+                flit_ref.flit_type == FLIT_TYPE_TAIL) {
               const RoutingPattern &pattern =
                   routing_patterns[flit_ref.data_type];
-              if (flit_ref.current_forward < flit_ref.forward_count)
-              {
+              if (flit_ref.current_forward < flit_ref.forward_count) {
                 should_pop = false; // 还未完成转发，不pop
               }
             }
@@ -442,8 +386,7 @@ void Router::txProcess()
 
           flit = (*buffers[selected.input])[selected.vc].Front();
 
-          if (should_pop)
-          {
+          if (should_pop) {
             (*buffers[selected.input])[selected.vc].Pop();
             power.bufferRouterPop();
           }
@@ -452,25 +395,24 @@ void Router::txProcess()
         // 定义统一的功耗计算端口变量
         vector<int> power_calc_ports = selected.target_outputs;
 
-        if (flit.target_role == this->role)
-        {
+        if (flit.target_role == this->role) {
           int output_port = selected.target_outputs[0];
           all_flit_tx[output_port]->write(flit);
           current_level_tx[output_port] = 1 - current_level_tx[output_port];
           all_req_tx[output_port]->write(current_level_tx[output_port]);
-        }
-        else if (selected.input == -1 || flit.command == -1)
-        {
+          has_tx_activity = true; // Mark TX activity
+        } else if (selected.input == -1 || flit.command == -1) {
           int output_port = selected.target_outputs[0];
           all_flit_tx[output_port]->write(flit);
           current_level_tx[output_port] = 1 - current_level_tx[output_port];
           all_req_tx[output_port]->write(current_level_tx[output_port]);
+          if (selected.target_outputs.size() > 0)
+            has_tx_activity = true;
         }
 
         // 在转发阶段,检查是否使用预定义路由
         else if (use_predefined_routing &&
-                 routing_patterns.count(flit.data_type) > 0)
-        {
+                 routing_patterns.count(flit.data_type) > 0) {
           const RoutingPattern &pattern = routing_patterns[flit.data_type];
           vector<vector<int>> current_groups =
               getCurrentPortGroups(flit.forward_count, flit.current_forward - 1,
@@ -478,8 +420,7 @@ void Router::txProcess()
 
           // 重新设置功耗计算端口为实际转发的端口
           power_calc_ports.clear();
-          for (const vector<int> &group : current_groups)
-          {
+          for (const vector<int> &group : current_groups) {
             power_calc_ports.insert(power_calc_ports.end(), group.begin(),
                                     group.end());
           }
@@ -487,53 +428,45 @@ void Router::txProcess()
           // 关键判断:port_groups 的数量决定是否分裂
           bool need_split = (current_groups.size() > 1);
 
-          if (need_split)
-          {
+          if (need_split) {
             // 分裂模式:为每个 port_group 创建独立的 flit
-            for (const vector<int> &group : current_groups)
-            {
+            for (const vector<int> &group : current_groups) {
               Flit split_flit = flit;
 
               // 根据组的大小决定转发方式
-              if (group.size() == 1)
-              {
+              if (group.size() == 1) {
                 // 单播到该端口
                 all_flit_tx[group[0]]->write(split_flit);
                 current_level_tx[group[0]] = 1 - current_level_tx[group[0]];
                 all_req_tx[group[0]]->write(current_level_tx[group[0]]);
-              }
-              else
-              {
+                has_tx_activity = true;
+              } else {
                 // 多播到该组的所有端口
-                for (int port : group)
-                {
+                for (int port : group) {
                   all_flit_tx[port]->write(split_flit);
                   current_level_tx[port] = 1 - current_level_tx[port];
                   all_req_tx[port]->write(current_level_tx[port]);
+                  has_tx_activity = true;
                 }
               }
             }
-          }
-          else
-          {
+          } else {
             // 非分裂模式:单个 port_group
             const vector<int> &group = current_groups[0];
 
-            if (group.size() == 1)
-            {
+            if (group.size() == 1) {
               // 单播
               all_flit_tx[group[0]]->write(flit);
               current_level_tx[group[0]] = 1 - current_level_tx[group[0]];
               all_req_tx[group[0]]->write(current_level_tx[group[0]]);
-            }
-            else
-            {
+              has_tx_activity = true;
+            } else {
               // 多播到所有端口
-              for (int port : group)
-              {
+              for (int port : group) {
                 all_flit_tx[port]->write(flit);
                 current_level_tx[port] = 1 - current_level_tx[port];
                 all_req_tx[port]->write(current_level_tx[port]);
+                has_tx_activity = true;
               }
             }
           }
@@ -542,47 +475,35 @@ void Router::txProcess()
         // 统一的功耗计算（对所有flit类型执行）
         power.crossBar(); // CrossBar只计算一次
 
-        for (int output_port : power_calc_ports)
-        {
-          if (output_port == DIRECTION_HUB)
-          {
+        for (int output_port : power_calc_ports) {
+          if (output_port == DIRECTION_HUB) {
             power.r2hLink();
-          }
-          else
-          {
+          } else {
             power.r2rLink();
           }
 
-          if (output_port == DIRECTION_LOCAL)
-          {
+          if (output_port == DIRECTION_LOCAL) {
             power.networkInterface();
             LOG << "Consumed flit " << flit << endl;
             stats.receivedFlit(sc_time_stamp().to_double() /
                                    GlobalParams::clock_period_ps,
                                flit);
-            if (GlobalParams::max_volume_to_be_drained)
-            {
-              if (drained_volume >= GlobalParams::max_volume_to_be_drained)
-              {
+            if (GlobalParams::max_volume_to_be_drained) {
+              if (drained_volume >= GlobalParams::max_volume_to_be_drained) {
                 sc_stop();
-              }
-              else
-              {
+              } else {
                 drained_volume++;
                 local_drained++;
               }
             }
-          }
-          else if (selected.input != DIRECTION_LOCAL &&
-                   selected.input != DIRECTION_LOCAL_2)
-          {
+          } else if (selected.input != DIRECTION_LOCAL &&
+                     selected.input != DIRECTION_LOCAL_2) {
             routed_flits++;
           }
         }
 
         // TAIL flit的资源释放逻辑独立处理
-        if (flit.flit_type == FLIT_TYPE_TAIL)
-        {
+        if (flit.flit_type == FLIT_TYPE_TAIL) {
           TReservation r;
           r.input = selected.input;
           r.vc = selected.vc;
@@ -591,22 +512,19 @@ void Router::txProcess()
         }
         // 标记已使用的资源
         used_inputs.insert(selected.input);
-        for (int o : selected.target_outputs)
-        {
+        for (int o : selected.target_outputs) {
           used_outputs.insert(o);
         }
 
         // 从候选列表中移除已处理的或产生冲突的候选
         candidates.erase(std::remove_if(candidates.begin(), candidates.end(),
-                                        [&](const ForwardCandidate &c)
-                                        {
+                                        [&](const ForwardCandidate &c) {
                                           // 移除使用相同 input 的
                                           if (c.input == selected.input)
                                             return true;
 
                                           // 移除使用相同 output 的
-                                          for (int o : c.target_outputs)
-                                          {
+                                          for (int o : c.target_outputs) {
                                             if (used_outputs.count(o))
                                               return true;
                                           }
@@ -618,21 +536,29 @@ void Router::txProcess()
   }
 }
 
-void Router::perCycleUpdate()
-{
-  if (reset.read())
-  {
+void Router::perCycleUpdate() {
+  if (reset.read()) {
     return;
-  }
-  else
-  {
+  } else {
+    total_cycles++;
+    if (!has_tx_activity && !has_rx_activity) {
+      idle_cycles++;
+    }
+    // Only reset flags here if they are not reset at the beginning of process()
+    // However, in this architecture, rxProcess and txProcess run every cycle.
+    // Generally safe to reset them here for the next cycle or just rely on them
+    // being set. Let's reset them at the beginning of processes to be safe or
+    // here. Plan says "Reset has_tx_activity and has_rx_activity to false for
+    // the next cycle" But wait, rxProcess and txProcess are where we *set*
+    // them. If we reset them here (end of cycle), they will be false at start
+    // of next cycle.
+    has_tx_activity = false;
+    has_rx_activity = false;
 
     power.leakageRouter();
     // 修正：遍历所有端口，包括本地端口
-    for (size_t i = 0; i < all_flit_rx.size(); i++)
-    {
-      for (int vc = 0; vc < GlobalParams::n_virtual_channels; vc++)
-      {
+    for (size_t i = 0; i < all_flit_rx.size(); i++) {
+      for (int vc = 0; vc < GlobalParams::n_virtual_channels; vc++) {
         power.leakageBufferRouter();
         power.leakageLinkRouter2Router();
       }
@@ -642,8 +568,7 @@ void Router::perCycleUpdate()
   }
 }
 
-vector<int> Router::routingFunction(const RouteData &route_data)
-{
+vector<int> Router::routingFunction(const RouteData &route_data) {
 
   // TODO: fix all the deprecated verbose mode logs
   if (GlobalParams::verbose_mode > VERBOSE_OFF)
@@ -682,44 +607,34 @@ vector<int> Router::routingFunction(const RouteData &route_data)
 //     return output_to_dsts;
 // }
 
-vector<int> Router::route(const RouteData &route_data)
-{
+vector<int> Router::route(const RouteData &route_data) {
   vector<int> output_ports;
 
-  if (GlobalParams::topology == TOPOLOGY_HIERARCHICAL)
-  {
+  if (GlobalParams::topology == TOPOLOGY_HIERARCHICAL) {
     // 核心判断: target_role 是否匹配本地角色
-    if (route_data.target_role == this->role)
-    {
+    if (route_data.target_role == this->role) {
       // 情况1: 目标是本地角色,只需本地投递
       output_ports.push_back(getLogicalPortIndex(PORT_LOCAL, 0));
       return output_ports; // 直接返回,不再转发
-    }
-    else
-    {
+    } else {
       // 情况2: target_role 不是本地角色,只转发不投递
 
       // 子情况2a: 检查是否是回送包
-      if (route_data.command == -1)
-      {
+      if (route_data.command == -1) {
         // 回送包向上发送
         int up_port_index = getLogicalPortIndex(PORT_UP, -1);
         assert(up_port_index != -1 &&
                "No UP port found in hierarchical router for return packet");
-        if (local_level > 0)
-        {
+        if (local_level > 0) {
           output_ports.push_back(up_port_index);
         }
       }
       // 子情况2b: 使用预定义路由转发
       else if (use_predefined_routing &&
-               routing_patterns.count(route_data.data_type) > 0)
-      {
+               routing_patterns.count(route_data.data_type) > 0) {
         const RoutingPattern &pattern = routing_patterns[route_data.data_type];
-        for (const vector<int> &group : pattern.port_groups)
-        {
-          for (int port : group)
-          {
+        for (const vector<int> &group : pattern.port_groups) {
+          for (int port : group) {
             output_ports.push_back(port);
           }
         }
@@ -733,24 +648,19 @@ vector<int> Router::route(const RouteData &route_data)
   return output_ports;
 }
 
-vector<int> Router::getMulticastChildren(const vector<int> &dst_ids)
-{
+vector<int> Router::getMulticastChildren(const vector<int> &dst_ids) {
   vector<int> child_targets;
 
-  for (int dst_id : dst_ids)
-  {
-    if (dst_id != this->local_id && isDescendant(dst_id))
-    {
+  for (int dst_id : dst_ids) {
+    if (dst_id != this->local_id && isDescendant(dst_id)) {
       int next_hop_child = getNextHopNode(dst_id);
 
       // 检查这个目标节点是否已经是我们的直接子节点
       bool is_direct_child = false;
       for (int i = 0; i < GlobalParams::fanouts_per_level
                               [GlobalParams::node_level_map[local_id]];
-           i++)
-      {
-        if (GlobalParams::child_map[local_id][i] == dst_id)
-        {
+           i++) {
+        if (GlobalParams::child_map[local_id][i] == dst_id) {
           is_direct_child = true;
           break;
         }
@@ -762,8 +672,7 @@ vector<int> Router::getMulticastChildren(const vector<int> &dst_ids)
 
       // 避免重复添加相同的子节点
       if (find(child_targets.begin(), child_targets.end(), child_to_add) ==
-          child_targets.end())
-      {
+          child_targets.end()) {
         child_targets.push_back(child_to_add);
       }
     }
@@ -773,16 +682,13 @@ vector<int> Router::getMulticastChildren(const vector<int> &dst_ids)
 }
 
 int Router::selectionFunction(const vector<int> &directions,
-                              const RouteData &route_data)
-{
+                              const RouteData &route_data) {
   // Hierarchical mode: simple selection
-  if (GlobalParams::topology == TOPOLOGY_HIERARCHICAL)
-  {
+  if (GlobalParams::topology == TOPOLOGY_HIERARCHICAL) {
     // In hierarchical topology, routing function should return only one
     // direction If multiple directions are returned (shouldn't happen), pick
     // the first one
-    if (directions.size() > 0)
-    {
+    if (directions.size() > 0) {
       return directions[0];
     }
     return NOT_VALID;
@@ -793,11 +699,16 @@ int Router::selectionFunction(const vector<int> &directions,
 void Router::configure(const int _id, const int _level,
                        const double _warm_up_time,
                        const unsigned int _max_buffer_size,
-                       GlobalRoutingTable &grt)
-{
+                       GlobalRoutingTable &grt) {
   local_id = _id;
   local_level = _level;
   stats.configure(_id, _warm_up_time);
+
+  // Initialize idle stats
+  idle_cycles = 0;
+  total_cycles = 0;
+  has_tx_activity = false;
+  has_rx_activity = false;
   return_vc_id = 2;
   is_aggregation =
       GlobalParams::hierarchical_config.get_level_config(local_level).aggregate;
@@ -810,18 +721,14 @@ void Router::configure(const int _id, const int _level,
       GlobalParams::hierarchical_config.get_level_config(local_level);
   this->role = level_config.roles;
 
-  if (level_config.has_routing_patterns)
-  {
+  if (level_config.has_routing_patterns) {
     this->routing_patterns = level_config.routing_patterns;
 
     // 直接应用offset到所有路由模式
-    for (auto &pair : this->routing_patterns)
-    {
+    for (auto &pair : this->routing_patterns) {
       RoutingPattern &pattern = pair.second;
-      for (auto &group : pattern.port_groups)
-      {
-        for (int &port : group)
-        {
+      for (auto &group : pattern.port_groups) {
+        for (int &port : group) {
           port += down_port_offset;
         }
       }
@@ -829,11 +736,9 @@ void Router::configure(const int _id, const int _level,
 
     int total_ports = 0;
     auto output_it = this->routing_patterns.find(DataType::OUTPUT);
-    if (output_it != this->routing_patterns.end())
-    {
+    if (output_it != this->routing_patterns.end()) {
       const RoutingPattern &output_pattern = output_it->second;
-      for (const auto &group : output_pattern.port_groups)
-      {
+      for (const auto &group : output_pattern.port_groups) {
         total_ports += group.size();
       }
     }
@@ -850,8 +755,7 @@ void Router::configure(const int _id, const int _level,
   // buildUnifiedInterface();
   routingAlgorithm = RoutingAlgorithms::get(GlobalParams::routing_algorithm);
 
-  if (routingAlgorithm == 0)
-  {
+  if (routingAlgorithm == 0) {
     cerr << " FATAL: invalid routing -routing "
          << GlobalParams::routing_algorithm << ", check with noxim -help"
          << endl;
@@ -862,10 +766,8 @@ void Router::configure(const int _id, const int _level,
 
   reservation_table.setSize(all_flit_rx.size());
 
-  for (size_t i = 0; i < all_flit_rx.size(); i++)
-  {
-    for (int vc = 0; vc < GlobalParams::n_virtual_channels; vc++)
-    {
+  for (size_t i = 0; i < all_flit_rx.size(); i++) {
+    for (int vc = 0; vc < GlobalParams::n_virtual_channels; vc++) {
       (*buffers[i])[vc].SetMaxBufferSize(_max_buffer_size);
       (*buffers[i])[vc].setLabel(string(name()) + "->buffer[" + i_to_string(i) +
                                  "]");
@@ -874,8 +776,7 @@ void Router::configure(const int _id, const int _level,
   }
 }
 
-bool Router::tryAggregation(int input_port, const Flit &flit)
-{
+bool Router::tryAggregation(int input_port, const Flit &flit) {
   // 验证是回送包且使用正确的VC
   assert(flit.vc_id == return_vc_id && "Return packet must use designated VC");
 
@@ -883,16 +784,14 @@ bool Router::tryAggregation(int input_port, const Flit &flit)
     return false;
 
   // 如果是第一个到达的flit,初始化聚合条目
-  if (aggregation_entry.port_flits.empty())
-  {
+  if (aggregation_entry.port_flits.empty()) {
     aggregation_entry.payload_data_size = flit.payload_data_size;
     aggregation_entry.flit_type = flit.flit_type;
   }
 
   // 验证flit属性匹配
   if (aggregation_entry.payload_data_size != flit.payload_data_size ||
-      aggregation_entry.flit_type != flit.flit_type)
-  {
+      aggregation_entry.flit_type != flit.flit_type) {
     assert(false && "mismatch in aggregation flit");
     return false;
   }
@@ -904,10 +803,8 @@ bool Router::tryAggregation(int input_port, const Flit &flit)
   return true;
 }
 
-bool Router::performAggregation()
-{
-  if (!aggregated_flit_queue.empty())
-  {
+bool Router::performAggregation() {
+  if (!aggregated_flit_queue.empty()) {
     return false; // 队列中还有未转发的聚合flit,暂不聚合新的
   }
   // 创建聚合后的大flit
@@ -923,22 +820,18 @@ bool Router::performAggregation()
   aggregated_flit = aggregation_entry.port_flits.begin()->second;
   // aggregated_flit.payload_data_size *= aggregation_entry.expected_port_count;
 
-  if (routing_patterns.count(aggregated_flit.data_type) > 0)
-  {
+  if (routing_patterns.count(aggregated_flit.data_type) > 0) {
     aggregated_flit.payload_data_size =
         routing_patterns[aggregated_flit.data_type].port_groups.size() *
         aggregated_flit.payload_data_size;
-  }
-  else
-  {
+  } else {
     aggregated_flit.payload_data_size *= aggregation_entry.expected_port_count;
   }
 
   aggregated_flit.src_id = -1;
 
   // 路由并预留上游端口
-  if (aggregated_flit.flit_type != FlitType::FLIT_TYPE_HEAD)
-  {
+  if (aggregated_flit.flit_type != FlitType::FLIT_TYPE_HEAD) {
     aggregated_flit_queue.push(aggregated_flit);
     return true; // 只需要在头flit进行预留
   }
@@ -957,8 +850,7 @@ bool Router::performAggregation()
   r.vc = return_vc_id;
 
   int reservation_status = reservation_table.checkReservation(r, output_ports);
-  if (reservation_status == RT_AVAILABLE)
-  {
+  if (reservation_status == RT_AVAILABLE) {
     reservation_table.reserve(r, output_ports);
     aggregated_flit_queue.push(aggregated_flit);
     // map<int, set<int>> output_to_dsts = buildOutputMapping(aggregated_flit,
@@ -972,8 +864,7 @@ bool Router::performAggregation()
 }
 unsigned long Router::getRoutedFlits() { return routed_flits; }
 
-int Router::reflexDirection(int direction) const
-{
+int Router::reflexDirection(int direction) const {
   if (direction == DIRECTION_NORTH)
     return DIRECTION_SOUTH;
   if (direction == DIRECTION_EAST)
@@ -988,14 +879,12 @@ int Router::reflexDirection(int direction) const
   return NOT_VALID;
 }
 
-int Router::getNeighborId(int _id, int direction) const
-{
+int Router::getNeighborId(int _id, int direction) const {
   assert(GlobalParams::topology == TOPOLOGY_MESH);
 
   Coord my_coord = id2Coord(_id);
 
-  switch (direction)
-  {
+  switch (direction) {
   case DIRECTION_NORTH:
     if (my_coord.y == 0)
       return NOT_VALID;
@@ -1026,24 +915,20 @@ int Router::getNeighborId(int _id, int direction) const
   return neighbor_id;
 }
 
-void Router::ShowBuffersStats(std::ostream &out)
-{
+void Router::ShowBuffersStats(std::ostream &out) {
   for (size_t i = 0; i < all_flit_rx.size(); i++)
     for (int vc = 0; vc < GlobalParams::n_virtual_channels; vc++)
       (*buffers[i])[vc].ShowStats(out);
 }
 
-bool Router::connectedHubs(int src_hub, int dst_hub)
-{
+bool Router::connectedHubs(int src_hub, int dst_hub) {
   vector<int> &first = GlobalParams::hub_configuration[src_hub].txChannels;
   vector<int> &second = GlobalParams::hub_configuration[dst_hub].rxChannels;
 
   vector<int> intersection;
 
-  for (unsigned int i = 0; i < first.size(); i++)
-  {
-    for (unsigned int j = 0; j < second.size(); j++)
-    {
+  for (unsigned int i = 0; i < first.size(); i++) {
+    for (unsigned int j = 0; j < second.size(); j++) {
       if (first[i] == second[j])
         intersection.push_back(first[i]);
     }
@@ -1055,8 +940,7 @@ bool Router::connectedHubs(int src_hub, int dst_hub)
     return true;
 }
 // Constructor implementation
-Router::Router(sc_module_name nm)
-{
+Router::Router(sc_module_name nm) {
 
   // Register SystemC methods
   SC_METHOD(rxProcess);
@@ -1077,8 +961,7 @@ Router::Router(sc_module_name nm)
 Router::~Router() { cleanupPorts(); }
 
 // Initialize all dynamic ports based on hierarchical configuration
-void Router::initPorts()
-{
+void Router::initPorts() {
   // Initialize all pointers to nullptr
   h_flit_rx_up = nullptr;
   h_req_rx_up = nullptr;
@@ -1090,8 +973,7 @@ void Router::initPorts()
   h_ack_tx_up = nullptr;
   h_buffer_full_status_tx_up = nullptr;
 
-  for (int i = 0; i < NUM_LOCAL_PORTS; i++)
-  {
+  for (int i = 0; i < NUM_LOCAL_PORTS; i++) {
     h_flit_rx_local[i] = nullptr;
     h_req_rx_local[i] = nullptr;
     h_ack_rx_local[i] = nullptr;
@@ -1116,8 +998,7 @@ void Router::initPorts()
 }
 
 // Build the unified interface adapter
-void Router::buildUnifiedInterface()
-{
+void Router::buildUnifiedInterface() {
   // Clear all vectors
   all_flit_rx.clear();
   all_req_rx.clear();
@@ -1138,8 +1019,7 @@ void Router::buildUnifiedInterface()
   // Define port order: UP -> LOCAL -> DOWN_0 -> DOWN_1 -> ...
 
   // 1. Add UP port (if this node is not root)
-  if (local_level > 0)
-  {
+  if (local_level > 0) {
     cout << "function in " << local_id << endl;
     std::string up_name = "ROUTER::UP_" + std::to_string(local_id);
 
@@ -1179,8 +1059,7 @@ void Router::buildUnifiedInterface()
   }
 
   // 2. Add LOCAL ports (always present)
-  for (int i = 0; i < NUM_LOCAL_PORTS; i++)
-  {
+  for (int i = 0; i < NUM_LOCAL_PORTS; i++) {
     std::string local_name =
         "ROUTER::LOCAL_" + std::to_string(local_id) + "_" + std::to_string(i);
 
@@ -1221,13 +1100,11 @@ void Router::buildUnifiedInterface()
 
   // 3. Add DOWN ports (based on fanout)
   int fanout = 0;
-  if (local_level < GlobalParams::num_levels - 1)
-  {
+  if (local_level < GlobalParams::num_levels - 1) {
     fanout = GlobalParams::fanouts_per_level[local_level];
   }
 
-  for (int i = 0; i < fanout; i++)
-  {
+  for (int i = 0; i < fanout; i++) {
     std::string down_name =
         "DOWN_" + std::to_string(local_id) + "_" + std::to_string(i);
 
@@ -1277,8 +1154,7 @@ void Router::buildUnifiedInterface()
 }
 
 // Cleanup all dynamically allocated ports
-void Router::cleanupPorts()
-{
+void Router::cleanupPorts() {
   // Clean up UP ports
   if (h_flit_rx_up)
     delete h_flit_rx_up;
@@ -1297,8 +1173,7 @@ void Router::cleanupPorts()
   if (h_buffer_full_status_tx_up)
     delete h_buffer_full_status_tx_up;
 
-  for (int i = 0; i < NUM_LOCAL_PORTS; i++)
-  {
+  for (int i = 0; i < NUM_LOCAL_PORTS; i++) {
     delete h_flit_rx_local[i];
     delete h_req_rx_local[i];
     delete h_ack_rx_local[i];
@@ -1334,17 +1209,13 @@ void Router::cleanupPorts()
 }
 
 int Router::getLogicalPortIndex(LogicalPortType type,
-                                int instance_index) const
-{
+                                int instance_index) const {
   // 遍历整个 port_info_map
-  for (size_t i = 0; i < port_info_map.size(); i++)
-  {
+  for (size_t i = 0; i < port_info_map.size(); i++) {
     // 检查端口类型是否匹配
-    if (port_info_map[i].type == type)
-    {
+    if (port_info_map[i].type == type) {
       // 检查该类型的实例索引是否匹配
-      if (port_info_map[i].instance_index == instance_index)
-      {
+      if (port_info_map[i].instance_index == instance_index) {
         return static_cast<int>(i); // 找到了完全匹配的端口，返回其逻辑ID
       }
     }
@@ -1354,11 +1225,9 @@ int Router::getLogicalPortIndex(LogicalPortType type,
   return -1;
 }
 
-bool Router::isDescendant(int dst_id) const
-{
+bool Router::isDescendant(int dst_id) const {
   // 安全检查：如果目标就是自己，不是自己的子孙
-  if (dst_id == this->local_id)
-  {
+  if (dst_id == this->local_id) {
     return false;
   }
 
@@ -1366,14 +1235,12 @@ bool Router::isDescendant(int dst_id) const
   int current_node_id = dst_id;
 
   // 只要还没到根节点，就继续向上找
-  while (GlobalParams::parent_map[current_node_id] != -1)
-  {
+  while (GlobalParams::parent_map[current_node_id] != -1) {
     // 获取当前节点的父节点
     int parent_id = GlobalParams::parent_map[current_node_id];
 
     // 检查父节点是否是我们正在寻找的 local_id
-    if (parent_id == this->local_id)
-    {
+    if (parent_id == this->local_id) {
       return true; // 找到了！dst_id 是我们的子孙
     }
 
@@ -1385,8 +1252,7 @@ bool Router::isDescendant(int dst_id) const
   return false;
 }
 
-int Router::getNextHopNode(int dst_id) const
-{
+int Router::getNextHopNode(int dst_id) const {
   // 安全检查和前提条件
   assert(isDescendant(dst_id) &&
          "getNextHopNode should only be called for descendant nodes.");
@@ -1395,14 +1261,12 @@ int Router::getNextHopNode(int dst_id) const
   int previous_node_id = dst_id; // 用于记录回溯路径上的前一个节点
 
   // 只要还没到根节点，就继续向上找
-  while (GlobalParams::parent_map[current_node_id] != -1)
-  {
+  while (GlobalParams::parent_map[current_node_id] != -1) {
     // 获取当前节点的父节点
     int parent_id = GlobalParams::parent_map[current_node_id];
 
     // 检查父节点是否是我们的 local_id
-    if (parent_id == this->local_id)
-    {
+    if (parent_id == this->local_id) {
       // 找到了！那么回溯路径上的前一个节点 previous_node_id
       // 就是 local_id 的那个直接子节点。
       return current_node_id;
@@ -1417,4 +1281,15 @@ int Router::getNextHopNode(int dst_id) const
       false &&
       "Logical error in getNextHopNode: descendant not found in parent chain.");
   return -1; // 表示错误
+}
+
+void Router::showIdleStats(std::ostream &out) {
+  double idle_ratio =
+      total_cycles > 0 ? (double)idle_cycles / total_cycles : 0.0;
+
+  out << "Router " << local_id << " idle statistics:" << endl;
+  out << "  Total cycles: " << total_cycles << endl;
+  out << "  Idle cycles: " << idle_cycles << endl;
+  out << "  Idle ratio: " << fixed << setprecision(2) << (idle_ratio * 100)
+      << "%" << endl;
 }

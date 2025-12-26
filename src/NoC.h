@@ -11,162 +11,154 @@
 #ifndef __NOXIMNOC_H__
 #define __NOXIMNOC_H__
 
-#include <systemc.h>
-#include "Tile.h"
+#include "Channel.h"
+#include "GlobalParams.h"
 #include "GlobalRoutingTable.h"
 #include "GlobalTrafficTable.h"
 #include "Hub.h"
-#include "Channel.h"
+#include "Tile.h"
 #include "TokenRing.h"
-#include "GlobalParams.h"
+#include <systemc.h>
 #
 
 using namespace std;
 
-template <typename T>
-struct sc_signal_NSWE
-{
-    sc_signal<T> east;
-    sc_signal<T> west;
-    sc_signal<T> south;
-    sc_signal<T> north;
+template <typename T> struct sc_signal_NSWE {
+  sc_signal<T> east;
+  sc_signal<T> west;
+  sc_signal<T> south;
+  sc_signal<T> north;
 };
 
-template <typename T>
-struct sc_signal_NSWEH
-{
-    sc_signal<T> east;
-    sc_signal<T> west;
-    sc_signal<T> south;
-    sc_signal<T> north;
-    sc_signal<T> to_hub;
-    sc_signal<T> from_hub;
+template <typename T> struct sc_signal_NSWEH {
+  sc_signal<T> east;
+  sc_signal<T> west;
+  sc_signal<T> south;
+  sc_signal<T> north;
+  sc_signal<T> to_hub;
+  sc_signal<T> from_hub;
 };
 
 // New hierarchical signal structure
-template <typename T>
-struct sc_signal_Hierarchical
-{
-    sc_signal<T> up;        // 向上级连接
-    sc_signal<T> down_0;    // 向下级连接0
-    sc_signal<T> down_1;    // 向下级连接1
-    sc_signal<T> down_2;    // 向下级连接2
-    sc_signal<T> down_3;    // 向下级连接3
+template <typename T> struct sc_signal_Hierarchical {
+  sc_signal<T> up;     // 向上级连接
+  sc_signal<T> down_0; // 向下级连接0
+  sc_signal<T> down_1; // 向下级连接1
+  sc_signal<T> down_2; // 向下级连接2
+  sc_signal<T> down_3; // 向下级连接3
 };
 
 enum HierarchicalDirection {
-    DIR_UP = 0,        // 向上级连接
-    DIR_DOWN_0 = 1,   // 向下级连接0
-    DIR_DOWN_1 = 2,   // 向下级连接1
-    DIR_DOWN_2 = 3,   // 向下级连接2
-    DIR_DOWN_3 = 4,   // 向下级连接3
-    DIR_HIERARCHICAL_COUNT = 5
+  DIR_UP = 0,     // 向上级连接
+  DIR_DOWN_0 = 1, // 向下级连接0
+  DIR_DOWN_1 = 2, // 向下级连接1
+  DIR_DOWN_2 = 3, // 向下级连接2
+  DIR_DOWN_3 = 4, // 向下级连接3
+  DIR_HIERARCHICAL_COUNT = 5
 };
 
-SC_MODULE(NoC)
-{
-    sc_signal<int>** downstream_ready_signals;
-    sc_signal<int> dummy_signal;
+SC_MODULE(NoC) {
+  sc_signal<int> **downstream_ready_signals;
+  sc_signal<int> dummy_signal;
 
 public:
-    bool SwitchOnly; // true if the tile are switch only
-    // I/O Ports
-    sc_in_clk clock;   // The input clock for the NoC
-    sc_in<bool> reset; // The reset signal for the NoC
+  bool SwitchOnly; // true if the tile are switch only
+  // I/O Ports
+  sc_in_clk clock;   // The input clock for the NoC
+  sc_in<bool> reset; // The reset signal for the NoC
 
+  // Hierarchical structure signals - redesigned for tree topology
+  sc_signal<bool> **hierarchical_req; // 层次化请求信号
+  sc_signal<bool> **hierarchical_ack; // 层次化应答信号
+  sc_signal<TBufferFullStatus> *
+      *hierarchical_buffer_full_status; // 层次化缓冲区状态
+  sc_signal<Flit> **hierarchical_flit;  // 层次化数据流信号
 
-    // Hierarchical structure signals - redesigned for tree topology
-    sc_signal<bool> **hierarchical_req;        // 层次化请求信号
-    sc_signal<bool> **hierarchical_ack;        // 层次化应答信号
-    sc_signal<TBufferFullStatus> **hierarchical_buffer_full_status;  // 层次化缓冲区状态
-    sc_signal<Flit> **hierarchical_flit;        // 层次化数据流信号
-    
-    // Hierarchical topology parameters
-    int num_levels;                          // 层次化层级数
-    int* nodes_per_level;                    // 每层的节点数数组
-    int total_nodes;                         // 总节点数
-    int* node_level_map;                     // 节点->层级映射 (1D数组)
-    int* parent_map;                         // 节点->父节点映射 (1D数组)
-    int** child_map;                         // 节点->子节点映射 (2D数组)
+  // Hierarchical topology parameters
+  int num_levels;       // 层次化层级数
+  int *nodes_per_level; // 每层的节点数数组
+  int total_nodes;      // 总节点数
+  int *node_level_map;  // 节点->层级映射 (1D数组)
+  int *parent_map;      // 节点->父节点映射 (1D数组)
+  int **child_map;      // 节点->子节点映射 (2D数组)
 
-    // Tile storage for hierarchical topology
-    Tile **t;                                // 1D数组存储所有Tile，按层级和ID索引
-    Tile **core;                              // 核心Tile数组
-    
-    // Hierarchical connection management
-    void setupHierarchicalTopology();         // 设置层次化拓扑
-    void setupHierarchicalConnections();      // 建立层次化连接
-    int getParentNode(int node_id);           // 获取节点的父节点
-    const int* getChildNodes(int node_id);    // 获取节点的子节点数组
-    int getLevelOfNode(int node_id);          // 获取节点所在的层级
-    void writeToGlobalParams();
+  // Tile storage for hierarchical topology
+  Tile **t;    // 1D数组存储所有Tile，按层级和ID索引
+  Tile **core; // 核心Tile数组
 
-    void buildRoleMappings();
+  // Hierarchical connection management
+  void setupHierarchicalTopology();      // 设置层次化拓扑
+  void setupHierarchicalConnections();   // 建立层次化连接
+  int getParentNode(int node_id);        // 获取节点的父节点
+  const int *getChildNodes(int node_id); // 获取节点的子节点数组
+  int getLevelOfNode(int node_id);       // 获取节点所在的层级
+  void writeToGlobalParams();
 
-    void findComputeNodes(int node_id, int target_level, vector<int>& result);
+  void buildRoleMappings();
 
+  void findComputeNodes(int node_id, int target_level, vector<int> &result);
 
+  // Statistics
+  void showHierarchicalIdleStats(std::ostream & out);
 
-    map<int, Hub *> hub;
-    map<int, Channel *> channel;
+  map<int, Hub *> hub;
+  map<int, Channel *> channel;
 
-    TokenRing *token_ring;
+  TokenRing *token_ring;
 
-    // Global tables
-    GlobalRoutingTable grtable;
-    GlobalTrafficTable gttable;
+  // Global tables
+  GlobalRoutingTable grtable;
+  GlobalTrafficTable gttable;
 
-    // Constructor
+  // Constructor
 
-    SC_CTOR(NoC)
-    {
-        cout<<"NOC is Initializing"<<endl;
+  SC_CTOR(NoC) {
+    cout << "NOC is Initializing" << endl;
 
-        dummy_signal = sc_signal<bool>("dummy_signal");
+    dummy_signal = sc_signal<bool>("dummy_signal");
 
-        if (GlobalParams::topology == TOPOLOGY_MESH)
-            // Build the Mesh
-            buildMesh();
-        else if (GlobalParams::topology == TOPOLOGY_BUTTERFLY)
-            buildButterfly();
-        else if (GlobalParams::topology == TOPOLOGY_BASELINE)
-            buildBaseline();
-        else if (GlobalParams::topology == TOPOLOGY_OMEGA)
-            buildOmega();
-        else if (GlobalParams::topology == TOPOLOGY_HIERARCHICAL)
-            buildHierarchical();
-        else
-        {
-            cerr << "ERROR: Topology " << GlobalParams::topology << " is not yet supported." << endl;
-            exit(0);
-        }
-        GlobalParams::channel_selection = CHSEL_RANDOM;
-        // out of yaml configuration (experimental features)
-        // GlobalParams::channel_selection = CHSEL_FIRST_FREE;
-
-        if (GlobalParams::ascii_monitor)
-        {
-            SC_METHOD(asciiMonitor);
-            sensitive << clock.pos();
-        }
+    if (GlobalParams::topology == TOPOLOGY_MESH)
+      // Build the Mesh
+      buildMesh();
+    else if (GlobalParams::topology == TOPOLOGY_BUTTERFLY)
+      buildButterfly();
+    else if (GlobalParams::topology == TOPOLOGY_BASELINE)
+      buildBaseline();
+    else if (GlobalParams::topology == TOPOLOGY_OMEGA)
+      buildOmega();
+    else if (GlobalParams::topology == TOPOLOGY_HIERARCHICAL)
+      buildHierarchical();
+    else {
+      cerr << "ERROR: Topology " << GlobalParams::topology
+           << " is not yet supported." << endl;
+      exit(0);
     }
-    ~NoC();
+    GlobalParams::channel_selection = CHSEL_RANDOM;
+    // out of yaml configuration (experimental features)
+    // GlobalParams::channel_selection = CHSEL_FIRST_FREE;
 
-    // Support methods
-    Tile *searchNode(const int id) const;
+    if (GlobalParams::ascii_monitor) {
+      SC_METHOD(asciiMonitor);
+      sensitive << clock.pos();
+    }
+  }
+  ~NoC();
+
+  // Support methods
+  Tile *searchNode(const int id) const;
 
 private:
-    void buildMesh();
-    void buildButterfly();
-    void buildBaseline();
-    void buildOmega();
-    void buildHierarchical();
-    void buildCommon();
-    void asciiMonitor();
-    void setupLocalConnections();
-    int *hub_connected_ports;
+  void buildMesh();
+  void buildButterfly();
+  void buildBaseline();
+  void buildOmega();
+  void buildHierarchical();
+  void buildCommon();
+  void asciiMonitor();
+  void setupLocalConnections();
+  int *hub_connected_ports;
 };
 
-// Hub * dd;
+  // Hub * dd;
 
 #endif

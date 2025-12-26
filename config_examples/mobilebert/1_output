@@ -1,0 +1,49 @@
+ycle= 1[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=64 total_output
+ cycle= 1[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=64 total_output
+ cycle= 0[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=1 payload=17792 total_outp
+144141 ns: PE[0] Completed dispatch for timestamp 1
+[..rocessingElement.cpp:734 (reset_logic)] sc_time_stamp() = 144141 ns (const sc_core::sc_time&), All ta
+
+Info: /OSCI/SystemC: Simulation stopped by user.
+% Total received packets: 20088
+% Total received flits: 285488
+% Received/Ideal flits Ratio: inf
+% Average wireless utilization: 0
+% Global average delay (cycles): 71746.9
+% Max delay (cycles): -1
+% Network throughput (flits/cycle): 0.071372
+% Average IP throughput (flits/cycle/IP): inf
+% Total energy (J): 0.00114966
+%       Dynamic energy (J): 1.05008e-05
+%       Static energy (J): 0.00113916
+=== Hierarchical Router Idle Statistics ===
+Level 0 (1 nodes):
+Router 0 idle statistics:
+  Total cycles: 144132
+  Idle cycles: 140987
+  Idle ratio: 97.82%
+  Level 0 average: 97.82% idle
+
+Level 1 (1 nodes):
+Router 1 idle statistics:
+  Total cycles: 144132
+  Idle cycles: 108442
+  Idle ratio: 75.24%
+  Level 1 average: 75.24% idle
+
+Level 2 (8 nodes):
+Router 2 idle statistics:
+  Total cycles: 144132
+  Idle cycles: 108768
+  Idle ratio: 75.46%
+  Level 2 average: 75.79% idle
+
+Level 3 (96 nodes):
+Router 10 idle statistics:
+  Total cycles: 144132
+  Idle cycles: 107525
+  Idle ratio: 74.60%
+  Level 3 average: 83.62% idle
+
+[Inferior 1 (process 39798) exited normally]
+

@@ -60,15 +60,6 @@ Info: /OSCI/SystemC: Simulation stopped by user.
 %       Static energy (J): 0.00407554
 root@debian-desktop:~/my_noxim/build#
 
-
-le= 1[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=8 total_outputs_received=71144/71168
- cycle= 1[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=8 total_outputs_received=71152/71168
- cycle= 1[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=8 total_outputs_received=71160/71168
- cycle= 1[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=8 total_outputs_received=71168/71168
- cycle= 0[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=1 payload=35584 total_outputs_received=71168/35584
-326419 ns: PE[0] Completed dispatch for timestamp 1
-[..rocessingElement.cpp:734 (reset_logic)] sc_time_stamp() = 326419 ns (const sc_core::sc_time&), All tasks completed quiting simulation
-
 Info: /OSCI/SystemC: Simulation stopped by user.
 % Total received packets: 170208
 % Total received flits: 696256
