@@ -14,6 +14,7 @@ topology: "HIERARCHICAL"
 hierarchical_config:
   num_levels: 4
   connection_mode: "tree"
+  transmission_mode: "traditional"
   word_bits: 8
   
   level_configs:
@@ -47,19 +48,19 @@ hierarchical_config:
       aggregate: true
       routing_patterns:  
         INPUT:  
-          port_groups: [[0,1,2,3,4,5,6,7]]
+          port_groups: [[0,4],[1,5],[2,6],[3,7]]
         WEIGHT:  
           port_groups: [[0], [1], [2], [3], [4], [5], [6], [7]]
           forward_count: 2  
         OUTPUT:  
-          port_groups: [[0,1,2,3,4,5,6,7]]
+          port_groups: [[0,1,2,3],[4,5,6,7]]
 
     # Level 2: DISTRIBUTOR (对应 8x12 中的 "12" 这一维 - 日志来源层)
     - level: 2
       node_type: "DISTRIBUTOR"
       buffer_size: 0 # 维持您提供的buffer配置
       roles: "ROLE_DISTRIBUTOR"
-      bandwidth: 128
+      bandwidth: 64
       fanouts: 16
       aggregate: true
       routing_patterns:  
@@ -75,22 +76,23 @@ hierarchical_config:
         # 数据被多播到间隔为3的4个PE上
         INPUT:  
           port_groups: [
-            [1,3,5,7,9,11,13,15],
-            [0,2,4,6,8,10,12,14]
+            [0,8],
+            [1,9],
+            [2,10],
+            [3,11],
+            [4,12],
+            [5,13],
+            [6,14],
+            [7,15]
+
           ]
             
         # pv=2 (OUTPUT): 日志显示 num_matches=3, 且索引连续 (如0,1,2) -> 块状多播
         # 数据被多播/收集自连续的3个PE
         OUTPUT:  
           port_groups: [
-            [0,1],
-            [2,3],
-            [4,5],
-            [6,7],
-            [8,9],
-            [10,11],
-            [12,13],
-            [14,15]
+            [0,1,2,3,4,5,6,7],
+            [8,9,10,11,12,13,14,15]
           ]
       
     # Level 3: COMPUTE (PE)
@@ -98,28 +100,28 @@ hierarchical_config:
       node_type: "ROLE_BUFFER"
       buffer_size: [384, 32, 32]    
       roles: "ROLE_BUFFER"
-      bandwidth: 8
+      bandwidth: 64
       fanouts: 0
 
 workload:
   working_set:
     - role: "ROLE_DRAM"
-      outputs_required_count: 17792
+      outputs_required_count: 71168
       data:
-        - { data_space: "Weights", size: 65536, reuse_strategy: "resident" }
-        - { data_space: "Inputs", size: 71168, reuse_strategy: "resident" }
-        - { data_space: "Outputs", size: 17792, reuse_strategy: "resident" }
+        - { data_space: "Weights", size: 196608, reuse_strategy: "resident" }
+        - { data_space: "Inputs", size: 55376, reuse_strategy: "resident" }
+        - { data_space: "Outputs", size: 71168, reuse_strategy: "resident" }
     - role: "ROLE_GLB"
-      outputs_required_count: 35584
+      outputs_required_count: 142336
       data:
         - { data_space: "Weights", size: 0, reuse_strategy: "resident" }
-        - { data_space: "Inputs", size: 35584, reuse_strategy: "resident" }
-        - { data_space: "Outputs", size: 17792, reuse_strategy: "resident" }
+        - { data_space: "Inputs", size: 53376, reuse_strategy: "resident" }
+        - { data_space: "Outputs", size: 71168, reuse_strategy: "resident" }
     - role: "ROLE_BUFFER"
       outputs_required_count: 0
       data:
-        - { data_space: "Weights", size: 128, reuse_strategy: "temporal" }
-        - { data_space: "Inputs",  size: 8, reuse_strategy: "temporal" }
+        - { data_space: "Weights", size: 96, reuse_strategy: "temporal" }
+        - { data_space: "Inputs",  size: 6, reuse_strategy: "temporal" }
         - { data_space: "Outputs", size: 16, reuse_strategy: "temporal" }
 
   data_flow_specs:
@@ -127,47 +129,64 @@ workload:
       properties:
         sync_per_timestep: 0
       schedule_template:
-        total_timesteps: 2
+        total_timesteps: 1
         delta_events:
           - trigger: { on_timestep: "fallback" }
             name: "INITIAL_LOAD_DRAM_TO_GLB"
             delta:
-              - { data_space: "Weights", size: 128 ,target_role: "ROLE_BUFFER" }
-              - { data_space: "Weights", size: 128 ,target_role: "ROLE_BUFFER" }
-              - { data_space: "Inputs",  size: 35584 ,target_role: "ROLE_GLB" }
-              - { data_space: "Outputs", size: 17792 ,target_role: "ROLE_GLB" }
+
+              - { data_space: "Weights", size: 96 ,target_role: "ROLE_BUFFER" }
+              - { data_space: "Weights", size: 96 ,target_role: "ROLE_BUFFER" }
+              - { data_space: "Weights", size: 96 ,target_role: "ROLE_BUFFER" }
+              - { data_space: "Weights", size: 96 ,target_role: "ROLE_BUFFER" }
+              - { data_space: "Weights", size: 96 ,target_role: "ROLE_BUFFER" }
+              - { data_space: "Weights", size: 96 ,target_role: "ROLE_BUFFER" }
+              - { data_space: "Weights", size: 96 ,target_role: "ROLE_BUFFER" }
+              - { data_space: "Weights", size: 96 ,target_role: "ROLE_BUFFER" }
+              - { data_space: "Weights", size: 96 ,target_role: "ROLE_BUFFER" }
+              - { data_space: "Weights", size: 96 ,target_role: "ROLE_BUFFER" }
+              - { data_space: "Weights", size: 96 ,target_role: "ROLE_BUFFER" }
+              - { data_space: "Weights", size: 96 ,target_role: "ROLE_BUFFER" }
+              - { data_space: "Weights", size: 96 ,target_role: "ROLE_BUFFER" }
+              - { data_space: "Weights", size: 96 ,target_role: "ROLE_BUFFER" }
+              - { data_space: "Weights", size: 96 ,target_role: "ROLE_BUFFER" }
+              - { data_space: "Weights", size: 96 ,target_role: "ROLE_BUFFER" }
+
+              - { data_space: "Inputs",  size: 53376 ,target_role: "ROLE_GLB" }
+              - { data_space: "Outputs", size: 71168 ,target_role: "ROLE_GLB" }
 
     - role: "ROLE_GLB"
       properties:
         sync_per_timestep: 0
       schedule_template:
-        total_timesteps: 278
+        total_timesteps: 2224
         delta_events:
           - trigger: { on_timestep: "fallback" }
             name: "MULTICAST_FILL_INPUTS"
             delta:
-              - { data_space: "Inputs",  size: 8,target_role: "ROLE_BUFFER" }
+              - { data_space: "Inputs",  size: 6,target_role: "ROLE_BUFFER" }
               - { data_space: "Outputs", size: 16, target_role: "ROLE_BUFFER" }
-     
+
+      
       command_definitions:
         - command_id: 0
           name: "PROCESS_FULL_CONTEXT"
-          evict_payload: { Weights: 0, Inputs: 35584, Outputs: 0 }
+          evict_payload: { Weights: 0, Inputs: 0, Outputs: 71168 }
 
     - role: "ROLE_BUFFER"
       properties:
-        compute_latency: 128
+        compute_latency: 96
         eviction_interval_cycles: 139
-        weight_eviction_amount: 128
+        weight_eviction_amount: 96
       schedule_template:
         total_timesteps: 1
         delta_events: []
       command_definitions:
         - command_id: 0
           name: "PROCESS_DELTA"
-          evict_payload: { Weights: 0, Inputs: 8, Outputs: 16 }
+          evict_payload: { Weights: 0, Inputs: 6, Outputs: 16 }
 
-buffer_depth: 8 # <--- [建议修改] 稍微调大一点，避免初始调试时因缓冲区太小而产生干扰
+buffer_depth: 2 # <--- [建议修改] 稍微调大一点，避免初始调试时因缓冲区太小而产生干扰
 # size of flits, in bits
 flit_size: 32
 # lenght in mm of router to hub connection

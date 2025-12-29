@@ -83,5 +83,8 @@
     },
     "cmake.ignoreCMakeListsMissing": true,
     "editor.formatOnSave": true,
-    "css.format.braceStyle": "expand"
+    "css.format.braceStyle": "expand",
+    "github.copilot.enable": {
+        "yaml": true
+    }
 }

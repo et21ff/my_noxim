@@ -14,6 +14,7 @@ topology: "HIERARCHICAL"
 hierarchical_config:
   num_levels: 4
   connection_mode: "tree"
+  transmission_mode: "traditional"
   word_bits: 8
   
   level_configs:
@@ -47,20 +48,20 @@ hierarchical_config:
       aggregate: true
       routing_patterns:  
         INPUT:  
-          port_groups: [[0,1,2,3,4,5,6,7]]
+          port_groups: [[0,2,4,6],[1,3,5,7]]
         WEIGHT:  
           port_groups: [[0], [1], [2], [3], [4], [5], [6], [7]]
           forward_count: 2  
         OUTPUT:  
-          port_groups: [[0,1,2,3,4,5,6,7]]
+          port_groups: [[0,1],[2,3],[4,5],[6,7]]
 
     # Level 2: DISTRIBUTOR (对应 8x12 中的 "12" 这一维 - 日志来源层)
     - level: 2
       node_type: "DISTRIBUTOR"
       buffer_size: 0 # 维持您提供的buffer配置
       roles: "ROLE_DISTRIBUTOR"
-      bandwidth: 128
-      fanouts: 16
+      bandwidth: 64
+      fanouts: 12
       aggregate: true
       routing_patterns:  
         
@@ -68,29 +69,29 @@ hierarchical_config:
         # 每个数据包只发送给唯一的 PE
         WEIGHT:  
           port_groups: [
-            [0],[1],[2],[3],[4],[5],[6],[7],[8],[9],[10],[11],[12],[13],[14],[15]
+            [0], [1], [2], [3], [4], [5], 
+            [6], [7]
           ]
           
         # pv=1 (INPUT): 日志显示 num_matches=4, 且索引跨度为3 (如0,3,6,9) -> 交错多播
         # 数据被多播到间隔为3的4个PE上
         INPUT:  
           port_groups: [
-            [1,3,5,7,9,11,13,15],
-            [0,2,4,6,8,10,12,14]
+            [0],
+            [1],
+            [2],
+            [3],
+            [4],
+            [5],
+            [6],
+            [7]
           ]
             
         # pv=2 (OUTPUT): 日志显示 num_matches=3, 且索引连续 (如0,1,2) -> 块状多播
         # 数据被多播/收集自连续的3个PE
         OUTPUT:  
           port_groups: [
-            [0,1],
-            [2,3],
-            [4,5],
-            [6,7],
-            [8,9],
-            [10,11],
-            [12,13],
-            [14,15]
+            [0,1,2,3,4,5,6,7]
           ]
       
     # Level 3: COMPUTE (PE)
@@ -98,7 +99,7 @@ hierarchical_config:
       node_type: "ROLE_BUFFER"
       buffer_size: [384, 32, 32]    
       roles: "ROLE_BUFFER"
-      bandwidth: 8
+      bandwidth: 64
       fanouts: 0
 
 workload:
@@ -134,6 +135,8 @@ workload:
             delta:
               - { data_space: "Weights", size: 128 ,target_role: "ROLE_BUFFER" }
               - { data_space: "Weights", size: 128 ,target_role: "ROLE_BUFFER" }
+              - { data_space: "Weights", size: 128 ,target_role: "ROLE_BUFFER" }
+              - { data_space: "Weights", size: 128 ,target_role: "ROLE_BUFFER" }
               - { data_space: "Inputs",  size: 35584 ,target_role: "ROLE_GLB" }
               - { data_space: "Outputs", size: 17792 ,target_role: "ROLE_GLB" }
 
@@ -141,7 +144,7 @@ workload:
       properties:
         sync_per_timestep: 0
       schedule_template:
-        total_timesteps: 278
+        total_timesteps: 556
         delta_events:
           - trigger: { on_timestep: "fallback" }
             name: "MULTICAST_FILL_INPUTS"

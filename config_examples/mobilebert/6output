@@ -1,0 +1,213 @@
+51 ns: PE[53] Completed compute for cycle 138 compute latency is 4
+ cycle= 0[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=128 total_outpu
+ cycle= 0[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=1 payload=128 total_output
+1167 ns: PE[0] Completed dispatch for timestamp 0
+[..rocessingElement.cpp:735 (reset_logic)] sc_time_stamp() = 1167 ns (const sc_core::sc_time&), All task
+
+Info: /OSCI/SystemC: Simulation stopped by user.
+=== Configuration Sources ===
+Main config file: ../config_examples/mobilebert/6.yaml
+
+% Total received packets: 1395
+% Total received flits: 5590
+% Received/Ideal flits Ratio: inf
+% Average wireless utilization: 0
+% Global average delay (cycles): 549.718
+% Max delay (cycles): -1
+% Network throughput (flits/cycle): 0.0013975
+% Average IP throughput (flits/cycle/IP): inf
+% Total energy (J): 9.33851e-06
+%       Dynamic energy (J): 1.86178e-07
+%       Static energy (J): 9.15233e-06
+=== Hierarchical Router Idle Statistics ===
+Level 0 (1 nodes):
+Router 0 idle statistics:
+  Total cycles: 1158
+  Idle cycles: 301
+  Idle ratio: 25.99%
+  Level 0 average: 25.99% idle
+
+Level 1 (1 nodes):
+Router 1 idle statistics:
+  Total cycles: 1158
+  Idle cycles: 15
+  Idle ratio: 1.30%
+  Level 1 average: 1.30% idle
+
+Level 2 (8 nodes):
+Router 2 idle statistics:
+  Total cycles: 1158
+  Idle cycles: 24
+  Idle ratio: 2.07%
+  Level 2 average: 51.04% idle
+
+Level 3 (96 nodes):
+Router 10 idle statistics:
+  Total cycles: 1158
+  Idle cycles: 24
+  Idle ratio: 2.07%
+  Level 3 average: 67.36% idle
+
+
+
+4356 ns: PE[0] Completed dispatch for timestamp 0
+[..rocessingElement.cpp:735 (reset_logic)] sc_time_stamp() = 4356 ns (const sc_core::sc_time&), All tasks completed quiting simulation
+
+Info: /OSCI/SystemC: Simulation stopped by user.
+=== Configuration Sources ===
+Main config file: ../config_examples/mobilebert/6_1.yaml
+
+% Total received packets: 1395
+% Total received flits: 4180
+% Received/Ideal flits Ratio: inf
+% Average wireless utilization: 0
+% Global average delay (cycles): 2029.5
+% Max delay (cycles): -1
+% Network throughput (flits/cycle): 0.001045
+% Average IP throughput (flits/cycle/IP): inf
+% Total energy (J): 3.34161e-05
+%       Dynamic energy (J): 3.53163e-07
+%       Static energy (J): 3.30629e-05
+=== Hierarchical Router Idle Statistics ===
+Level 0 (1 nodes):
+Router 0 idle statistics:
+  Total cycles: 4347
+  Idle cycles: 1036
+  Idle ratio: 23.83%
+  Level 0 average: 23.83% idle
+
+Level 1 (1 nodes):
+Router 1 idle statistics:
+  Total cycles: 4347
+  Idle cycles: 85
+  Idle ratio: 1.96%
+  Level 1 average: 1.96% idle
+
+Level 2 (8 nodes):
+Router 2 idle statistics:
+  Total cycles: 4347
+  Idle cycles: 84
+  Idle ratio: 1.93%
+  Level 2 average: 66.80% idle
+
+Level 3 (96 nodes):
+Router 10 idle statistics:
+  Total cycles: 4347
+  Idle cycles: 555
+  Idle ratio: 12.77%
+  Level 3 average: 89.34% idle
+
+[Inferior 1 (process 60498) exited normally]
+(gdb)
+
+
+cycle= 0[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=128 total_outpu
+ cycle= 0[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=1 payload=128 total_output
+1591 ns: PE[0] Completed dispatch for timestamp 0
+[..rocessingElement.cpp:735 (reset_logic)] sc_time_stamp() = 1591 ns (const sc_core::sc_time&), All task
+
+Info: /OSCI/SystemC: Simulation stopped by user.
+=== Configuration Sources ===
+Main config file: ../config_examples/mobilebert/6_2.yaml
+
+% Total received packets: 705
+% Total received flits: 2800
+% Received/Ideal flits Ratio: inf
+% Average wireless utilization: 0
+% Global average delay (cycles): 1033.5
+% Max delay (cycles): -1
+% Network throughput (flits/cycle): 0.0007
+% Average IP throughput (flits/cycle/IP): inf
+% Total energy (J): 1.2217e-05
+%       Dynamic energy (J): 1.84398e-07
+%       Static energy (J): 1.20326e-05
+=== Hierarchical Router Idle Statistics ===
+Level 0 (1 nodes):
+Router 0 idle statistics:
+  Total cycles: 1582
+  Idle cycles: 881
+  Idle ratio: 55.69%
+  Level 0 average: 55.69% idle
+
+Level 1 (1 nodes):
+Router 1 idle statistics:
+  Total cycles: 1582
+  Idle cycles: 35
+  Idle ratio: 2.21%
+  Level 1 average: 2.21% idle
+
+Level 2 (8 nodes):
+Router 2 idle statistics:
+  Total cycles: 1582
+  Idle cycles: 80
+  Idle ratio: 5.06%
+  Level 2 average: 67.32% idle
+
+Level 3 (96 nodes):
+Router 10 idle statistics:
+  Total cycles: 1582
+  Idle cycles: 90
+  Idle ratio: 5.69%
+  Level 3 average: 84.26% idle
+
+root@debian-desktop:~/my_noxim/build#
+
+   - Child  (UP) RX status port addr: 0x652770463b50
+    - P->C Bind OK.
+--- [DEBUG] Node 105 连接完成 ---
+
+[连接] Tile 间的层次化连接建立完成。
+=== 层次化NoC拓扑构建完成 ===
+注意: 需要修改Router类支持层次化路由
+Reset for 10 cycles...  done!
+ Now running for 4000000 cycles...
+ cycle= 0[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payload=128 total_outpu
+ cycle= 0[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=1 payload=128 total_output
+1502 ns: PE[0] Completed dispatch for timestamp 0
+[..rocessingElement.cpp:735 (reset_logic)] sc_time_stamp() = 1502 ns (const sc_core::sc_time&), All task
+
+Info: /OSCI/SystemC: Simulation stopped by user.
+=== Configuration Sources ===
+Main config file: ../config_examples/mobilebert/6_3.yaml
+
+% Total received packets: 705
+% Total received flits: 2800
+% Received/Ideal flits Ratio: inf
+% Average wireless utilization: 0
+% Global average delay (cycles): 956.942
+% Max delay (cycles): -1
+% Network throughput (flits/cycle): 0.0007
+% Average IP throughput (flits/cycle/IP): inf
+% Total energy (J): 1.43945e-05
+%       Dynamic energy (J): 2.38821e-07
+%       Static energy (J): 1.41557e-05
+=== Hierarchical Router Idle Statistics ===
+Level 0 (1 nodes):
+Router 0 idle statistics:
+  Total cycles: 1493
+  Idle cycles: 880
+  Idle ratio: 58.94%
+  Level 0 average: 58.94% idle
+
+Level 1 (1 nodes):
+Router 1 idle statistics:
+  Total cycles: 1493
+  Idle cycles: 34
+  Idle ratio: 2.28%
+  Level 1 average: 2.28% idle
+
+Level 2 (8 nodes):
+Router 2 idle statistics:
+  Total cycles: 1493
+  Idle cycles: 29
+  Idle ratio: 1.94%
+  Level 2 average: 65.66% idle
+
+Level 3 (96 nodes):
+Router 10 idle statistics:
+  Total cycles: 1493
+  Idle cycles: 40
+  Idle ratio: 2.68%
+  Level 3 average: 83.36% idle
+
+root@debian-desktop:~/my_noxim/build#

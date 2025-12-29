@@ -14,6 +14,7 @@ topology: "HIERARCHICAL"
 hierarchical_config:
   num_levels: 4
   connection_mode: "tree"
+  transmission_mode: "traditional"
   word_bits: 8
   
   level_configs:
@@ -45,127 +46,167 @@ hierarchical_config:
       bandwidth: 512
       fanouts: 8
       aggregate: true
-      routing_patterns:  
-        INPUT:  
-          port_groups: [[0,1,2,3,4,5,6,7]]
-        WEIGHT:  
-          port_groups: [[0], [1], [2], [3], [4], [5], [6], [7]]
-          forward_count: 2  
-        OUTPUT:  
-          port_groups: [[0,1,2,3,4,5,6,7]]
+      routing_patterns:
+        Weights:
+          port_groups:
+          - - 0
+            - 1
+            - 2
+            - 3
+          - - 4
+            - 5
+            - 6
+            - 7
+        Inputs:
+          port_groups:
+          - - 0
+            - 4
+          - - 1
+            - 5
+          - - 2
+            - 6
+          - - 3
+            - 7
+        Outputs:
+          port_groups:
+          - - 0
+          - - 1
+          - - 2
+          - - 3
+          - - 4
+          - - 5
+          - - 6
+          - - 7
 
     # Level 2: DISTRIBUTOR (对应 8x12 中的 "12" 这一维 - 日志来源层)
     - level: 2
       node_type: "DISTRIBUTOR"
       buffer_size: 0 # 维持您提供的buffer配置
       roles: "ROLE_DISTRIBUTOR"
-      bandwidth: 128
-      fanouts: 16
+      bandwidth: 64
+      fanouts: 12
       aggregate: true
-      routing_patterns:  
-        
-        # pv=0 (WEIGHT): 日志中无多播记录 -> 单播
-        # 每个数据包只发送给唯一的 PE
-        WEIGHT:  
-          port_groups: [
-            [0],[1],[2],[3],[4],[5],[6],[7],[8],[9],[10],[11],[12],[13],[14],[15]
-          ]
-          
-        # pv=1 (INPUT): 日志显示 num_matches=4, 且索引跨度为3 (如0,3,6,9) -> 交错多播
-        # 数据被多播到间隔为3的4个PE上
-        INPUT:  
-          port_groups: [
-            [1,3,5,7,9,11,13,15],
-            [0,2,4,6,8,10,12,14]
-          ]
-            
-        # pv=2 (OUTPUT): 日志显示 num_matches=3, 且索引连续 (如0,1,2) -> 块状多播
-        # 数据被多播/收集自连续的3个PE
-        OUTPUT:  
-          port_groups: [
-            [0,1],
-            [2,3],
-            [4,5],
-            [6,7],
-            [8,9],
-            [10,11],
-            [12,13],
-            [14,15]
-          ]
+      routing_patterns:
+        Weights:
+          port_groups:
+          [[0,1,2,3],[4,5,6,7],[8,9,10,11]]
+        Inputs:
+          port_groups:
+          - - 0
+          - - 1
+          - - 2
+          - - 3
+          - - 4
+          - - 5
+          - - 6
+          - - 7
+          - - 8
+          - - 9
+          - - 10
+          - - 11
+        Outputs:
+          port_groups:
+          - - 0
+            - 4
+            - 8
+          - - 1
+            - 5
+            - 9
+          - - 2
+            - 6
+            - 10
+          - - 3
+            - 7
+            - 11
       
     # Level 3: COMPUTE (PE)
     - level: 3
       node_type: "ROLE_BUFFER"
       buffer_size: [384, 32, 32]    
       roles: "ROLE_BUFFER"
-      bandwidth: 8
+      bandwidth: 64
       fanouts: 0
 
 workload:
   working_set:
     - role: "ROLE_DRAM"
-      outputs_required_count: 17792
+      outputs_required_count: 57344
       data:
-        - { data_space: "Weights", size: 65536, reuse_strategy: "resident" }
-        - { data_space: "Inputs", size: 71168, reuse_strategy: "resident" }
-        - { data_space: "Outputs", size: 17792, reuse_strategy: "resident" }
+        - { data_space: "Weights", size: 1728, reuse_strategy: "resident" }
+        - { data_space: "Inputs", size: 153228, reuse_strategy: "resident" }
+        - { data_space: "Outputs", size: 3211264, reuse_strategy: "resident" }
     - role: "ROLE_GLB"
-      outputs_required_count: 35584
+      outputs_required_count: 57344
       data:
-        - { data_space: "Weights", size: 0, reuse_strategy: "resident" }
-        - { data_space: "Inputs", size: 35584, reuse_strategy: "resident" }
-        - { data_space: "Outputs", size: 17792, reuse_strategy: "resident" }
+        - { data_space: "Weights", size: 1728, reuse_strategy: "resident" }
+        - { data_space: "Inputs", size: 3420, reuse_strategy: "resident" }
+        - { data_space: "Outputs", size: 57344, reuse_strategy: "resident" }
     - role: "ROLE_BUFFER"
       outputs_required_count: 0
       data:
-        - { data_space: "Weights", size: 128, reuse_strategy: "temporal" }
-        - { data_space: "Inputs",  size: 8, reuse_strategy: "temporal" }
-        - { data_space: "Outputs", size: 16, reuse_strategy: "temporal" }
+        - { data_space: "Weights", size: 36, reuse_strategy: "temporal" }
+        - { data_space: "Inputs",  size: 24, reuse_strategy: "temporal" }
+        - { data_space: "Outputs", size: 32, reuse_strategy: "temporal" }
 
   data_flow_specs:
     - role: "ROLE_DRAM"
       properties:
-        sync_per_timestep: 0
+        sync_per_timestep: 1
       schedule_template:
-        total_timesteps: 2
+        total_timesteps: 56
         delta_events:
-          - trigger: { on_timestep: "fallback" }
+          - trigger: { on_timestep_modulo: [56, 0] }
             name: "INITIAL_LOAD_DRAM_TO_GLB"
             delta:
-              - { data_space: "Weights", size: 128 ,target_role: "ROLE_BUFFER" }
-              - { data_space: "Weights", size: 128 ,target_role: "ROLE_BUFFER" }
-              - { data_space: "Inputs",  size: 35584 ,target_role: "ROLE_GLB" }
-              - { data_space: "Outputs", size: 17792 ,target_role: "ROLE_GLB" }
+              - { data_space: "Weights", size: 1728 ,target_role: "ROLE_GLB" }
+              - { data_space: "Inputs",  size: 3420 ,target_role: "ROLE_GLB" }
+              - { data_space: "Outputs", size: 57344 ,target_role: "ROLE_GLB" }
+
+          - trigger: { on_timestep: "fallback" }
+            name: "delta"
+            delta:
+              - { data_space: "Inputs",  size: 2736 ,target_role: "ROLE_GLB" }
+              - { data_space: "Outputs", size: 57344 ,target_role: "ROLE_GLB" }
 
     - role: "ROLE_GLB"
       properties:
         sync_per_timestep: 0
       schedule_template:
-        total_timesteps: 278
+        total_timesteps: 56
         delta_events:
-          - trigger: { on_timestep: "fallback" }
+          - trigger: { on_timestep_modulo: [7, 0] }
             name: "MULTICAST_FILL_INPUTS"
             delta:
-              - { data_space: "Inputs",  size: 8,target_role: "ROLE_BUFFER" }
-              - { data_space: "Outputs", size: 16, target_role: "ROLE_BUFFER" }
-     
+              - { data_space: "Weights",  size: 36,target_role: "ROLE_BUFFER" }
+              - { data_space: "Inputs",  size: 24,target_role: "ROLE_BUFFER" }
+              - { data_space: "Outputs", size: 32, target_role: "ROLE_BUFFER" }
+
+          - trigger: { on_timestep: "fallback" }
+            name: "MULTICAST_DELTA_INPUTS_1"
+            delta:
+              - { data_space: "Weights",  size: 36,target_role: "ROLE_BUFFER" }
+              - { data_space: "Outputs", size: 32, target_role: "ROLE_BUFFER" }
+      
       command_definitions:
         - command_id: 0
           name: "PROCESS_FULL_CONTEXT"
-          evict_payload: { Weights: 0, Inputs: 35584, Outputs: 0 }
+          evict_payload: { Weights: 0, Inputs: 2736, Outputs: 57344 }
 
     - role: "ROLE_BUFFER"
       properties:
-        compute_latency: 128
-        eviction_interval_cycles: 139
-        weight_eviction_amount: 128
+        compute_latency: 288
+        eviction_interval_cycles: 0
+        weight_eviction_amount: 0
       schedule_template:
         total_timesteps: 1
         delta_events: []
       command_definitions:
         - command_id: 0
           name: "PROCESS_DELTA"
-          evict_payload: { Weights: 0, Inputs: 8, Outputs: 16 }
+          evict_payload: { Weights: 36, Inputs: 24, Outputs: 32 }
+        - command_id: 1
+          name: "PROCESS_FULL_CONTEXT"
+          evict_payload: { Weights: 36, Inputs: 0, Outputs: 32 }
 
 buffer_depth: 8 # <--- [建议修改] 稍微调大一点，避免初始调试时因缓冲区太小而产生干扰
 # size of flits, in bits

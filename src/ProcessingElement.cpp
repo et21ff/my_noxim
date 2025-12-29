@@ -399,7 +399,8 @@ void ProcessingElement::internal_transfer_process()
           vc_buffer.Pop();
 
           // 处理command_id等元数据
-          if (flit.command != -1 && flit.data_type != DataType::WEIGHT)
+          if (flit.command != -1 &&
+              flit.data_type != DataType::WEIGHT)
           { // need fix
             pending_commands_[flit.logical_timestamp] = flit.command;
           }
@@ -440,7 +441,8 @@ void ProcessingElement::internal_transfer_process()
 
           vc_buffer.Pop();
 
-          cout << " cycle= " << current_cycle
+          cout << "sc_timestamp = " << sc_time_stamp()
+               << " cycle= " << current_cycle
                << "[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC "
                << vc << " src_id=" << flit.src_id
                << " payload=" << flit.payload_data_size
@@ -708,10 +710,10 @@ void ProcessingElement::txProcess()
   {
     logical_timestamp++;
     is_compute_complete = false;
-    LOG << sc_time_stamp() << ": PE[" << local_id
-        << "] Completed compute for cycle " << compute_cycles
-        << " compute latency is " << task_manager_->get_compute_latency()
-        << endl;
+    // cout << sc_time_stamp() << ": PE[" << local_id
+    //      << "] Completed compute for cycle " << compute_cycles
+    //      << " compute latency is " << task_manager_->get_compute_latency()
+    //      << endl;
     compute_cycles++;
 
     // 基于计算周期数判断是否需要自驱逐
@@ -746,7 +748,8 @@ void ProcessingElement::reset_logic()
     if (command >= task_manager_->get_command_count())
     {
       cmd = task_manager_->get_current_working_set();
-      cmd.weights = 0;
+      if (eviction_interval_cycles_ > 0)
+        cmd.weights = 0;
     }
     else
     {
@@ -781,6 +784,7 @@ void ProcessingElement::reset_logic()
     unified_buffer_manager_->RemoveData(DataType::OUTPUT, cmd.outputs);
 
     LOG << sc_time_stamp() << ": PE[" << local_id << "]"
+        << " Resetting for timestamp " << it->first << " "
         << unified_buffer_manager_->GetCurrentSize() << "/"
         << unified_buffer_manager_->GetCapacity()
         << " bytes remaining after resetting for timestamp "
@@ -907,11 +911,12 @@ int ProcessingElement::calculate_target_count(int current_level,
   return target_count;
 }
 
-int ProcessingElement::get_target_bandwidth(int current_level, PE_Role target_role)
+int ProcessingElement::get_target_bandwidth(int current_level,
+                                            PE_Role target_role)
 {
-  int bandwidth = GlobalParams::hierarchical_config.get_level_config(
-                                                       current_level)
-                      .bandwidth;
+  int bandwidth =
+      GlobalParams::hierarchical_config.get_level_config(current_level)
+          .bandwidth;
 
   // 从当前层开始，遍历到目标层之前
   for (int level = current_level + 1;; level++)
@@ -1035,7 +1040,7 @@ void ProcessingElement::run_storage_logic()
         int bandwidth_scale = current_bandwidth / GlobalParams::word_bits;
         int single_packet_size =
             (selected_task.size + bandwidth_scale - 1) / bandwidth_scale;
-        pkt.size = pkt.flit_left = 1 + 1 + target_count * single_packet_size;
+        pkt.size = pkt.flit_left = 2 + target_count * single_packet_size;
       }
       else
       {

@@ -1,0 +1,152 @@
+ycle= 55[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payloa
+ cycle= 55[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payloa
+ cycle= 55[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payloa
+ cycle= 0[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=1 payload=
+1085107 ns: PE[0] Completed dispatch for timestamp 55
+[..rocessingElement.cpp:735 (reset_logic)] sc_time_stamp() = 1085107 ns (const sc_core::
+
+Info: /OSCI/SystemC: Simulation stopped by user.
+=== Configuration Sources ===
+Main config file: ../config_examples/vgg16/layer0/0.yaml
+
+% Total received packets: 60480
+% Total received flits: 2136960
+% Received/Ideal flits Ratio: inf
+% Average wireless utilization: 0
+% Global average delay (cycles): 542004
+% Max delay (cycles): -1
+% Network throughput (flits/cycle): 0.53424
+% Average IP throughput (flits/cycle/IP): inf
+% Total energy (J): 0.00866684
+%       Dynamic energy (J): 9.07025e-05
+%       Static energy (J): 0.00857614
+=== Hierarchical Router Idle Statistics ===
+Level 0 (1 nodes):
+Router 0 idle statistics:
+  Total cycles: 1085098
+  Idle cycles: 979736
+  Idle ratio: 90.29%
+  Level 0 average: 90.29% idle
+
+Level 1 (1 nodes):
+Router 1 idle statistics:
+  Total cycles: 1085098
+  Idle cycles: 731938
+  Idle ratio: 67.45%
+  Level 1 average: 67.45% idle
+
+Level 2 (8 nodes):
+Router 2 idle statistics:
+  Total cycles: 1085098
+  Idle cycles: 803545
+  Idle ratio: 74.05%
+  Level 2 average: 74.09% idle
+
+Level 3 (96 nodes):
+Router 10 idle statistics:
+  Total cycles: 1085098
+  Idle cycles: 799729
+  Idle ratio: 73.70%
+  Level 3 average: 73.75% idle
+
+root@debian-desktop:~/my_noxim/build#
+
+434743 ns: PE[0] Completed dispatch for timestamp 55
+[..rocessingElement.cpp:735 (reset_logic)] sc_time_stamp() = 1434743 ns (const sc_core::
+
+Info: /OSCI/SystemC: Simulation stopped by user.
+=== Configuration Sources ===
+Main config file: ../config_examples/vgg16/layer0/0_2.yaml
+
+% Total received packets: 60480
+% Total received flits: 575680
+% Received/Ideal flits Ratio: inf
+% Average wireless utilization: 0
+% Global average delay (cycles): 716737
+% Max delay (cycles): -1
+% Network throughput (flits/cycle): 0.14392
+% Average IP throughput (flits/cycle/IP): inf
+% Total energy (J): 0.0137025
+%       Dynamic energy (J): 9.92454e-05
+%       Static energy (J): 0.0136033
+=== Hierarchical Router Idle Statistics ===
+Level 0 (1 nodes):
+Router 0 idle statistics:
+  Total cycles: 1434734
+  Idle cycles: 1326758
+  Idle ratio: 92.47%
+  Level 0 average: 92.47% idle
+
+Level 1 (1 nodes):
+Router 1 idle statistics:
+  Total cycles: 1434734
+  Idle cycles: 709030
+  Idle ratio: 49.42%
+  Level 1 average: 49.42% idle
+
+Level 2 (8 nodes):
+Router 2 idle statistics:
+  Total cycles: 1434734
+  Idle cycles: 785813
+  Idle ratio: 54.77%
+  Level 2 average: 84.03% idle
+
+Level 3 (96 nodes):
+Router 10 idle statistics:
+  Total cycles: 1434734
+  Idle cycles: 821909
+  Idle ratio: 57.29%
+  Level 3 average: 94.05% idle
+
+root@debian-desktop:~/my_noxim/build#
+
+cycle= 55[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=-1 payloa
+ cycle= 0[INTERNAL_TRANSFER] Processed OUTPUT_RETURN TAIL Flit on VC 2 src_id=1 payload=
+1793309 ns: PE[0] Completed dispatch for timestamp 55
+[..rocessingElement.cpp:735 (reset_logic)] sc_time_stamp() = 1793309 ns (const sc_core::
+
+Info: /OSCI/SystemC: Simulation stopped by user.
+=== Configuration Sources ===
+Main config file: ../config_examples/vgg16/layer0/0_1.yaml
+
+% Total received packets: 60480
+% Total received flits: 575680
+% Received/Ideal flits Ratio: inf
+% Average wireless utilization: 0
+% Global average delay (cycles): 896458
+% Max delay (cycles): -1
+% Network throughput (flits/cycle): 0.14392
+% Average IP throughput (flits/cycle/IP): inf
+% Total energy (J): 0.0137241
+%       Dynamic energy (J): 8.43947e-05
+%       Static energy (J): 0.0136397
+=== Hierarchical Router Idle Statistics ===
+Level 0 (1 nodes):
+Router 0 idle statistics:
+  Total cycles: 1793300
+  Idle cycles: 965814
+  Idle ratio: 53.86%
+  Level 0 average: 53.86% idle
+
+Level 1 (1 nodes):
+Router 1 idle statistics:
+  Total cycles: 1793300
+  Idle cycles: 516339
+  Idle ratio: 28.79%
+  Level 1 average: 28.79% idle
+
+Level 2 (8 nodes):
+Router 2 idle statistics:
+  Total cycles: 1793300
+  Idle cycles: 1147832
+  Idle ratio: 64.01%
+  Level 2 average: 87.52% idle
+
+Level 3 (96 nodes):
+Router 10 idle statistics:
+  Total cycles: 1793300
+  Idle cycles: 1179837
+  Idle ratio: 65.79%
+  Level 3 average: 95.30% idle
+
+root@debian-desktop:~/my_noxim/build#

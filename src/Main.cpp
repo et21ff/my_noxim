@@ -174,6 +174,9 @@ int sc_main(int arg_num, char *arg_vet[]) {
   // << " cycles executed)" << endl; cout << endl;
   // assert(false);
   //  Show statistics
+  cout << "=== Configuration Sources ===" << endl;
+  cout << "Main config file: " << GlobalParams::config_filename << endl;
+  cout << endl;
   GlobalStats gs(n);
   gs.showStats(std::cout, GlobalParams::detailed);
   n->showHierarchicalIdleStats(std::cout);
