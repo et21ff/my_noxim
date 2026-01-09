@@ -186,7 +186,7 @@ workload:
           name: "PROCESS_DELTA"
           evict_payload: { Weights: 0, Inputs: 6, Outputs: 16 }
 
-buffer_depth: 2 # <--- [建议修改] 稍微调大一点，避免初始调试时因缓冲区太小而产生干扰
+buffer_depth: 8 # <--- [建议修改] 稍微调大一点，避免初始调试时因缓冲区太小而产生干扰
 # size of flits, in bits
 flit_size: 32
 # lenght in mm of router to hub connection

@@ -799,7 +799,6 @@ void ProcessingElement::reset_logic()
 
 void ProcessingElement::run_compute_logic()
 {
-
   if (role != ROLE_BUFFER)
   {
     return;
@@ -814,35 +813,41 @@ void ProcessingElement::run_compute_logic()
         task_manager_->get_working_set_for_role(role_to_str(role))
             ->get_data_map();
 
+    // 新增：收集所有缺失的数据类型
+    std::vector<DataType> missing_types;
+
+    // 检查所有数据类型
     for (const auto &entry : required_data)
     {
       DataType type = entry.first;
       size_t size = entry.second;
 
-      // For a compute PE, the working set should only define dependencies
-      // (Inputs, Weights), not Outputs.
-      if (type == DataType::INPUT || type == DataType::WEIGHT)
+      if (!unified_buffer_manager_->AreDataTypeReady(type, size))
       {
-        if (!unified_buffer_manager_->AreDataTypeReady(type, size))
-        {
-          // cout<< sc_time_stamp() << ": PE[" << local_id << "] Waiting for "
-          //     << size << " bytes of " << DataType_to_str(type)
-          //     << " to start computation at cycle " << compute_cycles <<
-          //     endl;
-          // If any dependency is not met, we cannot start the computation
-          // yet.
-          return;
-        }
-      }
-
-      if (type == DataType::OUTPUT)
-      {
-        if (!unified_buffer_manager_->AreDataTypeReady(type, size))
-        {
-          return;
-        }
+        missing_types.push_back(type);
       }
     }
+
+    // 只有恰好只有一个数据类型缺失时才统计
+    if (missing_types.size() == 1)
+    {
+      DataType missing_type = missing_types[0];
+      data_wait_stats_[missing_type]++;
+      total_wait_cycles_++;
+
+      LOG << sc_time_stamp() << ": PE[" << local_id << "] Waiting for "
+          << DataType_to_str(missing_type)
+          << " data (wait cycles: " << total_wait_cycles_ << ")" << endl;
+      return;
+    }
+
+    // 如果没有缺失或有多个缺失，不统计但需要处理
+    if (!missing_types.empty())
+    {
+      return;
+    }
+
+    // 所有数据都准备好了，开始计算
     consume_cycles_left = task_manager_->get_compute_latency();
     compute_in_progress_ = true;
   }
