@@ -1039,13 +1039,30 @@ void ProcessingElement::run_storage_logic()
       // Transmission mode switching logic for packet size calculation
       if (GlobalParams::transmission_mode == "traditional")
       {
-        current_bandwidth =
+        // 获取目标层带宽
+        int target_bandwidth =
             get_target_bandwidth(level_index, selected_task.target_role);
-        // Traditional mode: 1+1+target_count*(size/bandwidth_scale rounded up)
-        int bandwidth_scale = current_bandwidth / GlobalParams::word_bits;
+        // 获取当前层带宽
+        int current_level_bandwidth =
+            GlobalParams::hierarchical_config.get_level_config(level_index)
+                .bandwidth;
+        // 获取当前层的 bank_count
+        int bank_count =
+            GlobalParams::hierarchical_config.get_level_config(level_index)
+                .bank_count;
+
+        // 计算并行度：受限于带宽比和 bank 数量
+        int bandwidth_ratio = current_level_bandwidth / target_bandwidth;
+        int parallel_degree =
+            std::max(1, std::min(bandwidth_ratio, bank_count));
+
+        // Traditional mode: 基于并行度调整 flit 数
+        int bandwidth_scale = target_bandwidth / GlobalParams::word_bits;
         int single_packet_size =
             (selected_task.size + bandwidth_scale - 1) / bandwidth_scale;
-        pkt.size = pkt.flit_left = 2 + target_count * single_packet_size;
+        int total_flits = target_count * single_packet_size;
+        pkt.size = pkt.flit_left =
+            2 + (total_flits + parallel_degree - 1) / parallel_degree;
       }
       else
       {

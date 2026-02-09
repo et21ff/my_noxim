@@ -17,22 +17,26 @@
 YAML::Node config;
 YAML::Node power_config;
 
-void infer_capabilities_from_workload(const WorkloadConfig &workload) {
+void infer_capabilities_from_workload(const WorkloadConfig &workload)
+{
   // 准备阶段：创建临时 map 用于收集唯一的能力值
   std::map<PE_Role, std::set<int>> temp_main_caps;
   std::map<PE_Role, std::set<int>> temp_output_caps;
 
   // 主循环：遍历所有数据流规格
-  for (const auto &spec : workload.data_flow_specs) {
+  for (const auto &spec : workload.data_flow_specs)
+  {
     // 将字符串角色转换为枚举
     PE_Role source_role = stringToRole(spec.role);
 
     // 跳过无效角色
-    if (source_role == ROLE_UNUSED) {
+    if (source_role == ROLE_UNUSED)
+    {
       continue;
     }
 
-    if (spec.has_schedule() == false) {
+    if (spec.has_schedule() == false)
+    {
       continue;
     }
 
@@ -46,11 +50,15 @@ void infer_capabilities_from_workload(const WorkloadConfig &workload) {
     PE_Role target_role = static_cast<PE_Role>(next_role_int);
 
     // 内层循环：遍历所有 delta_events 和 actions
-    if (spec.has_schedule()) {
-      for (const auto &delta_event : spec.schedule_template->delta_events) {
-        for (const auto &action : delta_event.actions) {
+    if (spec.has_schedule())
+    {
+      for (const auto &delta_event : spec.schedule_template->delta_events)
+      {
+        for (const auto &action : delta_event.actions)
+        {
           // 忽略 size 为 0 的 action
-          if (action.size == 0) {
+          if (action.size == 0)
+          {
             continue;
           }
 
@@ -58,10 +66,13 @@ void infer_capabilities_from_workload(const WorkloadConfig &workload) {
           DataType data_type = stringToDataType(action.data_space);
 
           // 根据数据类型分配到相应的缓冲区
-          if (data_type == DataType::INPUT || data_type == DataType::WEIGHT) {
+          if (data_type == DataType::INPUT || data_type == DataType::WEIGHT)
+          {
             // 数据进入 target_role 的主缓冲区
             temp_main_caps[target_role].insert(static_cast<int>(action.size));
-          } else if (data_type == DataType::OUTPUT) {
+          }
+          else if (data_type == DataType::OUTPUT)
+          {
             // 数据与 target_role 的输出缓冲区相关
             temp_output_caps[target_role].insert(static_cast<int>(action.size));
           }
@@ -75,7 +86,8 @@ void infer_capabilities_from_workload(const WorkloadConfig &workload) {
   GlobalParams::CapabilityMap.clear();
 
   // 遍历所有已知的有效 PE_Role
-  for (int role_int = ROLE_DRAM; role_int <= ROLE_BUFFER; ++role_int) {
+  for (int role_int = ROLE_DRAM; role_int <= ROLE_BUFFER; ++role_int)
+  {
     PE_Role role = static_cast<PE_Role>(role_int);
 
     // 创建 Capability 对象
@@ -86,11 +98,13 @@ void infer_capabilities_from_workload(const WorkloadConfig &workload) {
     capability.output_channel_caps.push_back(0);
 
     // 复制临时 map 中的能力值到 vector
-    for (int cap : temp_main_caps[role]) {
+    for (int cap : temp_main_caps[role])
+    {
       capability.main_channel_caps.push_back(cap);
     }
 
-    for (int cap : temp_output_caps[role]) {
+    for (int cap : temp_output_caps[role])
+    {
       capability.output_channel_caps.push_back(cap);
     }
 
@@ -99,18 +113,24 @@ void infer_capabilities_from_workload(const WorkloadConfig &workload) {
   }
 }
 
-void loadConfiguration() {
+void loadConfiguration()
+{
 
   cout << "Loading configuration from file \"" << GlobalParams::config_filename
        << "\"...";
-  try {
+  try
+  {
     config = YAML::LoadFile(GlobalParams::config_filename);
     cout << " Done" << endl;
-  } catch (YAML::BadFile &e) {
+  }
+  catch (YAML::BadFile &e)
+  {
     cout << " Failed" << endl;
     cerr << "The specified YAML configuration file was not found!" << endl;
     exit(0);
-  } catch (YAML::ParserException &pe) {
+  }
+  catch (YAML::ParserException &pe)
+  {
     cout << " Failed" << endl;
     cerr << "ERROR at line " << pe.mark.line + 1 << " column "
          << pe.mark.column + 1 << ": " << pe.msg << ". Please check identation."
@@ -120,15 +140,20 @@ void loadConfiguration() {
 
   cout << "Loading power configurations from file \""
        << GlobalParams::power_config_filename << "\"...";
-  try {
+  try
+  {
     power_config = YAML::LoadFile(GlobalParams::power_config_filename);
     cout << " Done" << endl;
-  } catch (YAML::BadFile &e) {
+  }
+  catch (YAML::BadFile &e)
+  {
     cout << " Failed" << endl;
     cerr << "The specified YAML power configurations file was not found!"
          << endl;
     exit(0);
-  } catch (YAML::ParserException &pe) {
+  }
+  catch (YAML::ParserException &pe)
+  {
     cout << " Failed" << endl;
     cerr << "ERROR at line " << pe.mark.line + 1 << " column "
          << pe.mark.column + 1 << ": " << pe.msg << ". Please check identation."
@@ -145,20 +170,23 @@ void loadConfiguration() {
   GlobalParams::topology = readParam<string>(config, "topology", TOPOLOGY_MESH);
 
   // Mesh network params
-  if (GlobalParams::topology == TOPOLOGY_MESH) {
+  if (GlobalParams::topology == TOPOLOGY_MESH)
+  {
     GlobalParams::mesh_dim_x = readParam<int>(config, "mesh_dim_x");
     GlobalParams::mesh_dim_y = readParam<int>(config, "mesh_dim_y");
   }
   // Delta network params
   if (GlobalParams::topology == TOPOLOGY_BASELINE ||
       GlobalParams::topology == TOPOLOGY_BUTTERFLY ||
-      GlobalParams::topology == TOPOLOGY_OMEGA) {
+      GlobalParams::topology == TOPOLOGY_OMEGA)
+  {
     // GlobalParams::mesh_dim_x = readParam<int>(config, "mesh_dim_x");
     // GlobalParams::mesh_dim_y = readParam<int>(config, "mesh_dim_y");
     GlobalParams::n_delta_tiles = readParam<int>(config, "n_delta_tiles");
   }
 
-  if (GlobalParams::topology == TOPOLOGY_HIERARCHICAL) {
+  if (GlobalParams::topology == TOPOLOGY_HIERARCHICAL)
+  {
     YAML::Node hierarchical_config = config["hierarchical_config"];
 
     GlobalParams::num_levels = hierarchical_config["num_levels"].as<int>();
@@ -167,13 +195,15 @@ void loadConfiguration() {
     // hierarchical_config["connection_mode"].as<string>();
 
     // Parse transmission_mode with validation
-    if (hierarchical_config["transmission_mode"]) {
+    if (hierarchical_config["transmission_mode"])
+    {
       GlobalParams::transmission_mode =
           hierarchical_config["transmission_mode"].as<string>();
 
       // Validate transmission_mode value
       if (GlobalParams::transmission_mode != "traditional" &&
-          GlobalParams::transmission_mode != "optimized") {
+          GlobalParams::transmission_mode != "optimized")
+      {
         cerr << "Error: transmission_mode must be either 'traditional' or "
                 "'optimized', got: "
              << GlobalParams::transmission_mode << endl;
@@ -182,7 +212,9 @@ void loadConfiguration() {
 
       cout << "Transmission mode set to: " << GlobalParams::transmission_mode
            << endl;
-    } else {
+    }
+    else
+    {
       GlobalParams::transmission_mode =
           "optimized"; // Default to optimized mode
       cout << "Transmission mode not specified, using default: optimized"
@@ -193,15 +225,18 @@ void loadConfiguration() {
     YAML::Node level_configs = hierarchical_config["level_configs"];
     GlobalParams::fanouts_per_level = new int[GlobalParams::num_levels];
 
-    for (int i = 0; i < GlobalParams::num_levels; i++) {
+    for (int i = 0; i < GlobalParams::num_levels; i++)
+    {
       GlobalParams::fanouts_per_level[i] =
           level_configs[i]["fanouts"].as<int>();
     }
 
-    if (level_configs && level_configs.IsSequence()) {
+    if (level_configs && level_configs.IsSequence())
+    {
 
       // 遍历 YAML 序列中的每一个层级配置
-      for (const auto &node : level_configs) {
+      for (const auto &node : level_configs)
+      {
 
         // 4. 创建一个临时的 C++ 对象来存储当前层的数据
         LevelConfig current_level_data;
@@ -209,26 +244,34 @@ void loadConfiguration() {
         // 5. 从 YAML 节点中解析每个字段，并填充 C++ 对象
         //    我们使用 .as<Type>() 来进行类型转换
         current_level_data.level = node["level"].as<int>();
-        if (node["buffer_size"].IsScalar()) {
+        if (node["buffer_size"].IsScalar())
+        {
           // 兼容单个int值，复制到3个buffer
           int size = node["buffer_size"].as<int>();
           current_level_data.buffer_size[0] = size;
           current_level_data.buffer_size[1] = size;
           current_level_data.buffer_size[2] = size;
-        } else if (node["buffer_size"].IsSequence() &&
-                   node["buffer_size"].size() == 3) {
+        }
+        else if (node["buffer_size"].IsSequence() &&
+                 node["buffer_size"].size() == 3)
+        {
           // 直接读取3个值
-          for (int i = 0; i < 3; i++) {
+          for (int i = 0; i < 3; i++)
+          {
             current_level_data.buffer_size[i] =
                 node["buffer_size"][i].as<int>();
           }
-        } else {
+        }
+        else
+        {
           cerr << "Error: buffer_size must be either int or array of 3 ints"
                << endl;
           exit(1);
         }
 
         current_level_data.bandwidth = node["bandwidth"].as<int>();
+        current_level_data.bank_count =
+            node["bank_count"].as<int>(1); // 新增: 解析 bank_count，默认为1
         current_level_data.aggregate =
             node["aggregate"] ? node["aggregate"].as<bool>() : false;
 
@@ -240,18 +283,21 @@ void loadConfiguration() {
             stringToRole(role_str); // 假设你有一个 stringToRole 函数
         current_level_data.has_routing_patterns = false;
 
-        if (node["routing_patterns"]) {
+        if (node["routing_patterns"])
+        {
           current_level_data.has_routing_patterns = true;
           YAML::Node patterns = node["routing_patterns"];
 
           for (YAML::const_iterator it = patterns.begin(); it != patterns.end();
-               ++it) {
+               ++it)
+          {
             // 将 YAML 键转换为 DataType
             string data_type_str = it->first.as<string>();
             DataType data_type =
                 stringToDataType(data_type_str); // 使用现有的转换函数
 
-            if (data_type == DataType::UNKNOWN) {
+            if (data_type == DataType::UNKNOWN)
+            {
               cerr << "Warning: Unknown data type '" << data_type_str
                    << "' in routing_patterns, skipping" << endl;
               continue;
@@ -268,7 +314,8 @@ void loadConfiguration() {
             // mode 字段也需要转换为 DataType
             // string mode_str = pattern_config["mode"].as<string>();
 
-            if (pattern_config["port_groups"]) {
+            if (pattern_config["port_groups"])
+            {
               pattern.port_groups =
                   pattern_config["port_groups"].as<vector<vector<int>>>();
             }
@@ -284,7 +331,9 @@ void loadConfiguration() {
       cout << "成功加载并解析了 "
            << GlobalParams::hierarchical_config.levels.size() << " 个层级配置。"
            << endl;
-    } else {
+    }
+    else
+    {
       cerr << "错误: 在 'hierarchical_config' 中缺少 'level_configs' "
               "或者它不是一个序列。"
            << endl;
@@ -337,7 +386,8 @@ void loadConfiguration() {
       config["Hubs"]["defaults"].as<HubConfig>();
 
   for (YAML::const_iterator hubs_it = config["Hubs"].begin();
-       hubs_it != config["Hubs"].end(); ++hubs_it) {
+       hubs_it != config["Hubs"].end(); ++hubs_it)
+  {
     int hub_id = hubs_it->first.as<int>(-1);
     if (hub_id < 0)
       continue;
@@ -359,13 +409,15 @@ void loadConfiguration() {
       default_channel_config_node.as<ChannelConfig>();
 
   for (set<int>::iterator it = channelSet.begin(); it != channelSet.end();
-       ++it) {
+       ++it)
+  {
     GlobalParams::channel_configuration[*it] =
         default_channel_config_node.as<ChannelConfig>();
   }
 
   for (YAML::const_iterator channels_it = config["RadioChannels"].begin();
-       channels_it != config["RadioChannels"].end(); ++channels_it) {
+       channels_it != config["RadioChannels"].end(); ++channels_it)
+  {
     int channel_id = channels_it->first.as<int>(-1);
     if (channel_id < 0)
       continue;
@@ -379,9 +431,11 @@ void loadConfiguration() {
   GlobalParams::power_configuration = power_config["Energy"].as<PowerConfig>();
 }
 
-void setBufferToTile(int depth) {
+void setBufferToTile(int depth)
+{
   for (YAML::const_iterator hubs_it = config["Hubs"].begin();
-       hubs_it != config["Hubs"].end(); ++hubs_it) {
+       hubs_it != config["Hubs"].end(); ++hubs_it)
+  {
     int hub_id = hubs_it->first.as<int>(-1);
     if (hub_id < 0)
       continue;
@@ -391,9 +445,11 @@ void setBufferToTile(int depth) {
     GlobalParams::hub_configuration[hub_id].toTileBufferSize = depth;
   }
 }
-void setBufferFromTile(int depth) {
+void setBufferFromTile(int depth)
+{
   for (YAML::const_iterator hubs_it = config["Hubs"].begin();
-       hubs_it != config["Hubs"].end(); ++hubs_it) {
+       hubs_it != config["Hubs"].end(); ++hubs_it)
+  {
     int hub_id = hubs_it->first.as<int>(-1);
     if (hub_id < 0)
       continue;
@@ -403,9 +459,11 @@ void setBufferFromTile(int depth) {
     GlobalParams::hub_configuration[hub_id].fromTileBufferSize = depth;
   }
 }
-void setBufferAntenna(int depth) {
+void setBufferAntenna(int depth)
+{
   for (YAML::const_iterator hubs_it = config["Hubs"].begin();
-       hubs_it != config["Hubs"].end(); ++hubs_it) {
+       hubs_it != config["Hubs"].end(); ++hubs_it)
+  {
     int hub_id = hubs_it->first.as<int>(-1);
     if (hub_id < 0)
       continue;
@@ -417,7 +475,8 @@ void setBufferAntenna(int depth) {
   }
 }
 
-void showHelp(char selfname[]) {
+void showHelp(char selfname[])
+{
   cout
       << "Usage: " << selfname << " [options]" << endl
       << "Where [options] is one or more of the following ones:" << endl
@@ -527,7 +586,8 @@ void showHelp(char selfname[]) {
       << endl;
 }
 
-void showConfig() {
+void showConfig()
+{
   cout << "Using the following configuration: " << endl
        << "- verbose_mode = " << GlobalParams::verbose_mode << endl
        << "- trace_mode = " << GlobalParams::trace_mode
@@ -555,37 +615,48 @@ void showConfig() {
        << "- rnd_generator_seed = " << GlobalParams::rnd_generator_seed << endl;
 }
 
-void checkConfiguration() {
-  if (GlobalParams::topology == TOPOLOGY_MESH) {
-    if (GlobalParams::mesh_dim_x <= 1) {
+void checkConfiguration()
+{
+  if (GlobalParams::topology == TOPOLOGY_MESH)
+  {
+    if (GlobalParams::mesh_dim_x <= 1)
+    {
       cerr << "Error: dimx must be greater than 1" << endl;
       exit(1);
     }
 
-    if (GlobalParams::mesh_dim_y <= 1) {
+    if (GlobalParams::mesh_dim_y <= 1)
+    {
       cerr << "Error: dimy must be greater than 1" << endl;
       exit(1);
     }
-    if (GlobalParams::winoc_dst_hops > 0) {
+    if (GlobalParams::winoc_dst_hops > 0)
+    {
       cerr << "Error: winoc_dst_hops currently supported only in delta "
               "topologies"
            << endl;
       exit(1);
     }
-  } else if (GlobalParams::topology == TOPOLOGY_HIERARCHICAL) {
+  }
+  else if (GlobalParams::topology == TOPOLOGY_HIERARCHICAL)
+  {
     cout << "Hierarchical topology selected" << endl;
-  } else // other delta topologies
+  }
+  else // other delta topologies
   {
     int x = GlobalParams::n_delta_tiles;
-    while (x != 1) {
+    while (x != 1)
+    {
       // checks whether a number is divisible by 2
-      if (x % 2 != 0) {
+      if (x % 2 != 0)
+      {
         cerr << "Error: n_delta_tiles must be a power of 2 " << endl;
         exit(1);
       }
       x /= 2;
     }
-    if (GlobalParams::routing_algorithm != "DELTA") {
+    if (GlobalParams::routing_algorithm != "DELTA")
+    {
       cerr << "Error: BUTTERFLY/OMEGA/BASELINE topologies only supported in "
               "DELTA routing algorithm "
            << endl;
@@ -593,61 +664,76 @@ void checkConfiguration() {
     }
   }
 
-  if (GlobalParams::winoc_dst_hops > 0) {
-    if (GlobalParams::topology != TOPOLOGY_BUTTERFLY) {
+  if (GlobalParams::winoc_dst_hops > 0)
+  {
+    if (GlobalParams::topology != TOPOLOGY_BUTTERFLY)
+    {
       cerr << "Error: winoc_dst_hops currently supported only in BUTTERFLY "
               "topology"
            << endl;
       exit(1);
     }
-    if (!GlobalParams::use_winoc) {
+    if (!GlobalParams::use_winoc)
+    {
       cerr << "Error: winoc_dst_hops makes sense only when -winoc is enabled!"
            << endl;
       exit(1);
     }
   }
 
-  if (GlobalParams::buffer_depth < 1) {
+  if (GlobalParams::buffer_depth < 1)
+  {
     cerr << "Error: buffer must be >= 1" << endl;
     exit(1);
   }
-  if (GlobalParams::flit_size <= 0) {
+  if (GlobalParams::flit_size <= 0)
+  {
     cerr << "Error: flit_size must be > 0" << endl;
     exit(1);
   }
 
-  if (GlobalParams::min_packet_size < 2 || GlobalParams::max_packet_size < 2) {
+  if (GlobalParams::min_packet_size < 2 || GlobalParams::max_packet_size < 2)
+  {
     cerr << "Error: packet size must be >= 2" << endl;
     exit(1);
   }
 
-  if (GlobalParams::min_packet_size > GlobalParams::max_packet_size) {
+  if (GlobalParams::min_packet_size > GlobalParams::max_packet_size)
+  {
     cerr << "Error: min packet size must be less than max packet size" << endl;
     exit(1);
   }
 
-  if (GlobalParams::selection_strategy.compare("INVALID_SELECTION") == 0) {
+  if (GlobalParams::selection_strategy.compare("INVALID_SELECTION") == 0)
+  {
     cerr << "Error: invalid selection policy" << endl;
     exit(1);
   }
 
   if (GlobalParams::packet_injection_rate <= 0.0 ||
-      GlobalParams::packet_injection_rate > 1.0) {
+      GlobalParams::packet_injection_rate > 1.0)
+  {
     cerr << "Error: packet injection rate mmust be in the interval ]0,1]"
          << endl;
     exit(1);
   }
 
-  for (unsigned int i = 0; i < GlobalParams::hotspots.size(); i++) {
-    if (GlobalParams::topology == TOPOLOGY_MESH) {
+  for (unsigned int i = 0; i < GlobalParams::hotspots.size(); i++)
+  {
+    if (GlobalParams::topology == TOPOLOGY_MESH)
+    {
       if (GlobalParams::hotspots[i].first >=
-          GlobalParams::mesh_dim_x * GlobalParams::mesh_dim_y) {
+          GlobalParams::mesh_dim_x * GlobalParams::mesh_dim_y)
+      {
         cerr << "Error: hotspot node " << GlobalParams::hotspots[i].first
              << " is invalid (out of range)" << endl;
         exit(1);
       }
-    } else {
-      if (GlobalParams::hotspots[i].first >= GlobalParams::n_delta_tiles) {
+    }
+    else
+    {
+      if (GlobalParams::hotspots[i].first >= GlobalParams::n_delta_tiles)
+      {
         cerr << "Error: hotspot node " << GlobalParams::hotspots[i].first
              << " is invalid (out of range)" << endl;
         exit(1);
@@ -655,39 +741,46 @@ void checkConfiguration() {
     }
 
     if (GlobalParams::hotspots[i].second < 0.0 ||
-        GlobalParams::hotspots[i].second > 1.0) {
+        GlobalParams::hotspots[i].second > 1.0)
+    {
       cerr << "Error: hotspot percentage must be in the interval [0,1]" << endl;
       exit(1);
     }
   }
 
-  if (GlobalParams::stats_warm_up_time < 0) {
+  if (GlobalParams::stats_warm_up_time < 0)
+  {
     cerr << "Error: warm-up time must be positive" << endl;
     exit(1);
   }
 
-  if (GlobalParams::simulation_time < 0) {
+  if (GlobalParams::simulation_time < 0)
+  {
     cerr << "Error: simulation time must be positive" << endl;
     exit(1);
   }
-  if (GlobalParams::n_virtual_channels > MAX_VIRTUAL_CHANNELS) {
+  if (GlobalParams::n_virtual_channels > MAX_VIRTUAL_CHANNELS)
+  {
     cerr << "Error: number of virtual channels must be less than "
          << MAX_VIRTUAL_CHANNELS << endl;
     exit(1);
   }
 
-  if (GlobalParams::stats_warm_up_time > GlobalParams::simulation_time) {
+  if (GlobalParams::stats_warm_up_time > GlobalParams::simulation_time)
+  {
     cerr << "Error: warmup time must be less than simulation time" << endl;
     exit(1);
   }
 
-  if (GlobalParams::locality < 0 || GlobalParams::locality > 1) {
+  if (GlobalParams::locality < 0 || GlobalParams::locality > 1)
+  {
     cerr << "Error: traffic locality must be in the range 0..1" << endl;
     exit(1);
   }
 
   if (GlobalParams::n_virtual_channels > 1 &&
-      GlobalParams::selection_strategy.compare("NOP") == 0) {
+      GlobalParams::selection_strategy.compare("NOP") == 0)
+  {
     cerr << "Error: NoP selection strategy can be used only with a single "
             "virtual channel"
          << endl;
@@ -695,13 +788,15 @@ void checkConfiguration() {
   }
 
   if (GlobalParams::n_virtual_channels > 1 &&
-      GlobalParams::selection_strategy.compare("BUFFER_LEVEL") == 0) {
+      GlobalParams::selection_strategy.compare("BUFFER_LEVEL") == 0)
+  {
     cerr << "Error: Buffer level selection strategy can be used only with a "
             "single virtual channel"
          << endl;
     exit(1);
   }
-  if (GlobalParams::n_virtual_channels > MAX_VIRTUAL_CHANNELS) {
+  if (GlobalParams::n_virtual_channels > MAX_VIRTUAL_CHANNELS)
+  {
     cerr << "Error: cannot use more than " << MAX_VIRTUAL_CHANNELS
          << " virtual channels." << endl
          << "If you need more vc please modify the MAX_VIRTUAL_CHANNELS "
@@ -710,14 +805,16 @@ void checkConfiguration() {
          << "GlobalParams.h and compile again " << endl;
     exit(1);
   }
-  if (GlobalParams::n_virtual_channels > 1 && GlobalParams::use_powermanager) {
+  if (GlobalParams::n_virtual_channels > 1 && GlobalParams::use_powermanager)
+  {
     cerr << "Error: Power manager (-wirxsleep) option only supports a single "
             "virtual channel"
          << endl;
     exit(1);
   }
 
-  if (GlobalParams::ascii_monitor) {
+  if (GlobalParams::ascii_monitor)
+  {
 #ifdef DEBUG
     cerr << "-ascii_monitor option need DEBUG flag to be disabled in Makefile "
          << endl;
@@ -726,19 +823,24 @@ void checkConfiguration() {
   }
 }
 
-void parseCmdLine(int arg_num, char *arg_vet[]) {
+void parseCmdLine(int arg_num, char *arg_vet[])
+{
   if (arg_num == 1)
     cout << "Running with default parameters (use '-help' option to see how to "
             "override them)"
          << endl;
-  else {
-    for (int i = 1; i < arg_num; i++) {
+  else
+  {
+    for (int i = 1; i < arg_num; i++)
+    {
       if (!strcmp(arg_vet[i], "-verbose"))
         GlobalParams::verbose_mode = atoi(arg_vet[++i]);
-      else if (!strcmp(arg_vet[i], "-trace")) {
+      else if (!strcmp(arg_vet[i], "-trace"))
+      {
         GlobalParams::trace_mode = true;
         GlobalParams::trace_filename = arg_vet[++i];
-      } else if (!strcmp(arg_vet[i], "-dimx"))
+      }
+      else if (!strcmp(arg_vet[i], "-dimx"))
         GlobalParams::mesh_dim_x = atoi(arg_vet[++i]);
       else if (!strcmp(arg_vet[i], "-dimy"))
         GlobalParams::mesh_dim_y = atoi(arg_vet[++i]);
@@ -760,27 +862,41 @@ void parseCmdLine(int arg_num, char *arg_vet[]) {
         GlobalParams::flit_size = atoi(arg_vet[++i]);
       else if (!strcmp(arg_vet[i], "-winoc"))
         GlobalParams::use_winoc = true;
-      else if (!strcmp(arg_vet[i], "-winoc_dst_hops")) {
+      else if (!strcmp(arg_vet[i], "-winoc_dst_hops"))
+      {
         GlobalParams::winoc_dst_hops = atoi(arg_vet[++i]);
-      } else if (!strcmp(arg_vet[i], "-wirxsleep")) {
+      }
+      else if (!strcmp(arg_vet[i], "-wirxsleep"))
+      {
         GlobalParams::use_powermanager = true;
-      } else if (!strcmp(arg_vet[i], "-size")) {
+      }
+      else if (!strcmp(arg_vet[i], "-size"))
+      {
         GlobalParams::min_packet_size = atoi(arg_vet[++i]);
         GlobalParams::max_packet_size = atoi(arg_vet[++i]);
-      } else if (!strcmp(arg_vet[i], "-topology")) {
+      }
+      else if (!strcmp(arg_vet[i], "-topology"))
+      {
         GlobalParams::topology = arg_vet[++i];
         cout << "Changing topology to " << GlobalParams::topology << endl;
-      } else if (!strcmp(arg_vet[i], "-routing")) {
+      }
+      else if (!strcmp(arg_vet[i], "-routing"))
+      {
         GlobalParams::routing_algorithm = arg_vet[++i];
         if (GlobalParams::routing_algorithm == ROUTING_DYAD)
           GlobalParams::dyad_threshold = atof(arg_vet[++i]);
-        else if (GlobalParams::routing_algorithm == ROUTING_TABLE_BASED) {
+        else if (GlobalParams::routing_algorithm == ROUTING_TABLE_BASED)
+        {
           GlobalParams::routing_table_filename = arg_vet[++i];
           GlobalParams::packet_injection_rate = 0;
         }
-      } else if (!strcmp(arg_vet[i], "-sel")) {
+      }
+      else if (!strcmp(arg_vet[i], "-sel"))
+      {
         GlobalParams::selection_strategy = arg_vet[++i];
-      } else if (!strcmp(arg_vet[i], "-pir")) {
+      }
+      else if (!strcmp(arg_vet[i], "-pir"))
+      {
 
         GlobalParams::packet_injection_rate = atof(arg_vet[++i]);
         char *distribution = arg_vet[i + 1 < arg_num ? ++i : i];
@@ -788,22 +904,28 @@ void parseCmdLine(int arg_num, char *arg_vet[]) {
         if (!strcmp(distribution, "poisson"))
           GlobalParams::probability_of_retransmission =
               GlobalParams::packet_injection_rate;
-        else if (!strcmp(distribution, "burst")) {
+        else if (!strcmp(distribution, "burst"))
+        {
           double burstness = atof(arg_vet[++i]);
           GlobalParams::probability_of_retransmission =
               GlobalParams::packet_injection_rate / (1 - burstness);
-        } else if (!strcmp(distribution, "pareto")) {
+        }
+        else if (!strcmp(distribution, "pareto"))
+        {
           double Aon = atof(arg_vet[++i]);
           double Aoff = atof(arg_vet[++i]);
           double r = atof(arg_vet[++i]);
           GlobalParams::probability_of_retransmission =
               GlobalParams::packet_injection_rate *
               pow((1 - r), (1 / Aoff - 1 / Aon));
-        } else if (!strcmp(distribution, "custom"))
+        }
+        else if (!strcmp(distribution, "custom"))
           GlobalParams::probability_of_retransmission = atof(arg_vet[++i]);
         else
           assert("Invalid pir format" && false);
-      } else if (!strcmp(arg_vet[i], "-traffic")) {
+      }
+      else if (!strcmp(arg_vet[i], "-traffic"))
+      {
         char *traffic = arg_vet[++i];
         if (!strcmp(traffic, "random"))
           GlobalParams::traffic_distribution = TRAFFIC_RANDOM;
@@ -819,20 +941,27 @@ void parseCmdLine(int arg_num, char *arg_vet[]) {
           GlobalParams::traffic_distribution = TRAFFIC_SHUFFLE;
         else if (!strcmp(traffic, "ulocal"))
           GlobalParams::traffic_distribution = TRAFFIC_ULOCAL;
-        else if (!strcmp(traffic, "table")) {
+        else if (!strcmp(traffic, "table"))
+        {
           GlobalParams::traffic_distribution = TRAFFIC_TABLE_BASED;
           GlobalParams::traffic_table_filename = arg_vet[++i];
-        } else if (!strcmp(traffic, "local")) {
+        }
+        else if (!strcmp(traffic, "local"))
+        {
           GlobalParams::traffic_distribution = TRAFFIC_LOCAL;
           GlobalParams::locality = atof(arg_vet[++i]);
-        } else
+        }
+        else
           assert(false);
-      } else if (!strcmp(arg_vet[i], "-hs")) {
+      }
+      else if (!strcmp(arg_vet[i], "-hs"))
+      {
         int node = atoi(arg_vet[++i]);
         double percentage = atof(arg_vet[++i]);
         pair<int, double> t(node, percentage);
         GlobalParams::hotspots.push_back(t);
-      } else if (!strcmp(arg_vet[i], "-warmup"))
+      }
+      else if (!strcmp(arg_vet[i], "-warmup"))
         GlobalParams::stats_warm_up_time = atoi(arg_vet[++i]);
       else if (!strcmp(arg_vet[i], "-seed"))
         GlobalParams::rnd_generator_seed = atoi(arg_vet[++i]);
@@ -850,7 +979,8 @@ void parseCmdLine(int arg_num, char *arg_vet[]) {
         // -config is managed from configure function
         // i++ skips the configuration file name
         i++;
-      else {
+      else
+      {
         cerr << "Error: Invalid option: " << arg_vet[i] << endl;
         exit(1);
       }
@@ -858,31 +988,38 @@ void parseCmdLine(int arg_num, char *arg_vet[]) {
   }
 }
 
-void configure(int arg_num, char *arg_vet[]) {
+void configure(int arg_num, char *arg_vet[])
+{
 
   bool config_found = false;
   bool power_config_found = false;
 
-  for (int i = 1; i < arg_num; i++) {
-    if (!strcmp(arg_vet[i], "-help")) {
+  for (int i = 1; i < arg_num; i++)
+  {
+    if (!strcmp(arg_vet[i], "-help"))
+    {
       showHelp(arg_vet[0]);
       exit(0);
     }
   }
 
-  for (int i = 1; i < arg_num; i++) {
-    if (!strcmp(arg_vet[i], "-config")) {
+  for (int i = 1; i < arg_num; i++)
+  {
+    if (!strcmp(arg_vet[i], "-config"))
+    {
       GlobalParams::config_filename = arg_vet[++i];
       config_found = true;
       break;
     }
   }
 
-  if (!config_found) {
+  if (!config_found)
+  {
     std::ifstream infile(CONFIG_FILENAME);
     if (infile.good())
       GlobalParams::config_filename = CONFIG_FILENAME;
-    else {
+    else
+    {
       cerr << "No YAML configuration file found!\n Use -config to load "
               "examples from config_examples folder"
            << endl;
@@ -890,19 +1027,23 @@ void configure(int arg_num, char *arg_vet[]) {
     }
   }
 
-  for (int i = 1; i < arg_num; i++) {
-    if (!strcmp(arg_vet[i], "-power")) {
+  for (int i = 1; i < arg_num; i++)
+  {
+    if (!strcmp(arg_vet[i], "-power"))
+    {
       GlobalParams::power_config_filename = arg_vet[++i];
       power_config_found = true;
       break;
     }
   }
 
-  if (!power_config_found) {
+  if (!power_config_found)
+  {
     std::ifstream infile(POWER_CONFIG_FILENAME);
     if (infile.good())
       GlobalParams::power_config_filename = POWER_CONFIG_FILENAME;
-    else {
+    else
+    {
       cerr << "No YAML power configurations file found!\n Use -power to load "
               "examples from config_examples folder"
            << endl;
@@ -924,10 +1065,14 @@ void configure(int arg_num, char *arg_vet[]) {
 }
 
 template <typename T>
-T readParam(YAML::Node node, string param, T default_value) {
-  try {
+T readParam(YAML::Node node, string param, T default_value)
+{
+  try
+  {
     return node[param].as<T>();
-  } catch (exception &e) {
+  }
+  catch (exception &e)
+  {
     /*
     cerr << "WARNING: parameter " << param << " not present in YAML
     configuration file." << endl; cerr << "Using command line value or default
@@ -937,10 +1082,15 @@ T readParam(YAML::Node node, string param, T default_value) {
   }
 }
 
-template <typename T> T readParam(YAML::Node node, string param) {
-  try {
+template <typename T>
+T readParam(YAML::Node node, string param)
+{
+  try
+  {
     return node[param].as<T>();
-  } catch (exception &e) {
+  }
+  catch (exception &e)
+  {
     cerr << "ERROR: Cannot read param " << param << ". " << endl;
     exit(0);
   }

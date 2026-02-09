@@ -4,10 +4,18 @@
 #include <map>
 #include <string>
 #include <vector>
-enum class DataType { INPUT, WEIGHT, OUTPUT, UNKNOWN };
+enum class DataType
+{
+  INPUT,
+  WEIGHT,
+  OUTPUT,
+  UNKNOWN
+};
 
-inline const char *DataType_to_str(DataType type) {
-  switch (type) {
+inline const char *DataType_to_str(DataType type)
+{
+  switch (type)
+  {
   case DataType::INPUT:
     return "INPUT";
   case DataType::WEIGHT:
@@ -18,7 +26,8 @@ inline const char *DataType_to_str(DataType type) {
     return "UNKNOWN";
   }
 }
-inline DataType stringToDataType(const std::string &str) {
+inline DataType stringToDataType(const std::string &str)
+{
   if (str == "INPUT" || str == "Inputs" || str == "input")
     return DataType::INPUT;
   if (str == "WEIGHT" || str == "Weights" || str == "weight")
@@ -28,15 +37,18 @@ inline DataType stringToDataType(const std::string &str) {
   return DataType::UNKNOWN;
 }
 
-enum PE_Role {
+enum PE_Role
+{
   ROLE_UNUSED,
   ROLE_DRAM,
   ROLE_GLB,
   ROLE_BUFFER,
   ROLE_DISTRIBUTOR
 };
-inline const char *roleToString(PE_Role role) {
-  switch (role) {
+inline const char *roleToString(PE_Role role)
+{
+  switch (role)
+  {
   case ROLE_UNUSED:
     return "ROLE_UNUSED";
   case ROLE_DRAM:
@@ -52,7 +64,8 @@ inline const char *roleToString(PE_Role role) {
   }
 }
 
-inline PE_Role stringToRole(const std::string &str) {
+inline PE_Role stringToRole(const std::string &str)
+{
   if (str == "ROLE_UNUSED")
     return ROLE_UNUSED;
   if (str == "ROLE_DRAM")
@@ -66,20 +79,24 @@ inline PE_Role stringToRole(const std::string &str) {
   return ROLE_UNUSED; // 默认返回
 }
 
-typedef struct {
+typedef struct
+{
   std::vector<int> main_channel_caps;
   std::vector<int> output_channel_caps;
 } RoleChannelCapabilities;
 
-struct RoutingPattern {
+struct RoutingPattern
+{
   std::vector<std::vector<int>> port_groups;
   int forward_count = 1;
 };
 
-struct LevelConfig {
+struct LevelConfig
+{
   int level;
   int buffer_size[3];
   int bandwidth;
+  int bank_count = 1; // 新增: DRAM 层的 bank 数量，用于并行度计算
   bool aggregate;
   PE_Role roles;
 
@@ -89,14 +106,16 @@ struct LevelConfig {
   bool has_routing_patterns; // 标记该层是否配置了路由模式
 };
 
-struct HierarchicalConfig {
+struct HierarchicalConfig
+{
   std::vector<LevelConfig> levels;
 
   HierarchicalConfig() = default;
   HierarchicalConfig(const std::vector<LevelConfig> &lvl_configs)
       : levels(lvl_configs) {}
 
-  const LevelConfig &get_level_config(int level_idx) const {
+  const LevelConfig &get_level_config(int level_idx) const
+  {
     return levels[level_idx];
   }
 };
