@@ -11,161 +11,139 @@
 #ifndef __NOXIMPOWER_H__
 #define __NOXIMPOWER_H__
 
+#include "DataStructs.h"
 #include <cassert>
 #include <map>
-#include "DataStructs.h"
 
 #include "yaml-cpp/yaml.h"
-
-
 
 using namespace std;
 
 class Power {
 
-  public:
+public:
+  Power();
 
-    Power();
+  void configureRouter(int link_width, int buffer_depth, int buffer_item_size,
+                       string routing_function, string selection_function,
+                       int level);
 
+  void configureHub(int link_width, int buffer_to_tile_depth,
+                    int buffer_from_tile_depth, int buffer_item_size,
+                    int antenna_buffer_rx_depth, int antenna_buffer_tx_depth,
+                    int antenna_buffer_item_size, int data_rate_gbs);
 
-    void configureRouter(int link_width,
-	                 int buffer_depth,
-			 int buffer_item_size,
-			 string routing_function,
-			 string selection_function);
+  void bufferRouterPush();
+  void bufferRouterPop();
+  void bufferRouterFront();
+  void bufferToTilePush();
+  void bufferToTilePop();
+  void bufferToTileFront();
+  void bufferFromTilePush();
+  void bufferFromTilePop();
+  void bufferFromTileFront();
+  void antennaBufferPush();
+  void antennaBufferPop();
 
-    void configureHub(int link_width, 
-	              int buffer_to_tile_depth, 
-	              int buffer_from_tile_depth, 
-		      int buffer_item_size, 
-		      int antenna_buffer_rx_depth, 
-		      int antenna_buffer_tx_depth, 
-		      int antenna_buffer_item_size, 
-		      int data_rate_gbs);
+  void antennaBufferFront();
+  void wirelessTx(int src, int dst, int length);
+  void wirelessDynamicRx();
+  void wirelessSnooping();
 
-    void bufferRouterPush(); 
-    void bufferRouterPop(); 
-    void bufferRouterFront(); 
-    void bufferToTilePush(); 
-    void bufferToTilePop(); 
-    void bufferToTileFront(); 
-    void bufferFromTilePush(); 
-    void bufferFromTilePop(); 
-    void bufferFromTileFront(); 
-    void antennaBufferPush();
-    void antennaBufferPop();
+  void routing();
+  void selection();
+  void crossBar();
+  void r2hLink();
+  void r2rLink();
+  void networkInterface();
 
-    void antennaBufferFront(); 
-    void wirelessTx(int src,int dst,int length);
-    void wirelessDynamicRx();
-    void wirelessSnooping();
+  void leakageBufferRouter();
+  void leakageBufferToTile();
+  void leakageBufferFromTile();
+  void leakageAntennaBuffer();
+  void leakageLinkRouter2Router();
+  void leakageLinkRouter2Hub();
+  void leakageRouter();
+  void leakageTransceiverRx();
+  void leakageTransceiverTx();
+  void biasingRx();
+  void biasingTx();
 
-    void routing();
-    void selection(); 
-    void crossBar(); 
-    void r2hLink(); 
-    void r2rLink(); 
-    void networkInterface();
+  double getDynamicPower();
+  double getStaticPower();
 
-    void leakageBufferRouter();
-    void leakageBufferToTile();
-    void leakageBufferFromTile();
-    void leakageAntennaBuffer();
-    void leakageLinkRouter2Router();
-    void leakageLinkRouter2Hub();
-    void leakageRouter();
-    void leakageTransceiverRx();
-    void leakageTransceiverTx();
-    void biasingRx();
-    void biasingTx();
+  double getTotalPower() { return (getDynamicPower() + getStaticPower()); }
 
-    double getDynamicPower();
-    double getStaticPower();
+  void printBreakDown(std::ostream &out);
 
-    double getTotalPower() {
-	return (getDynamicPower() + getStaticPower());
-    } 
+  PowerBreakdown *getDynamicPowerBreakDown() { return &power_dynamic; }
+  PowerBreakdown *getStaticPowerBreakDown() { return &power_static; }
 
+  void rxSleep(int cycles);
+  bool isSleeping();
 
-    void printBreakDown(std::ostream & out);
+private:
+  double total_power_s;
 
+  double buffer_router_push_pwr_d;
+  double buffer_router_pop_pwr_d;
+  double buffer_router_front_pwr_d;
+  double buffer_router_pwr_s;
 
-    PowerBreakdown* getDynamicPowerBreakDown(){ return &power_dynamic;}
-    PowerBreakdown* getStaticPowerBreakDown(){ return &power_static;}
+  double buffer_to_tile_push_pwr_d;
+  double buffer_to_tile_pop_pwr_d;
+  double buffer_to_tile_front_pwr_d;
+  double buffer_to_tile_pwr_s;
 
-    void rxSleep(int cycles);
-    bool isSleeping();
+  double buffer_from_tile_push_pwr_d;
+  double buffer_from_tile_pop_pwr_d;
+  double buffer_from_tile_front_pwr_d;
+  double buffer_from_tile_pwr_s;
 
-  private:
+  double antenna_buffer_push_pwr_d;
+  double antenna_buffer_pop_pwr_d;
+  double antenna_buffer_front_pwr_d;
+  double antenna_buffer_pwr_s;
 
-    double total_power_s;
+  double wireless_rx_pwr;
+  double transceiver_tx_pwr_s;
+  double transceiver_rx_pwr_s;
+  double transceiver_tx_pwr_biasing;
+  double transceiver_rx_pwr_biasing;
+  double wireless_snooping;
 
-    double buffer_router_push_pwr_d;
-    double buffer_router_pop_pwr_d;
-    double buffer_router_front_pwr_d;
-    double buffer_router_pwr_s;
-    
-    double buffer_to_tile_push_pwr_d;
-    double buffer_to_tile_pop_pwr_d;
-    double buffer_to_tile_front_pwr_d;
-    double buffer_to_tile_pwr_s;
+  double default_tx_energy;
 
-    double buffer_from_tile_push_pwr_d;
-    double buffer_from_tile_pop_pwr_d;
-    double buffer_from_tile_front_pwr_d;
-    double buffer_from_tile_pwr_s;
+  double routing_pwr_d;
+  double routing_pwr_s;
 
-    double antenna_buffer_push_pwr_d;
-    double antenna_buffer_pop_pwr_d;
-    double antenna_buffer_front_pwr_d;
-    double antenna_buffer_pwr_s;
+  double selection_pwr_d;
+  double selection_pwr_s;
 
-    double wireless_rx_pwr;
-    double transceiver_tx_pwr_s;
-    double transceiver_rx_pwr_s;
-    double transceiver_tx_pwr_biasing;
-    double transceiver_rx_pwr_biasing;
-    double wireless_snooping;
+  double crossbar_pwr_d;
+  double crossbar_pwr_s;
 
-    double default_tx_energy;
+  double link_r2r_pwr_d;
+  double link_r2r_pwr_s;
+  double link_r2h_pwr_s;
+  double link_r2h_pwr_d;
 
-    double routing_pwr_d;
-    double routing_pwr_s;
+  double ni_pwr_d;
+  double ni_pwr_s;
 
-    double selection_pwr_d;
-    double selection_pwr_s;
+  map<pair<int, int>, double> attenuation_map;
+  double attenuation2power(double);
 
-    double crossbar_pwr_d;
-    double crossbar_pwr_s;
+  void printBreakDown(string label, const map<string, double> &m,
+                      std::ostream &out) const;
 
-    double link_r2r_pwr_d;
-    double link_r2r_pwr_s;
-    double link_r2h_pwr_s;
-    double link_r2h_pwr_d;
+  PowerBreakdown power_dynamic;
+  PowerBreakdown power_static;
 
-    double ni_pwr_d;
-    double ni_pwr_s;
+  void initPowerBreakdownEntry(PowerBreakdownEntry *pbe, string label);
+  void initPowerBreakdown();
 
-    map< pair<int, int> , double>  attenuation_map;
-    double attenuation2power(double);
-
-
-    void printBreakDown(string label, const map<string,double> & m,std::ostream & out) const;
-
-    PowerBreakdown power_dynamic;
-    PowerBreakdown power_static;
-
-    void initPowerBreakdownEntry(PowerBreakdownEntry* pbe,string label);
-    void initPowerBreakdown();
-
-
-
-
-
-    int sleep_end_cycle;
-
-
-    
+  int sleep_end_cycle;
 };
 
 #endif

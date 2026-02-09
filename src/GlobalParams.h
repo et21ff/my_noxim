@@ -14,6 +14,7 @@
 
 #include "DataTypes.h"
 #include "taskmanager/WorkloadStructs.h"
+#include <array>
 #include <map>
 #include <string>
 #include <utility>
@@ -119,6 +120,7 @@ typedef map<double, pair<double, double>> LinkBitLinePowerConfig;
 
 typedef struct {
   map<pair<double, double>, pair<double, double>> crossbar_pm;
+  vector<array<double, 6>> asymmetric_crossbar;
   map<int, pair<double, double>> network_interface;
   map<string, pair<double, double>> routing_algorithm_pm;
   map<string, pair<double, double>> selection_strategy_pm;

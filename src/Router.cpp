@@ -473,7 +473,17 @@ void Router::txProcess() {
         }
 
         // 统一的功耗计算（对所有flit类型执行）
-        power.crossBar(); // CrossBar只计算一次
+        // 仅在有非LOCAL输出时计算crossbar功耗
+        bool has_non_local_output = false;
+        for (int output_port : power_calc_ports) {
+          if (output_port != DIRECTION_LOCAL) {
+            has_non_local_output = true;
+            break;
+          }
+        }
+        if (has_non_local_output) {
+          power.crossBar();
+        }
 
         for (int output_port : power_calc_ports) {
           if (output_port == DIRECTION_HUB) {

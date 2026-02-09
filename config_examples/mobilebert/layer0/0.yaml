@@ -1,238 +1,307 @@
-# =============================================================================
-# Workload for a Hierarchical CNN Accelerator Simulation (Final Version)
-# =============================================================================
-#
-# 行为模型:
-# 1. `delta_events` 定义了所有“自上而下”(DRAM->GLB, GLB->PEs)的主动数据推送。
-#    它们是系统的“发动机”。
-# 2. `command_definitions` 是一份“行为菜单”，供 PE 在完成计算后查阅。
-#    `evict_payload` 字段同时定义了“回送多少Output数据”和“驱逐多少数据”。
-#
-# =============================================================================
-topology: "HIERARCHICAL"
-
+topology: HIERARCHICAL
 hierarchical_config:
   num_levels: 4
-  connection_mode: "tree"
+  connection_mode: tree
   word_bits: 8
-  
   level_configs:
-    # Level 0: DRAM (系统内存)
-    - level: 0
-      node_type: "DRAM"
-      buffer_size: 37748736
-      roles: "ROLE_DRAM"
-      bandwidth: 512
-      fanouts: 1
-      routing_patterns:  
-        INPUT:  
-          mode: "INPUT"  
-          port_groups: [[0]] 
-        WEIGHT:  
-          mode: "WEIGHT"  
-          port_groups: [[0]]
-
-        OUTPUT:  
-          mode: "OUTPUT"  
-          port_groups: [[0]]  
-
-    # Level 1: GLB (对应 8x12 中的 "8" 这一维)
-    # 假设该维度为标准的单播分发（因为日志只显示了12那一维的复杂多播）
-    - level: 1
-      node_type: "GLB"
-      buffer_size: 3715000
-      roles: "ROLE_GLB"
-      bandwidth: 512
-      fanouts: 8
-      aggregate: true
-      routing_patterns:  
-        INPUT:  
-          port_groups: [[0,4],[1,5],[2,6],[3,7]]
-        WEIGHT:  
-          port_groups: [[0], [1], [2], [3], [4], [5], [6], [7]]
-          forward_count: 2  
-        OUTPUT:  
-          port_groups: [[0,1,2,3],[4,5,6,7]]
-
-    # Level 2: DISTRIBUTOR (对应 8x12 中的 "12" 这一维 - 日志来源层)
-    - level: 2
-      node_type: "DISTRIBUTOR"
-      buffer_size: 0 # 维持您提供的buffer配置
-      roles: "ROLE_DISTRIBUTOR"
-      bandwidth: 128
-      fanouts: 16
-      aggregate: true
-      routing_patterns:  
-        
-        # pv=0 (WEIGHT): 日志中无多播记录 -> 单播
-        # 每个数据包只发送给唯一的 PE
-        WEIGHT:  
-          port_groups: [
-            [0],[1],[2],[3],[4],[5],[6],[7],[8],[9],[10],[11],[12],[13],[14],[15]
-          ]
-          
-        # pv=1 (INPUT): 日志显示 num_matches=4, 且索引跨度为3 (如0,3,6,9) -> 交错多播
-        # 数据被多播到间隔为3的4个PE上
-        INPUT:  
-          port_groups: [
-            [0,8],
-            [1,9],
-            [2,10],
-            [3,11],
-            [4,12],
-            [5,13],
-            [6,14],
-            [7,15]
-
-          ]
-            
-        # pv=2 (OUTPUT): 日志显示 num_matches=3, 且索引连续 (如0,1,2) -> 块状多播
-        # 数据被多播/收集自连续的3个PE
-        OUTPUT:  
-          port_groups: [
-            [0,1,2,3,4,5,6,7],
-            [8,9,10,11,12,13,14,15]
-          ]
-      
-    # Level 3: COMPUTE (PE)
-    - level: 3
-      node_type: "ROLE_BUFFER"
-      buffer_size: [384, 32, 32]    
-      roles: "ROLE_BUFFER"
-      bandwidth: 8
-      fanouts: 0
-
+  - level: 0
+    node_type: DRAM
+    buffer_size: 37748736
+    roles: ROLE_DRAM
+    bandwidth: 512
+    fanouts: 1
+    routing_patterns:
+      INPUT:
+        mode: INPUT
+        port_groups:
+        - - 0
+      WEIGHT:
+        mode: WEIGHT
+        port_groups:
+        - - 0
+      OUTPUT:
+        mode: OUTPUT
+        port_groups:
+        - - 0
+    fanout: 1
+  - level: 1
+    node_type: GLB
+    buffer_size: 3715000
+    roles: ROLE_GLB
+    bandwidth: 512
+    fanouts: 8
+    aggregate: true
+    routing_patterns:
+      INPUT:
+        port_groups:
+        - - 0
+          - 4
+        - - 1
+          - 5
+        - - 2
+          - 6
+        - - 3
+          - 7
+      WEIGHT:
+        port_groups:
+        - - 0
+        - - 1
+        - - 2
+        - - 3
+        - - 4
+        - - 5
+        - - 6
+        - - 7
+        forward_count: 2
+      OUTPUT:
+        port_groups:
+        - - 0
+          - 1
+          - 2
+          - 3
+        - - 4
+          - 5
+          - 6
+          - 7
+    fanout: 8
+  - level: 2
+    node_type: DISTRIBUTOR
+    buffer_size: 0
+    roles: ROLE_DISTRIBUTOR
+    bandwidth: 128
+    fanouts: 16
+    aggregate: true
+    routing_patterns:
+      WEIGHT:
+        port_groups:
+        - - 0
+        - - 1
+        - - 2
+        - - 3
+        - - 4
+        - - 5
+        - - 6
+        - - 7
+        - - 8
+        - - 9
+        - - 10
+        - - 11
+        - - 12
+        - - 13
+        - - 14
+        - - 15
+      INPUT:
+        port_groups:
+        - - 0
+          - 8
+        - - 1
+          - 9
+        - - 2
+          - 10
+        - - 3
+          - 11
+        - - 4
+          - 12
+        - - 5
+          - 13
+        - - 6
+          - 14
+        - - 7
+          - 15
+      OUTPUT:
+        port_groups:
+        - - 0
+          - 1
+          - 2
+          - 3
+          - 4
+          - 5
+          - 6
+          - 7
+        - - 8
+          - 9
+          - 10
+          - 11
+          - 12
+          - 13
+          - 14
+          - 15
+    fanout: 16
+  - level: 3
+    node_type: ROLE_BUFFER
+    buffer_size:
+    - 384
+    - 32
+    - 32
+    roles: ROLE_BUFFER
+    bandwidth: 8
+    fanouts: 0
+    fanout: 0
 workload:
   working_set:
-    - role: "ROLE_DRAM"
-      outputs_required_count: 71168
-      data:
-        - { data_space: "Weights", size: 196608, reuse_strategy: "resident" }
-        - { data_space: "Inputs", size: 55376, reuse_strategy: "resident" }
-        - { data_space: "Outputs", size: 71168, reuse_strategy: "resident" }
-    - role: "ROLE_GLB"
-      outputs_required_count: 142336
-      data:
-        - { data_space: "Weights", size: 0, reuse_strategy: "resident" }
-        - { data_space: "Inputs", size: 53376, reuse_strategy: "resident" }
-        - { data_space: "Outputs", size: 71168, reuse_strategy: "resident" }
-    - role: "ROLE_BUFFER"
-      outputs_required_count: 0
-      data:
-        - { data_space: "Weights", size: 96, reuse_strategy: "temporal" }
-        - { data_space: "Inputs",  size: 6, reuse_strategy: "temporal" }
-        - { data_space: "Outputs", size: 16, reuse_strategy: "temporal" }
-
+  - role: ROLE_DRAM
+    outputs_required_count: 71168
+    data:
+    - data_space: Weights
+      size: 196608
+      reuse_strategy: resident
+    - data_space: Inputs
+      size: 55376
+      reuse_strategy: resident
+    - data_space: Outputs
+      size: 71168
+      reuse_strategy: resident
+  - role: ROLE_GLB
+    outputs_required_count: 142336
+    data:
+    - data_space: Weights
+      size: 0
+      reuse_strategy: resident
+    - data_space: Inputs
+      size: 53376
+      reuse_strategy: resident
+    - data_space: Outputs
+      size: 71168
+      reuse_strategy: resident
+  - role: ROLE_BUFFER
+    outputs_required_count: 0
+    data:
+    - data_space: Weights
+      size: 96
+      reuse_strategy: temporal
+    - data_space: Inputs
+      size: 6
+      reuse_strategy: temporal
+    - data_space: Outputs
+      size: 16
+      reuse_strategy: temporal
   data_flow_specs:
-    - role: "ROLE_DRAM"
-      properties:
-        sync_per_timestep: 0
-      schedule_template:
-        total_timesteps: 1
-        delta_events:
-          - trigger: { on_timestep: "fallback" }
-            name: "INITIAL_LOAD_DRAM_TO_GLB"
-            delta:
-
-              - { data_space: "Weights", size: 96 ,target_role: "ROLE_BUFFER" }
-              - { data_space: "Weights", size: 96 ,target_role: "ROLE_BUFFER" }
-              - { data_space: "Weights", size: 96 ,target_role: "ROLE_BUFFER" }
-              - { data_space: "Weights", size: 96 ,target_role: "ROLE_BUFFER" }
-              - { data_space: "Weights", size: 96 ,target_role: "ROLE_BUFFER" }
-              - { data_space: "Weights", size: 96 ,target_role: "ROLE_BUFFER" }
-              - { data_space: "Weights", size: 96 ,target_role: "ROLE_BUFFER" }
-              - { data_space: "Weights", size: 96 ,target_role: "ROLE_BUFFER" }
-              - { data_space: "Weights", size: 96 ,target_role: "ROLE_BUFFER" }
-              - { data_space: "Weights", size: 96 ,target_role: "ROLE_BUFFER" }
-              - { data_space: "Weights", size: 96 ,target_role: "ROLE_BUFFER" }
-              - { data_space: "Weights", size: 96 ,target_role: "ROLE_BUFFER" }
-              - { data_space: "Weights", size: 96 ,target_role: "ROLE_BUFFER" }
-              - { data_space: "Weights", size: 96 ,target_role: "ROLE_BUFFER" }
-              - { data_space: "Weights", size: 96 ,target_role: "ROLE_BUFFER" }
-              - { data_space: "Weights", size: 96 ,target_role: "ROLE_BUFFER" }
-
-              - { data_space: "Inputs",  size: 53376 ,target_role: "ROLE_GLB" }
-              - { data_space: "Outputs", size: 71168 ,target_role: "ROLE_GLB" }
-
-    - role: "ROLE_GLB"
-      properties:
-        sync_per_timestep: 0
-      schedule_template:
-        total_timesteps: 2224
-        delta_events:
-          - trigger: { on_timestep: "fallback" }
-            name: "MULTICAST_FILL_INPUTS"
-            delta:
-              - { data_space: "Inputs",  size: 6,target_role: "ROLE_BUFFER" }
-              - { data_space: "Outputs", size: 16, target_role: "ROLE_BUFFER" }
-
-      
-      command_definitions:
-        - command_id: 0
-          name: "PROCESS_FULL_CONTEXT"
-          evict_payload: { Weights: 0, Inputs: 0, Outputs: 71168 }
-
-    - role: "ROLE_BUFFER"
-      properties:
-        compute_latency: 96
-        eviction_interval_cycles: 139
-        weight_eviction_amount: 96
-      schedule_template:
-        total_timesteps: 1
-        delta_events: []
-      command_definitions:
-        - command_id: 0
-          name: "PROCESS_DELTA"
-          evict_payload: { Weights: 0, Inputs: 6, Outputs: 16 }
-
-buffer_depth: 8 # <--- [建议修改] 稍微调大一点，避免初始调试时因缓冲区太小而产生干扰
-# size of flits, in bits
+  - role: ROLE_DRAM
+    properties:
+      sync_per_timestep: 0
+    schedule_template:
+      total_timesteps: 1
+      delta_events:
+      - trigger:
+          on_timestep: fallback
+        name: INITIAL_LOAD_DRAM_TO_GLB
+        delta:
+        - data_space: Weights
+          size: 96
+          target_role: ROLE_BUFFER
+        - data_space: Weights
+          size: 96
+          target_role: ROLE_BUFFER
+        - data_space: Weights
+          size: 96
+          target_role: ROLE_BUFFER
+        - data_space: Weights
+          size: 96
+          target_role: ROLE_BUFFER
+        - data_space: Weights
+          size: 96
+          target_role: ROLE_BUFFER
+        - data_space: Weights
+          size: 96
+          target_role: ROLE_BUFFER
+        - data_space: Weights
+          size: 96
+          target_role: ROLE_BUFFER
+        - data_space: Weights
+          size: 96
+          target_role: ROLE_BUFFER
+        - data_space: Weights
+          size: 96
+          target_role: ROLE_BUFFER
+        - data_space: Weights
+          size: 96
+          target_role: ROLE_BUFFER
+        - data_space: Weights
+          size: 96
+          target_role: ROLE_BUFFER
+        - data_space: Weights
+          size: 96
+          target_role: ROLE_BUFFER
+        - data_space: Weights
+          size: 96
+          target_role: ROLE_BUFFER
+        - data_space: Weights
+          size: 96
+          target_role: ROLE_BUFFER
+        - data_space: Weights
+          size: 96
+          target_role: ROLE_BUFFER
+        - data_space: Weights
+          size: 96
+          target_role: ROLE_BUFFER
+        - data_space: Inputs
+          size: 53376
+          target_role: ROLE_GLB
+        - data_space: Outputs
+          size: 71168
+          target_role: ROLE_GLB
+  - role: ROLE_GLB
+    properties:
+      sync_per_timestep: 0
+    schedule_template:
+      total_timesteps: 2224
+      delta_events:
+      - trigger:
+          on_timestep: fallback
+        name: MULTICAST_FILL_INPUTS
+        delta:
+        - data_space: Inputs
+          size: 6
+          target_role: ROLE_BUFFER
+        - data_space: Outputs
+          size: 16
+          target_role: ROLE_BUFFER
+    command_definitions:
+    - command_id: 0
+      name: PROCESS_FULL_CONTEXT
+      evict_payload:
+        Weights: 0
+        Inputs: 0
+        Outputs: 71168
+  - role: ROLE_BUFFER
+    properties:
+      compute_latency: 96
+      eviction_interval_cycles: 139
+      weight_eviction_amount: 96
+    schedule_template:
+      total_timesteps: 1
+      delta_events: []
+    command_definitions:
+    - command_id: 0
+      name: PROCESS_DELTA
+      evict_payload:
+        Weights: 0
+        Inputs: 6
+        Outputs: 16
+buffer_depth: 8
 flit_size: 32
-# lenght in mm of router to hub connection
 r2h_link_length: 2.0
-# lenght in mm of router to router connection
 r2r_link_length: 1.0
 n_virtual_channels: 3
-# Routing algorithms:
-routing_algorithm: XY # <--- 在1x1的网络里，路由算法不重要，XY即可
-routing_table_filename: ""
+routing_algorithm: XY
+routing_table_filename: ''
 dyad_threshold: 0.6
-# ... (selection_strategy 等保持不变) ...
 selection_strategy: RANDOM
-# ------------------- [重要] 禁用所有不相关的特性 -------------------
-
-# WIRELESS CONFIGURATION (禁用)
 use_winoc: false
 use_wirxsleep: false
-# ------------------- SIMULATION PARAMETERS -------------------
-#
 clock_period_ps: 1000
-reset_time: 10 # <--- [建议修改] 缩短reset时间，让我们的逻辑更快开始
-simulation_time: 4000000 # <--- [关键修改] 增加模拟时间，确保我们能看到完整的交互链
-stats_warm_up_time: 0 # <--- [建议修改] 禁用warm up，我们想从一开始就看log
-# power breakdown, nodes communication details
+reset_time: 10
+simulation_time: 4000000
+stats_warm_up_time: 0
 detailed: false
-# stop after a given amount of load has been processed
 max_volume_to_be_drained: 0
 show_buffer_stats: false
-# ... (detailed, max_volume_to_beROLE_DRAM_drained 等保持不变) ...
-
-# Verbosity level:
-verbose_mode: VERBOSE_OFF # <--- [关键修改] 设置为LOW，可以看到一些基本的网络活动日志
-
-# Trace (可选，但推荐)
-trace_mode: false # 如果需要详细的flit追踪，可以设为true，但日志会非常多
-trace_filename: "debug_trace.log"
-
-# ------------------- [重要] 禁用Noxim自带的流量注入 -------------------
-# 我们现在用自己的逻辑生成流量，所以要把Noxim自带的流量注入率设为0
-
+verbose_mode: VERBOSE_OFF
+trace_mode: false
+trace_filename: debug_trace.log
 min_packet_size: 8
 max_packet_size: 8
-packet_injection_rate: 0.1 # <--- [关键修改] 设为0！
-probability_of_retransmission: 0.1 # <--- [关键修改] 设为0！
-
-# Traffic distribution:
-# 将其设置为TABLE_BASED，但提供一个空文件，确保它不会产生任何随机流量。
-traffic_distribution: TRAFFIC_TABLE_BASED # <--- [关键修改]
-traffic_table_filename: "empty_traffic.txt" # <--- 创建一个空的txt文件
+packet_injection_rate: 0.1
+probability_of_retransmission: 0.1
+traffic_distribution: TRAFFIC_TABLE_BASED
+traffic_table_filename: empty_traffic.txt

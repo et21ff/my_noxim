@@ -251,7 +251,8 @@ void NoC::buildHierarchical() {
         next_level_bandwidth, // 下一层链路带宽
         GlobalParams::buffer_depth,
         current_level_config.bandwidth, // 当前层处理带宽
-        string(GlobalParams::routing_algorithm), "default");
+        string(GlobalParams::routing_algorithm), "default",
+        GlobalParams::node_level_map[node_id]); // 层级参数
 
     // 配置ProcessingElement
     t[node_id]->pe->local_id = node_id;
