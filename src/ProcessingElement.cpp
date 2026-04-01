@@ -804,6 +804,8 @@ void ProcessingElement::run_compute_logic()
     return;
   }
 
+  bool started_this_cycle = false;
+
   if (!compute_in_progress_)
   {
     // 4. Dependency Check: Verify that all required data for the *current*
@@ -847,13 +849,26 @@ void ProcessingElement::run_compute_logic()
       return;
     }
 
-    // 所有数据都准备好了，开始计算
-    consume_cycles_left = task_manager_->get_compute_latency();
+    // 所有数据都准备好了，开始计算。
+    // 注意：本周期只进入“计算中”状态，不立刻扣减，避免墙钟观测少1个周期。
+    int latency = task_manager_->get_compute_latency();
+    if (latency <= 0)
+    {
+      is_compute_complete = true;
+      return;
+    }
+    consume_cycles_left = latency;
     compute_in_progress_ = true;
+    started_this_cycle = true;
   }
 
   if (compute_in_progress_)
   {
+    if (started_this_cycle)
+    {
+      return;
+    }
+
     consume_cycles_left--;
     assert(consume_cycles_left >= 0 && "Consume cycles underflow");
 

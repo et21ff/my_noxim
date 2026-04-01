@@ -12,13 +12,16 @@ set(CMAKE_EXE_LINKER_FLAGS_RELEASE "-pthread")
 set(CMAKE_MODULE_LINKER_FLAGS "-pthread")
  
 # 可选：添加编译器特定的Debug标志
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-        set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -Wall -Wextra")
-    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-        set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -Wall -Wextra")
-    endif()
-endif()
+# if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+#     if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+#         set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -Wall -Wextra")
+#     elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+#         set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -Wall -Wextra")
+#     endif()
+# endif()
+
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -march=native -ffast-math -flto -Wall")
+set(CMAKE_EXE_LINKER_FLAGS_RELEASE "-O3 -flto -pthread")
  
 # add extra include directories
 include_directories(

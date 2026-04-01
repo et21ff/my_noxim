@@ -752,7 +752,11 @@ void Router::configure(const int _id, const int _level,
         total_ports += group.size();
       }
     }
-    aggregation_entry.expected_port_count = total_ports;
+    // Keep the default fanout-based expected port count when OUTPUT routing
+    // groups are absent (e.g., root level with INPUT-only routing pattern).
+    if (total_ports > 0) {
+      aggregation_entry.expected_port_count = total_ports;
+    }
 
     this->use_predefined_routing = true;
   }
