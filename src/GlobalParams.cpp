@@ -82,3 +82,5 @@ map<int, int> GlobalParams::compute_to_storage_map;
 
 string GlobalParams::transmission_mode =
     "optimized"; // Default to optimized mode
+bool GlobalParams::ideal_transport = false;
+vector<ProcessingElement *> GlobalParams::pe_registry;

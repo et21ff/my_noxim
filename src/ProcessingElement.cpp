@@ -35,6 +35,11 @@ void ProcessingElement::configure(int id, int level_idx,
   //========================================================================
   this->local_id = id;
   this->level_index = level_idx;
+  if (GlobalParams::pe_registry.size() <= static_cast<size_t>(local_id))
+  {
+    GlobalParams::pe_registry.resize(local_id + 1, nullptr);
+  }
+  GlobalParams::pe_registry[local_id] = this;
 
   //========================================================================
   // II. 根据层级确定角色和基础配置
@@ -494,11 +499,6 @@ void ProcessingElement::internal_transfer_process()
 // 新增：统一的VC发送处理函数实现
 void ProcessingElement::handle_tx_for_all_vcs()
 {
-  if (ack_tx[0].read() != current_level_tx[0])
-  {
-    // 端口正忙，跳过这个VC
-    return;
-  }
   // [核心] 遍历所有 VC 发送队列
   for (int i = 0; i < GlobalParams::n_virtual_channels; ++i)
   {
@@ -513,6 +513,40 @@ void ProcessingElement::handle_tx_for_all_vcs()
 
     // "窥视"队首的包
     Packet &packet_to_send = packet_queues_[vc].front();
+
+    // Ideal mode: bypass flits/links/routers and directly deliver packet
+    // payload to destination PE accounting.
+    // Hybrid ideal mode:
+    // - Non-return packets: direct packet-level delivery (bypass NoC links)
+    // - Return packets (command == -1): keep original flit/router path to
+    //   preserve in-network aggregation semantics.
+    if (GlobalParams::ideal_transport && packet_to_send.command != -1)
+    {
+      if (!direct_deliver_packet(packet_to_send))
+      {
+        LOG << "[TX_VC" << vc
+            << "] Direct-deliver blocked "
+            << "cmd=" << packet_to_send.command
+            << " target_role=" << role_to_str(packet_to_send.target_role)
+            << " payload=" << packet_to_send.payload_data_size << endl;
+        continue;
+      }
+
+      packet_queues_[vc].pop();
+      last_serviced_vc_ = vc;
+      LOG << "[TX_VC" << vc << "] Direct-delivered packet "
+          << "src=" << packet_to_send.src_id
+          << " payload=" << packet_to_send.payload_data_size
+          << " type=" << DataType_to_str(packet_to_send.data_type)
+          << " command_id=" << packet_to_send.command << endl;
+      break;
+    }
+
+    // Physical flit path still requires ABP handshake readiness.
+    if (ack_tx[0].read() != current_level_tx[0])
+    {
+      continue;
+    }
 
     // 检查下游邻居的 VC 流控状态
     TBufferFullStatus downstream_status = buffer_full_status_tx[0].read();
@@ -606,6 +640,136 @@ int ProcessingElement::get_vc_id_for_packet_by_task(
   {
     return 0; // 默认VC 0
   }
+}
+
+bool ProcessingElement::can_accept_direct_packet(const Packet &pkt) const
+{
+  if (role == ROLE_DISTRIBUTOR || unified_buffer_manager_ == nullptr)
+  {
+    return false;
+  }
+
+  // OUTPUT return packet: keep existing special semantics.
+  if (pkt.command == -1)
+  {
+    return true;
+  }
+
+  size_t current_size = unified_buffer_manager_->GetCurrentSize(pkt.data_type);
+  size_t cap = unified_buffer_manager_->GetCapacity(pkt.data_type);
+  return current_size + static_cast<size_t>(pkt.payload_data_size) <= cap;
+}
+
+bool ProcessingElement::receive_direct_packet(const Packet &pkt, int src_id)
+{
+  (void)src_id;
+  if (!can_accept_direct_packet(pkt))
+  {
+    return false;
+  }
+
+  if (pkt.command == -1)
+  {
+    outputs_received_count_ += pkt.payload_data_size;
+    buffer_state_changed_event.notify(SC_ZERO_TIME);
+    return true;
+  }
+
+  unified_buffer_manager_->OnDataReceived(pkt.data_type, pkt.payload_data_size);
+  if (pkt.command != -1 && pkt.data_type != DataType::WEIGHT)
+  {
+    pending_commands_[pkt.logical_timestamp] = pkt.command;
+  }
+  buffer_state_changed_event.notify(SC_ZERO_TIME);
+  return true;
+}
+
+bool ProcessingElement::direct_deliver_packet(const Packet &pkt)
+{
+  vector<int> targets;
+
+  // Keep parity with Router::route() semantics in hierarchical mode:
+  // command == -1 packets always move one hop UP until they reach target role.
+  if (pkt.command == -1)
+  {
+    targets = upstream_node_ids;
+  }
+  else if (pkt.dst_id >= 0)
+  {
+    targets.push_back(pkt.dst_id);
+  }
+  else
+  {
+    // Role-based direct delivery: resolve all nodes matching target_role.
+    for (size_t i = 0; i < GlobalParams::pe_registry.size(); ++i)
+    {
+      ProcessingElement *cand = GlobalParams::pe_registry[i];
+      if (cand != nullptr && cand->role == pkt.target_role)
+      {
+        targets.push_back(static_cast<int>(i));
+      }
+    }
+
+    // Fallback to local topology hints if role-based lookup returns empty.
+    if (targets.empty())
+    {
+      if (pkt.target_role == ROLE_GLB)
+      {
+        targets = upstream_node_ids;
+      }
+      else if (pkt.target_role == ROLE_BUFFER ||
+               pkt.target_role == ROLE_DISTRIBUTOR)
+      {
+        targets = downstream_node_ids;
+      }
+    }
+  }
+
+  if (targets.empty())
+  {
+    LOG << "[DIRECT] No targets resolved for packet: target_role="
+        << role_to_str(pkt.target_role) << " dst_id=" << pkt.dst_id
+        << " command=" << pkt.command << endl;
+    return false;
+  }
+
+  // Pre-check all targets first to avoid partial commit.
+  for (int dst_id : targets)
+  {
+    if (dst_id < 0 ||
+        dst_id >= static_cast<int>(GlobalParams::pe_registry.size()))
+    {
+      LOG << "[DIRECT] Invalid dst_id=" << dst_id
+          << " registry_size=" << GlobalParams::pe_registry.size() << endl;
+      return false;
+    }
+    ProcessingElement *dst = GlobalParams::pe_registry[dst_id];
+    if (dst == nullptr)
+    {
+      LOG << "[DIRECT] Null dst PE pointer for dst_id=" << dst_id << endl;
+      return false;
+    }
+    if (!dst->can_accept_direct_packet(pkt))
+    {
+      LOG << "[DIRECT] Dst cannot accept packet. dst_id=" << dst_id
+          << " dst_role=" << role_to_str(dst->role)
+          << " data_type=" << DataType_to_str(pkt.data_type)
+          << " payload=" << pkt.payload_data_size
+          << " command=" << pkt.command << endl;
+      return false;
+    }
+  }
+
+  for (int dst_id : targets)
+  {
+    ProcessingElement *dst = GlobalParams::pe_registry[dst_id];
+    if (!dst->receive_direct_packet(pkt, local_id))
+    {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 void ProcessingElement::txProcess()
@@ -761,6 +925,7 @@ void ProcessingElement::reset_logic()
     {
       Packet pkt;
       pkt.src_id = local_id;
+      pkt.dst_id = -2;
       pkt.payload_data_size = cmd.outputs;
       pkt.data_type = DataType::OUTPUT;
       int bandwidth_scale =
@@ -1029,6 +1194,7 @@ void ProcessingElement::run_storage_logic()
 
     Packet pkt;
     pkt.src_id = local_id;
+    pkt.dst_id = -2;
     pkt.target_role = selected_task.target_role;
 
     // 计算实际的目标数量

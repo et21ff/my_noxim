@@ -233,6 +233,9 @@ public: // 建议将内部状态变量设为私有
   bool packet_queues_are_empty() const;
   int get_vc_id_for_packet(const Packet &pkt) const;
   int get_vc_id_for_packet_by_task(DataDispatchInfo type) const;
+  bool can_accept_direct_packet(const Packet &pkt) const;
+  bool receive_direct_packet(const Packet &pkt, int src_id);
+  bool direct_deliver_packet(const Packet &pkt);
 
   int find_child_id(int id);
   Flit generate_next_flit_from_queue(std::queue<Packet> & queue);

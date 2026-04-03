@@ -20,6 +20,7 @@
 #include <utility>
 #include <vector>
 using namespace std;
+class ProcessingElement;
 
 #define CONFIG_FILENAME "config.yaml"
 #define POWER_CONFIG_FILENAME "power.yaml"
@@ -212,6 +213,11 @@ struct GlobalParams {
 
   // Transmission mode: "traditional" or "optimized"
   static string transmission_mode;
+
+  // Ideal transport mode: bypass NoC flit/link traversal and directly
+  // transfer packet payloads to destination PE accounting.
+  static bool ideal_transport;
+  static vector<ProcessingElement *> pe_registry;
 };
 
 #endif
